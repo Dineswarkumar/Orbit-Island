@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "ORBIT Island",
-        "width": 700,
-        "height": 450,
+        "width": 400,
+        "height": 56,
         "resizable": false,
         "transparent": true,
         "decorations": false,

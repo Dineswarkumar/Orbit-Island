@@ -18,13 +18,13 @@ pub fn run() {
             // Initialize and persist default configuration if not already present
             let _ = load_config(&app.handle());
 
-            // Position main island at top center on primary monitor
+            // Position main island at top center on primary monitor (400x56 pill footprint)
             if let Some(main_win) = app.get_webview_window("main") {
                 if let Ok(Some(monitor)) = main_win.primary_monitor() {
                     let screen_size = monitor.size();
                     let scale = monitor.scale_factor();
                     let logical_width = screen_size.width as f64 / scale;
-                    let win_width = 700.0;
+                    let win_width = 400.0;
                     let x = (logical_width - win_width) / 2.0;
                     let y = 12.0;
                     let _ = main_win.set_position(Position::Logical(LogicalPosition { x, y }));

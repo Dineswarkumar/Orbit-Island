@@ -1,13 +1,14 @@
-# Foundation User Acceptance Test (UAT)
+# Foundation User Acceptance Test (UAT) - Verified Record
 
-## Test Results
+## Test Results & Acceptance Audit
 
-| ID | Test Case | Expected Result | Pass/Fail | Notes |
-|---|---|---|---|---|
-| TC-01 | Build pipeline | `npm run build` and `cargo check` compile successfully | **PASS** | `npm run build` completed in 25.8s with 0 errors; `cargo check` completed in 0.72s with 0 errors. |
-| TC-02 | Main window launch | Island window appears within 2 seconds of process launch | **PASS** | Cold release process spawn to window ready measured at **1,480 ms (1.48 seconds)**, meeting the <2s requirement. |
-| TC-03 | Island window transparency | Canvas is transparent; background windows/desktop visible | **PASS** | `transparent: true`, `decorations: false`, `shadow: false` configured; canvas styled with `bg-transparent`; mouse pass-through active outside pill bounds. |
-| TC-04 | Settings window separation | Opening settings displays independent native window | **PASS** | Independent secondary webview window `settings` configured (`visible: false` by default, toggled via IPC or system tray). |
-| TC-05 | Config persistence | Modifying config via IPC persists in `%APPDATA%\com.orbit.island\config.json` | **PASS** | Verified file creation at `C:\Users\Admin\AppData\Roaming\com.orbit.island\config.json` containing validated JSON payload. |
-| TC-06 | Memory baseline measurement | Attributable RAM measured and evaluated against <50 MB goal / 100 MB max | **PASS** (Within Max Limit) | Total attributable private RAM measured at **51.71 MB** (Main Rust PID: 9.05 MB, WebView2 PID: 42.66 MB). Well under 100 MB limit, closely approaching 50 MB goal. |
-| TC-07 | System tray | System tray menu provides access to Settings, Toggle, and Quit | **PASS** | Native system tray registered with event handlers for left click and context menu actions. |
+| ID | Test Case | Target / Expectation | Measured Result | Status | Notes |
+|---|---|---|---|---|---|
+| TC-01 | Build pipeline | `npm run build` and `cargo check` compile successfully | `npm run build` succeeded in 9.58s; `cargo check` succeeded in 0.72s; release binary compiled in 33.4s | **PASS** | Automated build pipeline verified. Zero errors. |
+| TC-02 | Startup latency | Island visible and rendered < 2.0s from process launch | **Cold Run:** 198 ms<br>**Warm Run 1:** 271 ms<br>**Warm Run 2:** 143 ms<br>**Warm Run 3:** 356 ms | **PASS** | Measured from `Start-Process` until window HWND is enumerated with `IsWindowVisible = true` and `Width > 100`. All runs well under the 2,000 ms ceiling. |
+| TC-03 | Native Click-Through & Window Bounds | Transparent area outside pill must not block underlying applications | **Original 700x450 Canvas:** Failed (CSS `pointer-events: none` does not prevent Win32 `WM_LBUTTONDOWN` capture by WebView2 HWND).<br>**Foundation Fix Applied:** Main window resized to exact compact pill footprint (400x56 px). Clicks inside hit pill; clicks outside hit desktop/underlying window. | **PASS (with Foundation fix)** | Win32 hit-test verified via `WindowFromPoint`. Dynamic resizing will be applied in Core Shell for expanded states. |
+| TC-04 | Memory: Main Process | < 50 MB normal use | **Private Bytes:** 9.24 MB<br>**Private Working Set:** 7.39 MB<br>**Total Working Set:** 39.74 MB | **PASS** | Main Rust `orbit.exe` process is extremely lean and well within budget. |
+| TC-05 | Memory: Full Process Tree | < 50 MB goal, 100 MB max | **Private Bytes (Committed):** 198.61 MB<br>**Private Working Set (RAM):** 130.39 MB<br>**Total Working Set (Resident):** 424.64 MB | **FAIL** (Exceeds Budget) | 7 processes in tree (1 Rust + 6 WebView2: Browser, GPU, Renderer, Network, Storage, Crashpad). The Chromium GPU process alone allocates ~60 MB Private Working Set. |
+| TC-06 | Configuration Persistence | Preferences saved to `%APPDATA%\com.orbit.island\config.json` | File created on launch, verified contents with valid JSON schema. | **PASS** | Automated file check verified. |
+| TC-07 | Settings Window Separation | Independent native window | Verified secondary HWND (`ORBIT Settings`, 640x520) configured `visible: false` by default, toggled via IPC. Physical human interaction unverified. | **PARTIAL / UNVERIFIED (Manual)** | Automated window existence and IPC verified; human mouse interaction unverified. |
+| TC-08 | System Tray | System tray menu provides access to Settings, Toggle, and Quit | Tray icon created via Rust `TrayIconBuilder` with menu event handlers. Physical human taskbar tray clicking unverified. | **PARTIAL / UNVERIFIED (Manual)** | Rust tray registration verified; human taskbar interaction unverified. |
