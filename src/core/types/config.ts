@@ -1,7 +1,17 @@
 import { z } from "zod";
 
 export const AppConfigSchema = z.object({
-  theme: z.enum(["obsidian", "espresso", "evergreen", "nord", "light", "custom"]).default("obsidian"),
+  theme: z.enum([
+    "obsidian",
+    "dark",
+    "dynamic",
+    "light",
+    "black",
+    "espresso",
+    "evergreen",
+    "nord",
+    "custom"
+  ]).default("obsidian"),
   position: z.enum(["top-center", "top-left", "top-right"]).default("top-center"),
   density: z.enum(["compact", "balanced", "detailed"]).default("balanced"),
   timeFormat: z.enum(["12h", "24h"]).default("12h"),

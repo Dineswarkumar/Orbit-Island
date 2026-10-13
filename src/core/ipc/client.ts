@@ -33,4 +33,8 @@ export const ipc = {
   setIslandState: async (state: "compact" | "expanded"): Promise<void> => {
     return invoke<void>("set_island_state", { state });
   },
+
+  showContextMenu: async (): Promise<void> => {
+    return invoke<void>("show_context_menu");
+  },
 };

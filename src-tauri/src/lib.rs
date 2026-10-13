@@ -3,12 +3,12 @@ pub mod services;
 
 use commands::{
     center_island_window, close_settings_window, get_config, get_memory_metrics,
-    open_settings_window, save_config, set_island_state,
+    open_settings_window, save_config, set_island_state, show_context_menu,
 };
 use services::config::load_config;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{LogicalPosition, Manager, Position};
+use tauri::{Emitter, LogicalPosition, Manager, Position};
 
 #[derive(Clone)]
 pub struct TrayState(pub std::sync::Arc<TrayIcon>);
@@ -41,6 +41,52 @@ fn apply_capsule_region(window: &tauri::WebviewWindow) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
+        .on_menu_event(|app, event| {
+            let id = event.id().as_ref();
+            match id {
+                "ctx_hide" => {
+                    if let Some(main_win) = app.get_webview_window("main") {
+                        let _ = main_win.hide();
+                    }
+                }
+                "ctx_dismiss" => {
+                    let _ = set_island_state(app.clone(), "compact".to_string());
+                    let _ = app.emit("collapse-island", ());
+                }
+                "ctx_settings" | "settings" => {
+                    let _ = open_settings_window(app.clone());
+                }
+                "toggle" => {
+                    if let Some(main_win) = app.get_webview_window("main") {
+                        if let Ok(is_visible) = main_win.is_visible() {
+                            if is_visible {
+                                let _ = main_win.hide();
+                            } else {
+                                let _ = main_win.show();
+                                let _ = main_win.set_focus();
+                            }
+                        }
+                    }
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                "theme_dynamic" | "theme_dark" | "theme_light" | "theme_black" => {
+                    let theme_id = match id {
+                        "theme_dynamic" => "dynamic",
+                        "theme_dark" => "dark",
+                        "theme_light" => "light",
+                        "theme_black" => "black",
+                        _ => "dark",
+                    };
+                    let mut cfg = load_config(app);
+                    cfg.theme = theme_id.to_string();
+                    let _ = services::config::save_config(app, &cfg);
+                    let _ = app.emit("config-changed", &cfg);
+                }
+                _ => {}
+            }
+        })
         .setup(|app| {
             // Initialize and persist default configuration if not already present
             let initial_config = load_config(&app.handle());
@@ -137,7 +183,8 @@ pub fn run() {
             close_settings_window,
             get_memory_metrics,
             center_island_window,
-            set_island_state
+            set_island_state,
+            show_context_menu
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
