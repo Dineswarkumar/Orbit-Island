@@ -12,6 +12,9 @@ export default {
           border: "rgba(255, 255, 255, 0.12)",
         },
       },
+      transitionDuration: {
+        "250": "250ms",
+      },
     },
   },
   plugins: [],

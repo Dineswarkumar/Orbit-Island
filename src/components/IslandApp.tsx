@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { ChevronDown, Palette, Check, Settings } from "lucide-react";
+import { ChevronDown, ChevronRight, Check, Settings } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { ipc } from "../core/ipc/client";
 import { useConfigStore } from "../core/stores/useConfigStore";
@@ -20,6 +20,7 @@ export const IslandApp: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [showThemeSubmenu, setShowThemeSubmenu] = useState(false);
 
   // Transition generation ID and explicitly tracked timer refs to completely eliminate race conditions
   const transitionIdRef = useRef<number>(0);
@@ -106,6 +107,7 @@ export const IslandApp: React.FC = () => {
   const handleCollapseClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setContextMenuPos(null);
+    setShowThemeSubmenu(false);
     const currentTransitionId = ++transitionIdRef.current;
 
     if (collapseDebounceTimerRef.current) {
@@ -133,13 +135,20 @@ export const IslandApp: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     if (isExpanded) {
-      setContextMenuPos({ x: Math.min(e.clientX, 240), y: Math.min(e.clientY, 50) });
+      // Menu width is 170px, height is ~90px. Native window is 400x184.
+      // Clamp x so menu stays within [12, 400 - 180]
+      // Clamp y so menu stays within [8, 184 - 95]
+      const clampedX = Math.max(12, Math.min(e.clientX, 220));
+      const clampedY = Math.max(8, Math.min(e.clientY, 85));
+      setContextMenuPos({ x: clampedX, y: clampedY });
+      setShowThemeSubmenu(false);
     }
   };
 
   const handleOpenSettings = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setContextMenuPos(null);
+    setShowThemeSubmenu(false);
     try {
       await ipc.openSettingsWindow();
     } catch (err) {
@@ -149,6 +158,7 @@ export const IslandApp: React.FC = () => {
 
   const handleSelectTheme = async (theme: AppConfig["theme"]) => {
     setContextMenuPos(null);
+    setShowThemeSubmenu(false);
     await updateConfig({ theme });
   };
 
@@ -182,7 +192,10 @@ export const IslandApp: React.FC = () => {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onContextMenu={handleContextMenu}
-      onClick={() => setContextMenuPos(null)}
+      onClick={() => {
+        setContextMenuPos(null);
+        setShowThemeSubmenu(false);
+      }}
       className={`w-full h-full flex items-start justify-center overflow-hidden select-none relative bg-transparent font-sans theme-${config.theme}`}
     >
       {/* Primary Island Container */}
@@ -222,7 +235,7 @@ export const IslandApp: React.FC = () => {
 
         {/* EXPANDED PANEL VIEW (400x184 px: Matching reference-idle-clock.png, logo header, section dots) */}
         <div
-          className={`w-[400px] h-[184px] p-3.5 flex flex-col justify-between absolute inset-0 transition-opacity ${
+          className={`w-[400px] h-[184px] p-3 flex flex-col justify-between absolute inset-0 transition-opacity ${
             isExpanded
               ? "opacity-100 duration-200 delay-75"
               : "opacity-0 pointer-events-none duration-100"
@@ -233,7 +246,8 @@ export const IslandApp: React.FC = () => {
             <img
               src={orbitLogo}
               alt="ORBIT"
-              className="h-4.5 w-auto object-contain opacity-90 select-none pointer-events-none"
+              style={{ height: "18px", maxHeight: "18px", maxWidth: "90px" }}
+              className="h-[18px] max-h-[18px] max-w-[90px] w-auto object-contain opacity-90 select-none pointer-events-none"
             />
             <button
               onClick={handleCollapseClick}
@@ -284,48 +298,82 @@ export const IslandApp: React.FC = () => {
         </div>
       </div>
 
-      {/* Custom Context Menu on Right Click (Themes & Settings) */}
+      {/* Custom Context Menu on Right Click (Hierarchical: Theme submenu + Settings action) */}
       {isExpanded && contextMenuPos && (
         <div
           onClick={(e) => e.stopPropagation()}
           style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
-          className="absolute z-50 w-48 bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl py-1.5 text-xs text-slate-200 font-sans"
+          className="absolute z-50 w-44 bg-slate-900/98 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl py-1 text-xs text-slate-200 font-sans select-none"
         >
-          <div className="px-3 py-1 font-semibold text-[10px] uppercase tracking-wider text-slate-400 border-b border-white/10 flex items-center space-x-1.5">
-            <Palette className="w-3 h-3 text-cyan-400" />
-            <span>Select Theme</span>
-          </div>
+          {/* Item 1: Theme submenu trigger */}
+          <div
+            onMouseEnter={() => setShowThemeSubmenu(true)}
+            onClick={() => setShowThemeSubmenu(!showThemeSubmenu)}
+            className="relative px-3 py-1.5 flex items-center justify-between hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center space-x-2">
+              <span
+                className="w-2 h-2 rounded-full border border-white/20"
+                style={{ backgroundColor: activeThemeMeta.color }}
+              />
+              <span className="font-medium text-slate-200">Theme</span>
+            </div>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
 
-          <div className="py-1">
-            {THEME_OPTIONS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => handleSelectTheme(t.id)}
-                className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-white/10 text-left transition-colors cursor-pointer"
+            {/* Theme Submenu Flyout (opens to right or left depending on x position) */}
+            {showThemeSubmenu && (
+              <div
+                style={{
+                  top: -4,
+                  left: contextMenuPos.x > 180 ? "-158px" : "100%",
+                }}
+                className="absolute z-50 w-38 bg-slate-900/98 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl py-1 text-xs text-slate-200"
               >
-                <div className="flex items-center space-x-2">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full border border-white/20"
-                    style={{ backgroundColor: t.color }}
-                  />
-                  <span>{t.label}</span>
+                <div className="px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 border-b border-white/10">
+                  Select Theme
                 </div>
-                {config.theme === t.id && (
-                  <Check className="w-3.5 h-3.5" style={{ color: t.color }} />
-                )}
-              </button>
-            ))}
+                {THEME_OPTIONS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectTheme(t.id);
+                    }}
+                    className="w-full px-2.5 py-1.5 flex items-center justify-between hover:bg-white/10 text-left transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span
+                        className="w-2 h-2 rounded-full border border-white/20"
+                        style={{ backgroundColor: t.color }}
+                      />
+                      <span className="truncate">{t.label}</span>
+                    </div>
+                    {config.theme === t.id && (
+                      <Check className="w-3.5 h-3.5" style={{ color: t.color }} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="border-t border-white/10 mt-1 pt-1">
-            <button
-              onClick={handleOpenSettings}
-              className="w-full px-3 py-1.5 flex items-center space-x-2 hover:bg-white/10 text-left transition-colors cursor-pointer"
-            >
-              <Settings className="w-3.5 h-3.5 text-slate-400" />
-              <span>ORBIT Settings...</span>
-            </button>
-          </div>
+          {/* Item 2: ORBIT Settings (Prominently visible and clickable) */}
+          <button
+            onClick={handleOpenSettings}
+            className="w-full px-3 py-1.5 flex items-center space-x-2 hover:bg-white/10 text-left transition-colors cursor-pointer border-t border-white/10"
+          >
+            <Settings className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="font-medium text-slate-200">ORBIT Settings...</span>
+          </button>
+
+          {/* Item 3: Collapse to Pill */}
+          <button
+            onClick={handleCollapseClick}
+            className="w-full px-3 py-1.5 flex items-center space-x-2 hover:bg-white/10 text-left transition-colors cursor-pointer border-t border-white/10"
+          >
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-slate-300">Collapse</span>
+          </button>
         </div>
       )}
     </div>
