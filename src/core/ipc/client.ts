@@ -29,4 +29,8 @@ export const ipc = {
   centerIslandWindow: async (): Promise<void> => {
     return invoke<void>("center_island_window");
   },
+
+  setIslandState: async (state: "compact" | "expanded"): Promise<void> => {
+    return invoke<void>("set_island_state", { state });
+  },
 };

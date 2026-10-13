@@ -15,15 +15,13 @@
   - Configuration persists across app restarts with live feedback.
   - Memory footprint measured honestly across full process tree against aspiration (<30 MB) and target (<50 MB); overage recorded and tracked.
 
-## Milestone 2: Core Shell (Next)
-- **Status:** Queued
+## Milestone 2: Core Shell (Current)
+- **Status:** Implemented & Awaiting User Review
 - **Scope:**
-  - Compact & expanded pill states with Motion spring physics.
-  - Live clock/date with 12/24-hour modes.
-  - Persistent countdown timer with deadline recovery.
-  - 4-section scroll navigation (Home -> Calendar -> Productivity Hub -> Hardware Monitor).
-  - Context menu and tray integration.
-  - Settings UI sections and density controls.
+  - Compact (400x56) & expanded (480x220) states with immediate responsive transitions and Win32 capsule region synchronization.
+  - Live clock/date with 12h (AM/PM) and 24h modes.
+  - Persistent countdown timer with deadline recovery and local storage synchronization.
+  - Seamless tray and Settings wiring preserved.
 
 ## Milestone 3: Feature Slices
 - **Status:** Queued

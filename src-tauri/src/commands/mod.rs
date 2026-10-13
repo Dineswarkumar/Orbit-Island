@@ -62,6 +62,54 @@ pub fn center_island_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
+    if let Some(main_win) = app.get_webview_window("main") {
+        let (width, height, corner_radius) = match state.as_str() {
+            "expanded" => (480.0, 220.0, 32.0),
+            _ => (400.0, 56.0, 56.0),
+        };
+
+        if let Ok(Some(monitor)) = main_win.primary_monitor() {
+            let screen_size = monitor.size();
+            let screen_scale = monitor.scale_factor();
+            let logical_screen_width = screen_size.width as f64 / screen_scale;
+            let x = logical_width_screen(logical_screen_width, width);
+            let y = 12.0;
+
+            let _ = main_win.set_size(tauri::Size::Logical(tauri::LogicalSize {
+                width,
+                height,
+            }));
+            let _ = main_win.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
+
+            #[cfg(target_os = "windows")]
+            {
+                if let Ok(hwnd) = main_win.hwnd() {
+                    use windows_sys::Win32::Foundation::{BOOL, HWND};
+                    use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, HRGN};
+
+                    unsafe extern "system" {
+                        fn SetWindowRgn(hWnd: HWND, hRgn: HRGN, bRedraw: BOOL) -> i32;
+                    }
+
+                    let phys_w = (width * screen_scale).round() as i32;
+                    let phys_h = (height * screen_scale).round() as i32;
+                    let radius = (corner_radius * screen_scale).round() as i32;
+
+                    unsafe {
+                        let rgn = CreateRoundRectRgn(0, 0, phys_w + 1, phys_h + 1, radius, radius);
+                        if !rgn.is_null() {
+                            SetWindowRgn(hwnd.0 as HWND, rgn, 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn logical_width_screen(screen_width: f64, win_width: f64) -> f64 {
     (screen_width - win_width) / 2.0
 }

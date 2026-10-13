@@ -3,7 +3,7 @@ pub mod services;
 
 use commands::{
     center_island_window, close_settings_window, get_config, get_memory_metrics,
-    open_settings_window, save_config,
+    open_settings_window, save_config, set_island_state,
 };
 use services::config::load_config;
 use tauri::menu::{Menu, MenuItem};
@@ -125,7 +125,8 @@ pub fn run() {
             open_settings_window,
             close_settings_window,
             get_memory_metrics,
-            center_island_window
+            center_island_window,
+            set_island_state
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
