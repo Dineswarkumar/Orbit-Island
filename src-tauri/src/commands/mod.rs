@@ -48,7 +48,7 @@ pub fn center_island_window(app: AppHandle) -> Result<(), String> {
             let screen_scale = monitor.scale_factor();
             let logical_screen_width = screen_size.width as f64 / screen_scale;
             let win_width = 400.0;
-            let x = (logical_width_screen(logical_screen_width, win_width));
+            let x = logical_width_screen(logical_screen_width, win_width);
             let y = 12.0;
             let _ = main_win.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
         }
