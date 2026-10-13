@@ -9,4 +9,6 @@
   - **Memory Accounting Audit:** Mapped exact memory metrics across full 7-process tree (`orbit.exe` + 6 `msedgewebview2.exe` descendants). Main process Private Working Set is 7.39 MB. Total tree Private Working Set is 130.39 MB; total tree Private Bytes is 198.61 MB. Fails the 50 MB goal and 100 MB ceiling if counting the full Chromium runtime tree (largely driven by Chromium GPU process at ~60 MB).
   - **UI Scope Clean-Up:** Removed temporary developer memory badge from main island pill; memory diagnostics preserved strictly in Settings window.
   - **Manual Checks Audit:** Explicitly distinguished automated verification from physical human UI/tray testing; marked physical manual actions as unverified.
-- **Next Milestone:** Milestone 2 - Core Shell (Awaiting user review and approval).
+  - **Logo Cropping & Icon Generation:** Cropped user logo to remove "ORBIT" text, keeping the squircle card and orbital rings. Regenerated all application icons via Tauri CLI.
+  - **Memory Investigation Completed:** Rigorous 3-launch settled idle audit conducted under strict separation of Private Bytes, Private Working Set, and Total Working Set across the verified 7-process tree. WebView2 runtime overhead identified as the architectural barrier to < 30 MB / < 50 MB targets.
+- **Next Milestone:** Milestone 2 - Core Shell (Pending user decision on memory architecture trade-offs).
