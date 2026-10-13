@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Settings, ChevronDown, Clock, Palette, Check } from "lucide-react";
+import { ChevronDown, Clock, Palette, Check, Settings } from "lucide-react";
 import { ipc } from "../core/ipc/client";
 import { useConfigStore } from "../core/stores/useConfigStore";
 import { AppConfig } from "../core/types/config";
+import orbitLogo from "../assets/orbit-logo.png";
 
 const THEME_OPTIONS: Array<{ id: AppConfig["theme"]; label: string; color: string }> = [
   { id: "obsidian", label: "Obsidian Dark", color: "#22d3ee" },
@@ -43,7 +44,7 @@ export const IslandApp: React.FC = () => {
     if (!isExpanded && !isTransitioningRef.current) {
       isTransitioningRef.current = true;
       try {
-        // Expand native window and region first so webview has room to render
+        // Expand native window and rounded region first so webview has room to render
         await ipc.setIslandState("expanded");
       } catch (err) {
         console.error("Failed to set island state to expanded:", err);
@@ -60,7 +61,7 @@ export const IslandApp: React.FC = () => {
         clearTimeout(collapseTimerRef.current);
       }
       collapseTimerRef.current = setTimeout(() => {
-        // 1. Animate visual shrink back to compact pill in webview
+        // 1. Trigger visual shrink back to compact pill in webview
         setIsExpanded(false);
         // 2. Once the 250ms CSS shrink animation completes, resize native window back to 200x56
         setTimeout(async () => {
@@ -96,7 +97,7 @@ export const IslandApp: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     if (isExpanded) {
-      setContextMenuPos({ x: Math.min(e.clientX, 310), y: Math.min(e.clientY, 70) });
+      setContextMenuPos({ x: Math.min(e.clientX, 320), y: Math.min(e.clientY, 80) });
     }
   };
 
@@ -115,27 +116,18 @@ export const IslandApp: React.FC = () => {
     await updateConfig({ theme });
   };
 
-  // Time & Date formatting
+  // Time & Date formatting (seconds removed per specification)
   const formatTime = (date: Date) => {
     const is12h = config.timeFormat === "12h";
     let hours = date.getHours();
     const minutes = String(date.getMinutes()).padStart(2, "0");
-    const seconds = String(date.getSeconds()).padStart(2, "0");
 
     if (is12h) {
       const ampm = hours >= 12 ? "PM" : "AM";
       hours = hours % 12 || 12;
-      return { timeStr: `${hours}:${minutes}`, seconds, ampm };
+      return { timeStr: `${hours}:${minutes}`, ampm };
     }
-    return { timeStr: `${String(hours).padStart(2, "0")}:${minutes}`, seconds, ampm: "" };
-  };
-
-  const formatCompactDate = (date: Date) => {
-    return date.toLocaleDateString(undefined, {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-    });
+    return { timeStr: `${String(hours).padStart(2, "0")}:${minutes}`, ampm: "" };
   };
 
   const formatDate = (date: Date) => {
@@ -154,13 +146,13 @@ export const IslandApp: React.FC = () => {
       onMouseLeave={handleMouseLeave}
       onContextMenu={handleContextMenu}
       onClick={() => setContextMenuPos(null)}
-      className="w-full h-full flex items-start justify-center overflow-hidden select-none relative bg-transparent"
+      className="w-full h-full flex items-start justify-center overflow-hidden select-none relative bg-transparent font-sans"
     >
       {/* Primary Island Container */}
       <div
         style={{
-          width: isExpanded ? "480px" : "200px",
-          height: isExpanded ? "220px" : "56px",
+          width: isExpanded ? "500px" : "200px",
+          height: isExpanded ? "230px" : "56px",
           borderRadius: "28px",
         }}
         className={`transition-all duration-250 ease-out shadow-2xl relative overflow-hidden ${
@@ -169,106 +161,71 @@ export const IslandApp: React.FC = () => {
             : "glass-pill px-3 cursor-pointer hover:border-cyan-500/50"
         }`}
       >
-        {/* COMPACT PILL VIEW (200x56 px: Two balanced sections, subtle divider, no dot, larger clock font) */}
+        {/* COMPACT PILL VIEW (200x56 px: Time and AM/PM only, centered, prominent font, secondary AM/PM) */}
         <div
-          className={`absolute inset-0 flex items-center justify-between px-3 transition-opacity duration-150 ${
-            isExpanded ? "opacity-0 pointer-events-none" : "opacity-100"
+          className={`absolute inset-0 flex items-center justify-center space-x-1.5 transition-opacity ${
+            isExpanded
+              ? "opacity-0 pointer-events-none duration-75"
+              : "opacity-100 duration-150 delay-150"
           }`}
         >
-          {/* Left: Current Time (+2-3px larger, AM/PM secondary) */}
-          <div className="flex-1 flex items-center justify-center space-x-1 font-mono">
-            <span className="font-bold text-[18px] tracking-tight text-white leading-none">
-              {timeDisplay.timeStr}
+          <span className="font-semibold text-[20px] tracking-tight text-white leading-none font-mono">
+            {timeDisplay.timeStr}
+          </span>
+          {timeDisplay.ampm && (
+            <span className="text-xs font-semibold text-cyan-300/80 leading-none">
+              {timeDisplay.ampm}
             </span>
-            {timeDisplay.ampm && (
-              <span className="text-xs font-semibold text-cyan-300/90 leading-none ml-0.5">
-                {timeDisplay.ampm}
-              </span>
-            )}
-          </div>
-
-          {/* Subtle Vertical Divider */}
-          <div className="h-4 w-px bg-white/15 shrink-0" />
-
-          {/* Right: Date / Day Indicator (until real weather data is integrated) */}
-          <div className="flex-1 flex items-center justify-center font-sans">
-            <span className="text-xs font-medium text-slate-300 tracking-tight leading-none">
-              {formatCompactDate(currentTime)}
-            </span>
-          </div>
+          )}
         </div>
 
-        {/* EXPANDED PANEL VIEW (480x220 px: Home clock priority, clean layout, settings & collapse buttons) */}
+        {/* EXPANDED PANEL VIEW (500x230 px: Relaxed breathing room, ~20% scaled-down interior, no seconds, logo header) */}
         <div
-          className={`w-full h-full flex flex-col justify-between transition-opacity duration-200 ${
-            isExpanded ? "opacity-100 delay-75" : "opacity-0 pointer-events-none"
+          className={`w-[500px] h-[230px] p-4 flex flex-col justify-between absolute inset-0 transition-opacity ${
+            isExpanded
+              ? "opacity-100 duration-200 delay-75"
+              : "opacity-0 pointer-events-none duration-100"
           }`}
         >
-          {/* Header: Title & Actions */}
+          {/* Header: Preserved ORBIT Logo & Discreet Collapse Button */}
           <div className="flex items-center justify-between pb-2 border-b border-white/10">
-            <div className="flex items-center space-x-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400/80" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                ORBIT Home
-              </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/40 font-mono">
-                {config.theme}
-              </span>
-            </div>
-
-            <div className="flex items-center space-x-1.5">
-              <button
-                onClick={handleOpenSettings}
-                title="Open Settings"
-                className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-              <button
-                onClick={handleCollapseClick}
-                title="Collapse to Pill"
-                className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <ChevronDown className="w-4 h-4" />
-              </button>
-            </div>
+            <img
+              src={orbitLogo}
+              alt="ORBIT"
+              className="h-5 w-auto object-contain opacity-90 select-none pointer-events-none"
+            />
+            <button
+              onClick={handleCollapseClick}
+              title="Collapse to Pill"
+              className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
           </div>
 
-          {/* Main Center Display: Clean Large Home Clock & Date */}
-          <div className="flex-1 my-2 bg-slate-900/60 rounded-2xl p-4 border border-white/5 flex flex-col items-center justify-center">
-            <div className="flex items-center space-x-2 text-slate-400 text-xs mb-1">
+          {/* Main Center Display: Clean Home Clock (~20% smaller font, no seconds, date display) */}
+          <div className="flex-1 my-2.5 bg-slate-900/50 rounded-2xl p-4 border border-white/5 flex flex-col items-center justify-center">
+            <div className="flex items-center space-x-1.5 text-slate-400 text-xs mb-1">
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
               <span className="font-medium text-slate-300">{formatDate(currentTime)}</span>
             </div>
 
-            <div className="text-4xl font-black tracking-tight text-white font-mono flex items-baseline space-x-1.5">
+            <div className="text-[30px] font-bold tracking-tight text-white font-mono flex items-baseline space-x-1.5 leading-none mt-1">
               <span>{timeDisplay.timeStr}</span>
-              <span className="text-sm font-semibold text-cyan-400">:{timeDisplay.seconds}</span>
               {timeDisplay.ampm && (
-                <span className="text-sm font-bold text-slate-300 ml-1">
+                <span className="text-sm font-semibold text-slate-300 ml-1">
                   {timeDisplay.ampm}
                 </span>
               )}
             </div>
-
-            <div className="text-[11px] text-slate-500 mt-2 font-sans">
-              Activity slot · Home clock priority
-            </div>
           </div>
 
-          {/* Bottom Status / Hint Bar */}
-          <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-            <span className="text-slate-400 text-[11px]">
-              Right-click for Themes & Menu
-            </span>
-            <span className="text-slate-500 font-mono text-[10px]">
-              Move mouse away to collapse
-            </span>
-          </div>
+          {/* Spacer / Bottom Breathing Area (Instructional text removed per design mandate) */}
+          <div className="h-1" />
         </div>
       </div>
 
-      {/* Custom Context Menu on Right Click */}
+      {/* Custom Context Menu on Right Click (Themes & Settings) */}
       {isExpanded && contextMenuPos && (
         <div
           onClick={(e) => e.stopPropagation()}

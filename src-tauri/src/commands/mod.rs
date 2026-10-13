@@ -66,7 +66,7 @@ pub fn center_island_window(app: AppHandle) -> Result<(), String> {
 pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
     if let Some(main_win) = app.get_webview_window("main") {
         let (width, height) = match state.as_str() {
-            "expanded" => (480.0, 220.0),
+            "expanded" => (500.0, 230.0),
             _ => (200.0, 56.0),
         };
 
