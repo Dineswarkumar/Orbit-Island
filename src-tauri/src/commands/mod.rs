@@ -1,6 +1,6 @@
 use crate::services::config::{load_config, save_config as persist_config, AppConfig};
 use crate::services::telemetry::{measure_memory, MemoryReport};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[tauri::command]
 pub fn get_config(app: AppHandle) -> Result<AppConfig, String> {
@@ -15,6 +15,9 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, Strin
     if let Some(main_win) = app.get_webview_window("main") {
         let _ = main_win.set_always_on_top(config.always_on_top);
     }
+
+    // Broadcast config update to all windows (Island and Settings)
+    let _ = app.emit("config-changed", &config);
 
     Ok(config)
 }
@@ -66,7 +69,7 @@ pub fn center_island_window(app: AppHandle) -> Result<(), String> {
 pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
     if let Some(main_win) = app.get_webview_window("main") {
         let (width, height) = match state.as_str() {
-            "expanded" => (500.0, 230.0),
+            "expanded" => (400.0, 184.0),
             _ => (200.0, 56.0),
         };
 

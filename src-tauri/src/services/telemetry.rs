@@ -143,7 +143,7 @@ pub fn measure_memory() -> Result<MemoryReport, String> {
             target_mb: 50.0,
             meets_aspiration: total_private_mb <= 30.0,
             meets_target: total_private_mb <= 50.0,
-            measurement_method: "Win32 K32GetProcessMemoryInfo PrivateUsage (Private Working Set) across main orbit.exe process + child WebView2 processes".to_string(),
+            measurement_method: "Win32 K32GetProcessMemoryInfo: PrivateUsage measures Private Bytes (Commit Charge), WorkingSetSize measures Total Working Set. Process tree covers main orbit.exe + verified WebView2 child processes.".to_string(),
         })
     }
 }
