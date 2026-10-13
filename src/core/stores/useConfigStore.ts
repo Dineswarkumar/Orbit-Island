@@ -8,7 +8,7 @@ interface ConfigStore {
   isSaving: boolean;
   error: string | null;
   loadConfig: () => Promise<void>;
-  updateConfig: (patch: Partial<AppConfig>) => Promise<void>;
+  updateConfig: (patch: Partial<AppConfig>) => Promise<boolean>;
 }
 
 export const useConfigStore = create<ConfigStore>((set, get) => ({
@@ -27,17 +27,19 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
   },
 
-  updateConfig: async (patch: Partial<AppConfig>) => {
+  updateConfig: async (patch: Partial<AppConfig>): Promise<boolean> => {
     const current = get().config;
     const merged = { ...current, ...patch };
-    const validated = AppConfigSchema.parse(merged);
-
+    
     set({ isSaving: true, error: null });
     try {
+      const validated = AppConfigSchema.parse(merged);
       const saved = await ipc.saveConfig(validated);
-      set({ config: saved, isSaving: false });
+      set({ config: saved, isSaving: false, error: null });
+      return true;
     } catch (err) {
       set({ error: String(err), isSaving: false });
+      return false;
     }
   },
 }));

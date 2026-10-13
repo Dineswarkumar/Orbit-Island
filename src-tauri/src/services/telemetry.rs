@@ -29,8 +29,10 @@ pub struct MemoryReport {
     pub child_processes: Vec<ProcessItem>,
     pub total_working_set_mb: f64,
     pub total_private_mb: f64,
-    pub meets_normal_goal: bool, // <= 50 MB
-    pub meets_maximum_limit: bool, // <= 100 MB
+    pub aspiration_mb: f64, // < 30 MB
+    pub target_mb: f64,     // < 50 MB
+    pub meets_aspiration: bool,
+    pub meets_target: bool,
     pub measurement_method: String,
 }
 
@@ -137,9 +139,11 @@ pub fn measure_memory() -> Result<MemoryReport, String> {
             child_processes,
             total_working_set_mb,
             total_private_mb,
-            meets_normal_goal: total_private_mb <= 50.0,
-            meets_maximum_limit: total_private_mb <= 100.0,
-            measurement_method: "Win32 K32GetProcessMemoryInfo PrivateUsage across main orbit.exe process + child WebView2 processes".to_string(),
+            aspiration_mb: 30.0,
+            target_mb: 50.0,
+            meets_aspiration: total_private_mb <= 30.0,
+            meets_target: total_private_mb <= 50.0,
+            measurement_method: "Win32 K32GetProcessMemoryInfo PrivateUsage (Private Working Set) across main orbit.exe process + child WebView2 processes".to_string(),
         })
     }
 }

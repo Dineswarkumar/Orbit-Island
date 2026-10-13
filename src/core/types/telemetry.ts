@@ -12,7 +12,9 @@ export interface MemoryReport {
   childProcesses: ProcessItem[];
   totalWorkingSetMb: number;
   totalPrivateMb: number;
-  meetsNormalGoal: boolean;
-  meetsMaximumLimit: boolean;
+  aspirationMb: number;
+  targetMb: number;
+  meetsAspiration: boolean;
+  meetsTarget: boolean;
   measurementMethod: string;
 }

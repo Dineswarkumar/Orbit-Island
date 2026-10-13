@@ -10,6 +10,12 @@ pub fn get_config(app: AppHandle) -> Result<AppConfig, String> {
 #[tauri::command]
 pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, String> {
     persist_config(&app, &config)?;
+
+    // Dynamically apply Foundation runtime settings
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.set_always_on_top(config.always_on_top);
+    }
+
     Ok(config)
 }
 
