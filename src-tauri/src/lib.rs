@@ -24,7 +24,7 @@ fn apply_capsule_region(window: &tauri::WebviewWindow) {
         }
 
         let scale = window.scale_factor().unwrap_or(1.0);
-        let phys_w = (400.0 * scale).round() as i32;
+        let phys_w = (200.0 * scale).round() as i32;
         let phys_h = (56.0 * scale).round() as i32;
         let corner_radius = phys_h; // Full capsule corner diameter
 
@@ -51,7 +51,7 @@ pub fn run() {
                     let screen_size = monitor.size();
                     let scale = monitor.scale_factor();
                     let logical_width = screen_size.width as f64 / scale;
-                    let win_width = 400.0;
+                    let win_width = 200.0;
                     let x = (logical_width - win_width) / 2.0;
                     let y = 12.0;
                     let _ = main_win.set_position(Position::Logical(LogicalPosition { x, y }));
@@ -116,6 +116,17 @@ pub fn run() {
 
             // Retain tray icon handle in app state to guarantee lifetime
             app.manage(TrayState(std::sync::Arc::new(tray)));
+
+            // Intercept settings window close requested event to hide instead of destroy
+            if let Some(settings_win) = app.get_webview_window("settings") {
+                let win_clone = settings_win.clone();
+                settings_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win_clone.hide();
+                    }
+                });
+            }
 
             Ok(())
         })

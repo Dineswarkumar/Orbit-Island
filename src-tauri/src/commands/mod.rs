@@ -53,7 +53,7 @@ pub fn center_island_window(app: AppHandle) -> Result<(), String> {
             let screen_size = monitor.size();
             let screen_scale = monitor.scale_factor();
             let logical_screen_width = screen_size.width as f64 / screen_scale;
-            let win_width = 400.0;
+            let win_width = 200.0;
             let x = logical_width_screen(logical_screen_width, win_width);
             let y = 12.0;
             let _ = main_win.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
@@ -67,7 +67,7 @@ pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
     if let Some(main_win) = app.get_webview_window("main") {
         let (width, height, corner_radius) = match state.as_str() {
             "expanded" => (480.0, 220.0, 32.0),
-            _ => (400.0, 56.0, 56.0),
+            _ => (200.0, 56.0, 56.0),
         };
 
         if let Ok(Some(monitor)) = main_win.primary_monitor() {

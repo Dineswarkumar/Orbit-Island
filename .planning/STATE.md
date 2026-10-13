@@ -4,9 +4,9 @@
 - **Active Branch:** `feat/core-shell`
 - **Environment:** Windows 11 (26300), Node 24.21.0, npm 11.19.0, Rust 1.98.1 (MSVC), Tauri CLI 2.12.2, WebView2 154.0.4258.62
 - **Core Shell Deliverables:**
-  - **Compact & Expanded Interaction:** Clicking the pill triggers smooth, instantaneous expansion to 480x220 px. Collapsing returns to 400x56 px.
-  - **Zero-Flicker Native Window Synchronization:** IPC command `set_island_state` dynamically resizes the native window, re-anchors to top-center, and recalculates the Win32 `SetWindowRgn` capsule/rounded region (`CreateRoundRectRgn`) for zero click-stealing.
-  - **Live System Clock:** Accurate 1-second interval clock supporting 12h (AM/PM) and 24h formats based on persisted config.
-  - **Persistent Countdown Timer:** Dedicated timer store supporting 5m, 15m, 25m presets and custom countdowns. Tracks `targetEndTime` in local storage for deadline recovery across restarts. Active timer replaces the compact clock slot according to product rules.
-  - **Preserved Wiring:** Tray menu, Settings window trigger, and configuration persistence remain completely wired and functional.
+  - **Refined Compact Pill:** Compact footprint halved from 400x56 px to **200x56 px**. Removed "ORBIT" wordmark and settings button from compact mode. Increased clock text size for clean visibility.
+  - **Hover-Driven Expansion & Auto-Collapse:** Hovering the mouse over the compact pill triggers expansion to 480x220 px. Moving the mouse away auto-collapses back to the 200px pill with a debounce timeout.
+  - **Right-Click Context Menu:** Right-clicking anywhere on the expanded island opens an in-island context menu offering theme selection (Obsidian, Espresso, Evergreen, Nord, Porcelain Light) and direct access to ORBIT Settings.
+  - **Home Island Focus:** Removed countdown timer options from the home panel per feedback, giving clean prominence to the large live clock/date display.
+  - **Settings Window Close/Reopen Fix:** Fixed defect where closing the Settings window destroyed the webview and prevented reopening. Native `CloseRequested` window event is now intercepted with `api.prevent_close()` to hide the window instead, allowing Settings to be repeatedly opened from the island and tray menu without app restarts.
 - **Next Milestone:** Milestone 3 - Feature Slices (Media GSMTC, Calendar, Productivity Hub, Hardware Monitor, Notifications).
