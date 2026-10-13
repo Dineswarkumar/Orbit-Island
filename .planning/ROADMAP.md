@@ -13,7 +13,7 @@
   - Transparent main window renders properly with pass-through outside bounds.
   - Independent Settings window functions cleanly.
   - Configuration persists across app restarts.
-  - Memory footprint measured and evaluated against <50 MB goal / 100 MB max.
+  - Memory footprint measured honestly across full process tree against aspiration (<30 MB) and target (<50 MB); overage recorded and tracked.
 
 ## Milestone 2: Core Shell (Next)
 - **Status:** Queued
