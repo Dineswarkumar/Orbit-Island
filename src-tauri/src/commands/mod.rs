@@ -65,9 +65,9 @@ pub fn center_island_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
     if let Some(main_win) = app.get_webview_window("main") {
-        let (width, height, corner_radius) = match state.as_str() {
-            "expanded" => (480.0, 220.0, 32.0),
-            _ => (200.0, 56.0, 56.0),
+        let (width, height) = match state.as_str() {
+            "expanded" => (480.0, 220.0),
+            _ => (200.0, 56.0),
         };
 
         if let Ok(Some(monitor)) = main_win.primary_monitor() {
@@ -77,11 +77,11 @@ pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
             let x = logical_width_screen(logical_screen_width, width);
             let y = 12.0;
 
+            let _ = main_win.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
             let _ = main_win.set_size(tauri::Size::Logical(tauri::LogicalSize {
                 width,
                 height,
             }));
-            let _ = main_win.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
 
             #[cfg(target_os = "windows")]
             {
@@ -95,12 +95,13 @@ pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
 
                     let phys_w = (width * screen_scale).round() as i32;
                     let phys_h = (height * screen_scale).round() as i32;
-                    let radius = (corner_radius * screen_scale).round() as i32;
+                    // Both compact (56px) and expanded (28px corner radius) use a 56px corner diameter
+                    let corner_diameter = (56.0 * screen_scale).round() as i32;
 
                     unsafe {
-                        let rgn = CreateRoundRectRgn(0, 0, phys_w + 1, phys_h + 1, radius, radius);
+                        let rgn = CreateRoundRectRgn(0, 0, phys_w + 1, phys_h + 1, corner_diameter, corner_diameter);
                         if !rgn.is_null() {
-                            SetWindowRgn(hwnd.0 as HWND, rgn, 1);
+                            SetWindowRgn(hwnd.0 as HWND, rgn, 0); // 0 prevents unpainted flash
                         }
                     }
                 }
