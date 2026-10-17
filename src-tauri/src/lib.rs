@@ -2,56 +2,89 @@ pub mod commands;
 pub mod services;
 
 use commands::{
-    center_island_window, close_settings_window, get_config, get_memory_metrics,
-    open_settings_window, save_config, set_island_state, show_context_menu,
+    add_reminder, add_shelf_item, clear_all_notifications, clear_local_data, clear_shelf,
+    close_settings_window, delete_reminder, dismiss_notification, free_up_memory, get_config,
+    get_hardware_metrics, get_media_sources, get_media_state, get_memory_metrics,
+    get_notification_access_status, get_notification_state, get_privacy_state, get_reminders,
+    get_shelf_items, hide_island_window, media_seek, media_send_command, open_settings_window,
+    open_shelf_file, pick_shelf_file, pin_media_source, remove_shelf_item,
+    request_notification_access, save_config, set_island_state, show_context_menu,
+    show_shelf_file_in_folder, toggle_reminder, MediaState,
 };
 use services::config::load_config;
+use services::notifications::NotificationManager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, LogicalPosition, Manager, Position};
+use tauri::{Emitter, Manager};
 
 #[derive(Clone)]
 pub struct TrayState(pub std::sync::Arc<TrayIcon>);
 
-#[cfg(target_os = "windows")]
-fn apply_capsule_region(window: &tauri::WebviewWindow) {
-    if let Ok(hwnd) = window.hwnd() {
-        use windows_sys::Win32::Foundation::{BOOL, HWND};
-        use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, HRGN};
-
-        unsafe extern "system" {
-            fn SetWindowRgn(hWnd: HWND, hRgn: HRGN, bRedraw: BOOL) -> i32;
-        }
-
-        let scale = window.scale_factor().unwrap_or(1.0);
-        let phys_w = (200.0 * scale).round() as i32;
-        let phys_h = (56.0 * scale).round() as i32;
-        let corner_radius = phys_h; // Full capsule corner diameter
-
-        unsafe {
-            let rgn = CreateRoundRectRgn(0, 0, phys_w + 1, phys_h + 1, corner_radius, corner_radius);
-            if !rgn.is_null() {
-                SetWindowRgn(hwnd.0 as HWND, rgn, 1);
-            }
-        }
-    }
+#[derive(Default)]
+pub struct IslandVisibilityState {
+    pub user_manually_hidden: std::sync::atomic::AtomicBool,
+    pub auto_suppressed_fullscreen: std::sync::atomic::AtomicBool,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow, SW_SHOW};
+
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn CreateMutexW(
+                lp_mutex_attributes: *const std::ffi::c_void,
+                b_initial_owner: i32,
+                lp_name: *const u16,
+            ) -> *mut std::ffi::c_void;
+        }
+
+        let mutex_name: Vec<u16> = "Local\\ORBIT_Island_SingleInstance_Mutex\0"
+            .encode_utf16()
+            .collect();
+        let handle = unsafe { CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr()) };
+        if !handle.is_null() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+            let win_title: Vec<u16> = "ORBIT\0".encode_utf16().collect();
+            let existing_hwnd = unsafe { FindWindowW(std::ptr::null(), win_title.as_ptr()) };
+            if !existing_hwnd.is_null() {
+                unsafe {
+                    ShowWindow(existing_hwnd, SW_SHOW);
+                }
+            }
+            return;
+        }
+    }
+
+    services::logger::init_logger();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             match id {
                 "ctx_hide" => {
-                    if let Some(main_win) = app.get_webview_window("main") {
-                        let _ = main_win.hide();
+                    if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
+                        vis.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
                     }
+                    let _ = app.emit("request-hide-island", ());
                 }
                 "ctx_dismiss" => {
-                    let _ = set_island_state(app.clone(), "compact".to_string());
                     let _ = app.emit("collapse-island", ());
+                }
+                "ctx_timer_5" => {
+                    let _ = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 300 }));
+                }
+                "ctx_timer_15" => {
+                    let _ = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 900 }));
+                }
+                "ctx_timer_25" => {
+                    let _ = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 1500 }));
+                }
+                "ctx_timer_stop" => {
+                    let _ = app.emit("timer-command", serde_json::json!({ "action": "stop" }));
                 }
                 "ctx_settings" | "settings" => {
                     let _ = open_settings_window(app.clone());
@@ -60,10 +93,17 @@ pub fn run() {
                     if let Some(main_win) = app.get_webview_window("main") {
                         if let Ok(is_visible) = main_win.is_visible() {
                             if is_visible {
-                                let _ = main_win.hide();
+                                if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
+                                    vis.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
+                                }
+                                let _ = app.emit("request-hide-island", ());
                             } else {
+                                if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
+                                    vis.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                                }
                                 let _ = main_win.show();
                                 let _ = main_win.set_focus();
+                                let _ = app.emit("island-shown", ());
                             }
                         }
                     }
@@ -71,44 +111,61 @@ pub fn run() {
                 "quit" => {
                     app.exit(0);
                 }
-                "theme_dynamic" | "theme_dark" | "theme_light" | "theme_black" => {
+                "theme_obsidian"
+                | "theme_dark"
+                | "theme_dynamic"
+                | "theme_light"
+                | "theme_black"
+                | "theme_espresso"
+                | "theme_evergreen"
+                | "theme_nord" => {
                     let theme_id = match id {
+                        "theme_obsidian" => "obsidian",
                         "theme_dynamic" => "dynamic",
                         "theme_dark" => "dark",
                         "theme_light" => "light",
                         "theme_black" => "black",
+                        "theme_espresso" => "espresso",
+                        "theme_evergreen" => "evergreen",
+                        "theme_nord" => "nord",
                         _ => "dark",
                     };
                     let mut cfg = load_config(app);
                     cfg.theme = theme_id.to_string();
-                    let _ = services::config::save_config(app, &cfg);
-                    let _ = app.emit("config-changed", &cfg);
+                    match services::config::save_config(app, &cfg) {
+                        Ok(()) => {
+                            let _ = app.emit("config-changed", &cfg);
+                        }
+                        Err(error) => log::error!("Failed to save theme from context menu: {error}"),
+                    }
                 }
                 _ => {}
+            }
+        })
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::ScaleFactorChanged { .. } = event {
+                    let app = window.app_handle();
+                    let cfg = load_config(app);
+                    if let Some(main_win) = app.get_webview_window("main") {
+                        let _ = services::window::ensure_window_on_screen(&main_win, &cfg.position);
+                    }
+                }
             }
         })
         .setup(|app| {
             // Initialize and persist default configuration if not already present
             let initial_config = load_config(&app.handle());
 
-            // Position main island at top center on primary monitor (400x56 pill footprint)
+            // Position the compact island on the primary monitor according to config.position.
             if let Some(main_win) = app.get_webview_window("main") {
-                if let Ok(Some(monitor)) = main_win.primary_monitor() {
-                    let screen_size = monitor.size();
-                    let scale = monitor.scale_factor();
-                    let logical_width = screen_size.width as f64 / scale;
-                    let win_width = 200.0;
-                    let x = (logical_width - win_width) / 2.0;
-                    let y = 12.0;
-                    let _ = main_win.set_position(Position::Logical(LogicalPosition { x, y }));
+                if let Err(error) = services::window::init_island_window(&main_win, &initial_config.position) {
+                    log::error!("Failed to initialize island window geometry: {error}");
                 }
 
-                // Apply always_on_top from config
+                // Apply always_on_top from config AFTER init_island_window
                 let _ = main_win.set_always_on_top(initial_config.always_on_top);
-
-                // Clip native window to exact capsule pill geometry on Windows
-                #[cfg(target_os = "windows")]
-                apply_capsule_region(&main_win);
+                services::window::set_window_topmost(&main_win, initial_config.always_on_top);
             }
 
             // Build Tray Menu
@@ -123,27 +180,6 @@ pub fn run() {
                 .icon(app.default_window_icon().cloned().unwrap())
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "settings" => {
-                        let _ = open_settings_window(app.clone());
-                    }
-                    "toggle" => {
-                        if let Some(main_win) = app.get_webview_window("main") {
-                            if let Ok(is_visible) = main_win.is_visible() {
-                                if is_visible {
-                                    let _ = main_win.hide();
-                                } else {
-                                    let _ = main_win.show();
-                                    let _ = main_win.set_focus();
-                                }
-                            }
-                        }
-                    }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
-                })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -152,9 +188,13 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
+                        if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
+                            vis.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                        }
                         if let Some(main_win) = app.get_webview_window("main") {
                             let _ = main_win.show();
                             let _ = main_win.set_focus();
+                            let _ = app.emit("island-shown", ());
                         }
                     }
                 })
@@ -162,6 +202,137 @@ pub fn run() {
 
             // Retain tray icon handle in app state to guarantee lifetime
             app.manage(TrayState(std::sync::Arc::new(tray)));
+
+            // Manage island visibility and auto-suppression state (Task M4.1)
+            let visibility_state = std::sync::Arc::new(IslandVisibilityState::default());
+            app.manage(visibility_state.clone());
+
+            // Manage media state
+            let media_state = MediaState::default();
+            app.manage(media_state.clone());
+
+            // Manage SQLite Database for reminders and file shelf
+            let db_manager = std::sync::Arc::new(
+                services::db::DatabaseManager::for_app(&app.handle())
+                    .expect("Failed to initialize SQLite database"),
+            );
+            app.manage(db_manager);
+
+            // Manage and start hardware monitor
+            let hw_manager = std::sync::Arc::new(services::hardware::HardwareManager::new());
+            hw_manager.start(app.handle().clone());
+            app.manage(hw_manager);
+
+            // Manage and start notification background worker
+            let notif_manager = std::sync::Arc::new(NotificationManager::new());
+            notif_manager.start(app.handle().clone());
+            app.manage(notif_manager);
+
+            // Spawn fullscreen auto-suppression background monitor (Task M4.1)
+            let app_handle_fs = app.handle().clone();
+            let vis_fs = visibility_state.clone();
+            std::thread::Builder::new()
+                .name("orbit-fullscreen-monitor".into())
+                .spawn(move || {
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_millis(600));
+                        if let Some(main_win) = app_handle_fs.get_webview_window("main") {
+                            if let Ok(hwnd) = main_win.hwnd() {
+                                let is_fs = services::window::is_foreground_fullscreen(hwnd.0 as isize);
+                                let auto_suppressed = vis_fs.auto_suppressed_fullscreen.load(std::sync::atomic::Ordering::Relaxed);
+                                let manually_hidden = vis_fs.user_manually_hidden.load(std::sync::atomic::Ordering::Relaxed);
+
+                                if is_fs && !auto_suppressed && !manually_hidden {
+                                    vis_fs.auto_suppressed_fullscreen.store(true, std::sync::atomic::Ordering::SeqCst);
+                                    let _ = app_handle_fs.emit("fullscreen-state-changed", true);
+                                    if let Ok(is_vis) = main_win.is_visible() {
+                                        if is_vis {
+                                            let _ = main_win.hide();
+                                        }
+                                    }
+                                } else if !is_fs && auto_suppressed && !manually_hidden {
+                                    vis_fs.auto_suppressed_fullscreen.store(false, std::sync::atomic::Ordering::SeqCst);
+                                    let _ = app_handle_fs.emit("fullscreen-state-changed", false);
+                                    let cfg = load_config(&app_handle_fs);
+                                    let _ = main_win.set_always_on_top(cfg.always_on_top);
+                                    services::window::set_window_topmost(&main_win, cfg.always_on_top);
+                                    let _ = main_win.show();
+                                    let _ = app_handle_fs.emit("island-shown", ());
+                                } else if !is_fs && !auto_suppressed && !manually_hidden {
+                                    let cfg = load_config(&app_handle_fs);
+                                    if cfg.always_on_top {
+                                        services::window::set_window_topmost(&main_win, true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })
+                .expect("failed to spawn fullscreen monitor thread");
+
+            // Spawn lightweight background thread to poll media session changes
+            let app_handle_media = app.handle().clone();
+            let monitor_media_state = media_state.clone();
+            std::thread::Builder::new()
+                .name("orbit-media-monitor".into())
+                .spawn(move || {
+                    let _com = match services::media::ComGuard::new() {
+                        Ok(g) => g,
+                        Err(err) => {
+                            log::error!("Failed to initialize COM for media monitor thread: {err}");
+                            return;
+                        }
+                    };
+                    let mut last_source_id = String::new();
+                    let mut last_title = String::new();
+                    let mut last_status = String::new();
+                    let mut last_duration = 0.0f64;
+                    let mut last_can_seek = false;
+                    let mut last_pos = 0.0f64;
+                    loop {
+                        let pin = monitor_media_state.pinned_source.lock().ok().and_then(|p| p.clone());
+                        let session = services::media::get_current_media_session(pin.as_deref());
+                        let is_playing = session.as_ref().map(|s| s.playback_status.as_str() == "playing").unwrap_or(false);
+
+                        let current_source_id = session.as_ref().map(|s| s.source_id.as_str()).unwrap_or("").to_string();
+                        let current_title = session.as_ref().map(|s| s.track.title.as_str()).unwrap_or("").to_string();
+                        let current_status = session.as_ref().map(|s| s.playback_status.as_str()).unwrap_or("").to_string();
+                        let current_duration = session.as_ref().and_then(|s| s.timeline.as_ref()).map(|t| t.duration_secs).unwrap_or(0.0);
+                        let current_can_seek = session.as_ref().map(|s| s.controls.can_seek).unwrap_or(false);
+                        let current_pos = session.as_ref().and_then(|s| s.timeline.as_ref()).map(|t| t.position_secs).unwrap_or(0.0);
+
+                        let source_changed = current_source_id != last_source_id;
+                        let title_changed = current_title != last_title;
+                        let status_changed = current_status != last_status;
+                        let duration_changed = (current_duration - last_duration).abs() >= 0.5;
+                        let can_seek_changed = current_can_seek != last_can_seek;
+                        let pos_changed = (current_pos - last_pos).abs() >= 0.8;
+
+                        if source_changed
+                            || title_changed
+                            || status_changed
+                            || duration_changed
+                            || can_seek_changed
+                            || (is_playing && pos_changed)
+                        {
+                            last_source_id = current_source_id;
+                            last_title = current_title;
+                            last_status = current_status;
+                            last_duration = current_duration;
+                            last_can_seek = current_can_seek;
+                            last_pos = current_pos;
+                            let _ = app_handle_media.emit("media-state-changed", &session);
+                        }
+
+                        let sleep_duration = if is_playing {
+                            std::time::Duration::from_millis(1000)
+                        } else {
+                            std::time::Duration::from_millis(2000)
+                        };
+                        std::thread::sleep(sleep_duration);
+                    }
+                })
+                .expect("failed to spawn media monitor thread");
 
             // Intercept settings window close requested event to hide instead of destroy
             if let Some(settings_win) = app.get_webview_window("settings") {
@@ -181,10 +352,35 @@ pub fn run() {
             save_config,
             open_settings_window,
             close_settings_window,
+            hide_island_window,
             get_memory_metrics,
-            center_island_window,
             set_island_state,
-            show_context_menu
+            show_context_menu,
+            get_media_state,
+            get_media_sources,
+            pin_media_source,
+            media_send_command,
+            media_seek,
+            get_notification_state,
+            get_notification_access_status,
+            request_notification_access,
+            dismiss_notification,
+            clear_all_notifications,
+            get_privacy_state,
+            get_reminders,
+            add_reminder,
+            toggle_reminder,
+            delete_reminder,
+            get_hardware_metrics,
+            free_up_memory,
+            get_shelf_items,
+            add_shelf_item,
+            remove_shelf_item,
+            open_shelf_file,
+            show_shelf_file_in_folder,
+            pick_shelf_file,
+            clear_shelf,
+            clear_local_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

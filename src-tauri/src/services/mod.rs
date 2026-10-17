@@ -1,2 +1,9 @@
 pub mod config;
+pub mod db;
+pub mod hardware;
+pub mod logger;
+pub mod media;
+pub mod notifications;
+pub mod privacy;
 pub mod telemetry;
+pub mod window;
