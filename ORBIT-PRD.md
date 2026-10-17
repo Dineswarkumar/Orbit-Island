@@ -444,5 +444,3 @@ flowchart TD
 ![Microphone status reference](assets/reference-microphone-status.png)
 
 ### File shelf inspiration
-
-![File shelf and app shortcut reference](assets/reference-file-shelf.jpg)
