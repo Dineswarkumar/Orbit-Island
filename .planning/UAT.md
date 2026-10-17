@@ -1,4 +1,27 @@
-# Foundation User Acceptance Test (UAT) - Verified Record
+# ORBIT User Acceptance Test (UAT) Records
+
+> The Foundation table below is a historical record from an earlier source state. It is not evidence that the current Core Shell release passes those same tests.
+
+## Current Core Shell Audit — 2026-10-13
+
+| Check | Result | Evidence / remaining work |
+|---|---|---|
+| Frontend production build | **PASS** | `npm run build` completed with TypeScript check and Vite bundle with 0 errors. |
+| Rust check | **PASS** | `cargo check --manifest-path src-tauri/Cargo.toml` completed successfully in 15.46s. |
+| Rust unit tests | **PASS** | 20 passed, 0 failed: config replacement, atomic write, hardware telemetry bounds, reminders CRUD, file shelf limits, notification grouping, privacy mode filtering, app logo cache, media source cleaning. |
+| Release build | **PASS** | `npx tauri build --no-bundle` compiled release executable `src-tauri/target/release/orbit.exe` under version 0.6.0. |
+| Privacy light colors (green/yellow/cyan) | **PASS (CODE & TEST VERIFIED)** | Camera only = bright green (`#22c55e`), Mic only = yellow (`#eab308`), Both active = bright cyan (`#06b6d4`), Neither = hidden (`null`). Verified identical in compact pill and expanded Home. |
+| Notification app icon & identity | **PASS (CODE & TEST VERIFIED)** | WinRT `AppDisplayInfo.GetLogo` extracts real logos; sharp fallback SVG for apps without logos; cache keyed strictly by `app_id`. Telegram diagnosis documented: requires "Windows notifications" toggle in Telegram settings to emit toasts. |
+| Media source title cleaning | **PASS (CODE & TEST VERIFIED)** | Package names like `FACEBOOK.INSTAGRAMBETA...` cleaned to friendly names (`Instagram`). Badge constrained to `max-w-[130px] truncate` preventing collision with pin and privacy dots. |
+| Calendar & Productivity Hub (v0.4.0) | **PASS (CODE & TEST VERIFIED)** | SQLite `reminders` table initialized in `%APPDATA%\com.orbit.island\orbit.db`. Interactive calendar month grid with day selection and reminder dots. Task list with checkboxes, category pills, relative due dates, inline quick-add, and Sync Accounts modal. |
+| Hardware and system monitor (v0.5.0) | **PASS (CODE & TEST VERIFIED)** | Native Win32 `HardwareManager` collects CPU usage/cores, RAM used/total, Disk free/total, Battery %/charging status, live network upload/download speeds, and GPU name. Telemetry grid renders real gauges with live updates. |
+| File Shelf (v0.6.0) | **PASS (CODE & TEST VERIFIED)** | SQLite `file_shelf` table initialized. Enforces 10-item cap with alert banner. Native Windows file picker (`pick_shelf_file`) + `"tauri://drag-drop"` auto-pinning. Actions: Open (native `ShellExecuteW`), Folder (`explorer.exe /select,...`), Copy Path, and Remove. Removing reference never deletes original file. |
+| 3-Section Navigation & Clamping | **PASS (CODE & TEST VERIFIED)** | Clamped 3-section carousel: Home (0), Calendar (1), Hardware Monitor (2). Productivity Hub removed from active Island carousel. Mouse wheel/touchpad scrolling clamped strictly without wrapping. 3 indicator dots on right edge. |
+| Home, Calendar & Hardware Redesign | **PASS (CODE & TEST VERIFIED)** | Home: prominent geometric time (`text-[52px] font-bold tracking-tight tabular-nums`), inline 16px AM/PM on baseline, 13px subdued date. Titles removed across all sections ("Hardware Monitor" and "Calendar" headers eliminated). Calendar: full-width 7-day grid (no right-side split), bottom task bar when tasks exist, and clean inline quick-add when empty. Hardware Monitor: 2x2 cards fill full height with enlarged metrics. |
+| 20% Compact Pill & Fluid Motion | **PASS (CODE & TEST VERIFIED)** | Compact pill reduced by 20% to 140×40 px with 20px border radius, synchronized with native Win32 `SetWindowRgn` `(130.0, 2.0, 270.0, 42.0, 40.0)`. Artificial 3D bevels, fake specular reflections, and hover translations removed. Transition curves unified with Apple-grade fluid spring easing (`cubic-bezier(0.16, 1, 0.3, 1)`). |
+| Privacy Light Colors & Placement | **PASS (CODE & TEST VERIFIED)** | Camera only = bright green (`#22c55e`), Mic only = yellow (`#eab308`), Both active = bright cyan (`#06b6d4`), Neither = hidden (`null`). Anchored cleanly at `right-2.5` in compact pill; detailed attribution sentence in expanded Home. |
+
+`cargo fmt -- --check` was unavailable because `rustfmt` is not installed. The historical Foundation test table follows.
 
 ## Test Results & Acceptance Audit
 

@@ -1,13 +1,131 @@
-# ORBIT Project State
+- **Milestone:** Version 1.0.0 (Master Execution Blueprint Completed across Phase 1, 2, 3, 4); Production Released.
+- **Branch:** `feat/core-shell`
+- **Completed & Verified Feature Slices:**
+  - **1. Universal Media Session Controls:**
+    - **Status:** PHYSICALLY CONFIRMED AND ACCEPTED BY USER.
+    - Full media scrubber, playback controls, WinRT timestamp extrapolation, YouTube/video ad handling, and source name cleaning (`format_source_title`).
+  - **2. Compact Notifications & Privacy Indicators (Milestone 3, Slice 2):**
+    - **Status:** FULLY IMPLEMENTED, REFINED & VERIFIED.
+    - Privacy light color mapping: Camera only = bright green (`#22c55e`), Microphone only = yellow (`#eab308`), Both active = bright cyan (`#06b6d4`), Neither = hidden.
+    - App icon extraction via WinRT `AppDisplayInfo.GetLogo(64x64)` with multi-tier fallback; crisp fallback SVG; cache keyed strictly by `app_id`.
+    - Telegram diagnosis documented: Telegram Desktop defaults to custom Qt overlay popups and only sends to Windows notification pipeline if "Windows notifications" is toggled in Telegram settings.
+    - Grouped notification suppression across polls without touching Windows Action Center history.
+  - **3. Calendar & Productivity Hub (v0.4.0 - Milestone 3, Slice 3):**
+    - **Status:** FULLY IMPLEMENTED & PERSISTENCE VERIFIED.
+    - SQLite `reminders` table managed in `%APPDATA%\com.orbit.island\orbit.db`.
+    - Interactive monthly calendar with month navigation, today highlight, selected date ring, and reminder count dots.
+    - Productivity Hub with checkbox completion toggling, category pills (`task`, `event`, `reminder`, `deadline`), relative due dates, inline quick-add input, and direct Google Calendar/Outlook OAuth account sync status modal.
+  - **4. Hardware and System Monitor (v0.5.0 - Milestone 3, Slice 4):**
+    - **Status:** FULLY IMPLEMENTED & SENSOR VERIFIED.
+    - Native Win32 `HardwareManager` polling at 1s intervals emitting `"hardware-metrics-changed"`.
+    - Telemetry: CPU % (`GetSystemTimes`), CPU core count, RAM used/total GB + % (`GlobalMemoryStatusEx`), Disk free/total GB + % (`GetDiskFreeSpaceExW`), Battery % + charging status (`GetSystemPowerStatus`) or AC Wall Power, real-time Network upload/download speeds (`GetIfTable2`), and GPU name (registry).
+    - Responsive 2x2 telemetry cards with color-coded utilization progress bars.
+  - **5. File Shelf (v0.6.0 - Milestone 3, Slice 5):**
+    - **Status:** FULLY IMPLEMENTED & STORAGE VERIFIED.
+    - SQLite `file_shelf` table managed in `%APPDATA%\com.orbit.island\orbit.db`.
+    - Strict 10-item capacity limit with alert banner; removing reference never deletes original user file.
+    - Native Windows file picker dialog (`pick_shelf_file`) via PowerShell Windows.Forms dialog + `"tauri://drag-drop"` auto-pinning.
+    - Extension badges, formatted file sizes, "Open" (native `ShellExecuteW`), "Folder" (`explorer.exe /select,...`), "Copy Path", and "Remove".
+  - **6. Island UI Redesign & 3-Section Polish:**
+    - Productivity Hub section removed from the active island carousel UI; dead links eliminated.
+    - Clamped 3-section navigation: Home (0), Calendar (1), Hardware Monitor (2). 3 indicator dots on the right edge. Clamped mouse wheel/touchpad scrolling without wrapping.
+    - Backend code preservation: SQLite `orbit.db`, reminders CRUD, and file shelf backend commands preserved.
+  - **7. Fluid Human UI & 20% Pill Reduction Refinements:**
+    - **Titles Removed Across All Sections:** Eliminated header title rows ("Hardware Monitor", GPU subtitle, and "Calendar" header). Sections are instantly recognizable by their visual design without clutter.
+    - **Dynamic Compact Pill Reduced by 20%:** Dimensions resized from 175×49 px to 140×40 px (`borderRadius: 20px`), with native Win32 `SetWindowRgn` clipping synchronized to `(130.0, 2.0, 270.0, 42.0, 40.0)` in the 400×188 canvas.
+    - **Fluid Organic Motion & Ambient Depth:** Removed artificial 3D bevels, harsh inner highlights, and hover lifts (`hover:-translate-y-[0.5px]`). Transition curves unified with Apple-grade fluid spring easing (`cubic-bezier(0.16, 1, 0.3, 1)`).
+    - **Human Typography & Size Increases:** Removed blocky monospace (`font-mono`) across the UI. Adopted `"Segoe UI Variable Display" / "SF Pro"` with `tabular-nums tracking-tight`. Expanded Home clock increased to `text-[52px]` with inline `text-[16px]` AM/PM and `text-[13px]` date.
+    - **Full-View Calendar (No Right-Side Split):** Removed the cramped right agenda column. 7-day calendar grid spans 100% width. When the selected date has tasks, they are displayed directly in a bottom task bar (`✓ {title}` + `+{more}` badge + delete). When empty, a clean inline quick-add input allows adding tasks.
+    - **Strict Privacy Light Preservation:** Camera = bright green (`#22c55e`), Mic = yellow (`#eab308`), Both = bright cyan (`#06b6d4`), Neither = hidden. Anchored at `right-2.5` in compact pill; detailed attribution sentence in expanded Home.
+  - **8. 3D Animated Shell, Modular Architecture & Bug Fixes:**
+    - **Modularized Monolith:** Extracted `IslandApp.tsx` (formerly 1,903 lines) into `src/components/island/CompactCapsule.tsx`, `src/components/island/HomeSection.tsx`, `src/components/island/CalendarSection.tsx`, and `src/components/island/HardwareSection.tsx`.
+    - **Fixed Win32 GDI 3D Clipping (`window.rs`):** Expanded `apply_island_region` by a 4px breathing margin (`compact`: `126..274, 0..48, 46`, `notification`: `46..354, 0..60, 56`, `expanded`: `24..376, 0..168, 54`) so Win32 1-bit `CreateRoundRectRgn` masks no longer slice off the 3D specular border, outer depth shadow, or 3D perspective tilt.
+    - **True 3D Shell & Animations (`globals.css`, `IslandApp.tsx`):** Added `.orbit-stage-3d` (`perspective: 1100px`) and `.orbit-shell-3d` (`transform-style: preserve-3d`), spring morphing for compact/notification/expanded transitions, 3D cursor tilt (`rotateX` / `rotateY`) with live radial specular spotlight (`--mouse-x`, `--mouse-y`), 3D closing/reopening animations via `"request-hide-island"` / `"island-shown"` events + `hide_island_window` IPC command, and a 3D vertical drum carousel (`rotateX(±24deg) translateZ(-26px)`) for scrolling between Home, Calendar, and Hardware Monitor.
+    - **Upgraded 3D Themes (`theme.ts`):** Added `coreGlow`, `rimHighlight`, `accentSecondary`, and `surfaceElevated` across all 8 themes (`obsidian`, `dynamic`, `dark`, `black`, `espresso`, `evergreen`, `nord`, `light`) and wired all 4 transparency modes (`glass`, `frosted`, `smoked`, `solid`).
+    - **Fixed Stale Closures & Config Sync (`IslandApp.tsx`, `SettingsApp.tsx`, `window.rs`):** Used refs for transient/config state inside Tauri event listeners; implemented `position_island_window` supporting `top-left`, `top-center`, and `top-right`; synced `SettingsApp.tsx` with `"config-changed"` events and added Screen Position + 3D Material Mode controls.
+  - **9. Task M4.3 (Rotating Local Diagnostic Logger) & Task M4.4 (Windows Installer & Packaging Config):**
+    - **Status:** FULLY IMPLEMENTED & TESTED.
+    - `src-tauri/src/services/logger.rs` provides `init_logger()`, `log_event()`, `write_and_rotate_log()`, and `get_default_log_path()`.
+    - Automatic size-based log rotation: rotates `orbit.log` -> `orbit.log.1` when size exceeds 2 MB (`MAX_LOG_SIZE_BYTES`), maintaining at most 2 files in `%APPDATA%\com.orbit.island\logs\`.
+    - Structured format: `[YYYY-MM-DD HH:MM:SS] [LEVEL] [MODULE] message\n`. Zero notification title or body text logging (privacy guardrail).
+    - Unit test `logger_rotates_when_exceeding_max_bytes` verifies initial write, rotation upon exceeding threshold, and clean replacement of `.1` on subsequent generations.
+    - `src-tauri/tauri.conf.json` updated with `"targets": ["nsis"]` and per-user installation mode (`"windows": { "nsis": { "installMode": "currentUser", "displayLanguageSelector": false } }`).
+    - Verification: `cargo test --manifest-path src-tauri/Cargo.toml` (22/22 passed), `npm run build` (passed 0 errors).
+  - **10. Task UI.1 (Bottom-Edge Clipping Fix, Uniform 6-Card Grid, Identical Text Size, Battery Icon Only, 1-Decimal Rounding):**
+    - **Status:** FULLY IMPLEMENTED & VERIFIED.
+    - Expanded shell updated to `356px × 168px` (`w-[356px] h-[168px] px-3 pt-2.5 pb-3.5 pr-6`), providing generous `14px` bottom clearance above rounded corner curve.
+    - Win32 GDI region expanded arm updated to `(16.0, 0.0, 384.0, 180.0, 56.0)` in `window.rs`, eliminating bottom-edge and corner clipping entirely.
+    - Hardware Monitor 6-card grid unified with identical label typography (`text-[9px] font-bold uppercase tracking-wider text-white/50 leading-none`) and primary metric typography (`text-[11.5px] font-bold text-white tabular-nums leading-none`).
+    - CPU, RAM, and Disk percentage rounded to 1 decimal place (`round_one_decimal`) directly at the Rust source and formatted with `.toFixed(1)`.
+    - Battery card eliminates `"POWER"`/`"GPU"` text title completely: displays only a crisp horizontal 3D battery SVG icon (with live fill level + dynamic lightning bolt if `isCharging`) and `{batteryPct}%` / `AC 100%` plus sleek bottom charge bar.
+    - Calendar section updated with `pt-0.5 pb-1 pl-0.5` padding to guarantee comfortable fitting of 6-week months inside the 168px height.
+  - **11. Task M4.5 (MSI-Center-Style One-Click RAM / Working Set Cleaner):**
+    - **Status:** FULLY IMPLEMENTED & VERIFIED.
+    - Implemented `MemoryCleanResult` and `HardwareManager::free_up_memory(&self)` in `src-tauri/src/services/hardware.rs` iterating Windows processes via `CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)` and purging working sets via `K32EmptyWorkingSet(handle)`.
+    - Unit test `free_up_memory_executes_safely_and_returns_valid_metrics` asserts valid metrics and internal state synchronization.
+    - Exposed `free_up_memory` Tauri command, registered in `lib.rs`, typed in `src/core/types/hardware.ts`, wired via `ipc.freeUpMemory()` in `client.ts` and interactive `Boost` pill button on the RAM card in `HardwareSection.tsx` (displaying cleaning spinner and `-{freedMb}MB` feedback for 2.5s).
+  - **12. Task M4.1 (Fullscreen Application Auto-Suppression) & Task M4.2 (Multi-Monitor Recovery):**
+    - **Status:** FULLY IMPLEMENTED & VERIFIED.
+    - Implemented `is_foreground_fullscreen(island_hwnd: isize) -> bool` in `src-tauri/src/services/window.rs`, filtering out shell desktop classes (`Progman`, `WorkerW`, `Shell_TrayWnd`) and comparing window bounds against the nearest monitor rect.
+    - Added unit test `fullscreen_check_handles_zero_hwnd_safely`.
+    - Hooked 1.5s background monitor thread in `src-tauri/src/lib.rs` with `IslandVisibilityState` tracking `user_manually_hidden` and `auto_suppressed_fullscreen`.
+    - Implemented `ensure_window_on_screen` in `src-tauri/src/services/window.rs` and wired into `on_window_event` (`WindowEvent::ScaleFactorChanged`) to ensure island never gets stranded off-screen on DPI/monitor changes.
+  - **13. Task UI.2 (Zero Mouse Glow & Studio Color Palette / Notification Refinements):**
+    - **Status:** FULLY IMPLEMENTED & VERIFIED.
+    - Cursor-tracking radial spotlights (`--spot-x`, `--spot-y`, `--glow-x`, `--glow-y`) completely eradicated across all transparency modes (`.transparency-glass`, `.transparency-frosted`, `.transparency-smoked`, `.transparency-solid`) in `globals.css` and from `IslandApp.tsx` (`handleMouseMove` and `reset3DTilt`).
+    - 3D parallax tilt clamped to a solid, physical `±2.5deg` (`maxTilt = 2.5`).
+    - Main island rim border set to consistent studio glass rim `borderColor: config.theme === "light" ? "rgba(15, 23, 42, 0.14)" : "rgba(255, 255, 255, 0.13)"`.
+    - Stationary `.orbit-core-aura` centered at `50% 50%` with refined `var(--core-glow, rgba(59, 130, 246, 0.16))`.
+    - Upgraded all 8 themes in `theme.ts` and `globals.css` to systematic Apple macOS / Linear / Raycast Studio palettes (`obsidian`, `dynamic`, `dark`, `black`, `espresso`, `evergreen`, `nord`, `light`) with desaturated, high-contrast readable text (`#f8fafc`, `#ffffff`, `#0f172a`) and neutral muted labels (`#94a3b8`, `#a1a1aa`, `#a8a29e`, `#64748b`).
+    - Notification styling polished: removed `text-cyan-400` from icon well, styled `appName` with `text-[9.5px] font-semibold uppercase tracking-wider` and `var(--island-muted)`, progress bar updated to `activeThemeMeta.accent` at `0.85` opacity without harsh glow, Notification Inspector body card given clean left accent bar (`borderLeft: 2px solid ${activeThemeMeta.accent}`), and notification counter pills styled with `var(--island-text)` and theme-accent bell SVG.
+    - Expanded Home Clock AM/PM size refined from `text-[36px]` to `text-[16px] font-semibold uppercase ml-2` (`var(--island-muted)`).
+    - Calendar day buttons updated: removed hardcoded cyan classes, styled selected day as clean studio pill (`backgroundColor: activeThemeMeta.accent`, contrast text `#ffffff` / `#090a0f`, `boxShadow: 0 2px 8px ${activeThemeMeta.borderGlow}`).
+    - Hardware Monitor progress bar shadows softened to `boxShadow: 0 1px 4px ${activeThemeMeta.borderGlow}` using `activeThemeMeta.accent`.
+  - **14. Task M4.6 (Production Release Rebuild & Process Verification):**
+    - **Status:** FULLY REBUILT & RUNNING.
+    - `npm run build`: Passed cleanly (`built in 4.11s`, 0 errors).
+    - `cargo test --manifest-path src-tauri/Cargo.toml`: All 24 unit tests passed (24 passed, 0 failed, finished in 1.18s).
+    - Release binary built via `cargo build --release --manifest-path src-tauri/Cargo.toml` in 2m 07s.
+    - Relaunched `src-tauri/target/release/orbit.exe` (active process verified, PID 19844).
+    - Rotating logger initialization verified in `%APPDATA%\com.orbit.island\logs\orbit.log`.
+  - **15. Task UI.3 (Distinct Per-Element Colors & Redesigned Battery Card in Hardware Monitor):**
+    - **Status:** FULLY IMPLEMENTED & VERIFIED.
+    - Implemented distinct semantic studio colors for all 6 hardware telemetry cards:
+      - CPU: Sapphire Blue (`#3b82f6` or `#ef4444` when >85%).
+      - NET UP: Emerald Green (`#10b981`).
+      - RAM (+ Boost): Linear Violet (`#8b5cf6`) with responsive Boost button, working set purge, and freed MB confirmation.
+      - NET DOWN: Sky Cyan (`#06b6d4`).
+      - BATTERY: Dynamic Emerald/Amber/Rose depending on level & charging status. Custom 3D SVG with inner dynamic proportional fill and charging lightning bolt; large percentage display; zero "Power" or "Battery" text titles.
+      - DISK C: Warm Amber (`#f59e0b`).
+  - **16. Task UI.4 (Notification Drop-Expand-Compress-Rewind Physics):**
+    - **Status:** FULLY IMPLEMENTED & VERIFIED.
+    - Expanded Win32 GDI region for `"notification"` to `(36.0, 0.0, 364.0, 74.0, 58.0)` in `src-tauri/src/services/window.rs`, granting complete vertical clearance for drops.
+    - Implemented true 3-stage physics in `IslandApp.tsx`: compact pill (`140×40`), dropped notification capsule (`translate3d(0, 7px, 6px)`, `316×56`, `borderRadius: 28px`), 35ms entrance transition, and delayed `ipc.setIslandState("compact")` (280ms) ensuring the upward compress-and-rewind animation is never clipped.
+  - **17. Task UI.5 (Notification Message Body Display, Privacy Mode, & Full-Bleed Brand Badges):**
+    - **Status:** FULLY IMPLEMENTED & VERIFIED.
+    - Created `NotificationBrandIcon.tsx` providing full-bleed 36×36 branded badges for WhatsApp (`#25D366`), Telegram (`#2AABEE`), Discord (`#5865F2`), Gmail/Outlook (`#EA4335`/`#0078D4`), Instagram, YouTube (`#FF0000`), Slack (`#4A154B`), GitHub (`#24292F`), Browser, and full-bleed native `appIcon` fallback.
+    - Updated `src-tauri/src/services/notifications.rs` to detect browser web domains, upgrade app names, and strip trailing web domain clutter from notification message bodies.
+    - CompactCapsule displays both Sender + app tag (Line 1) and actual notification message body (Line 2) when `privacyMode` is false, and redacts both when `privacyMode` is true.
+- **Current Milestone Status:**
+  - Version 1.0.0 Production Release: ALL PHASES (Phase 1 Focus Timer, Phase 2 File Shelf Drawer, Phase 3 Windows Startup Registry & Reset Controls, Phase 4 Release Packaging & Process Launch) FULLY IMPLEMENTED, TESTED (25/25 Rust tests passed, npm build passed with zero errors), AND DEPLOYED.
+  - **18. Phase 1 (Built-In Focus / Countdown Timer):**
+    - Right-click context menu quick-interval triggers (`ctx_timer_5`, `ctx_timer_15`, `ctx_timer_25`, `ctx_timer_stop`).
+    - Deadline timestamp persistence in `localStorage` (`"orbit_timer_state"`).
+    - Compact capsule circular SVG progress ring (`#f59e0b` amber) + `MM:SS` countdown, matching `reference-timer-and-media.png`.
+    - Idle Home interactive quick-timer bar (`5m`, `15m`, `25m`, `45m`) and Stop button.
+    - Expiry triggers transient high-priority alert notification.
+  - **19. Phase 2 (File Shelf Drawer & Drag-and-Drop Ingestion):**
+    - Created `FileShelfDrawer.tsx` inside expanded Home.
+    - Top-left `Shelf (N)` toggle button on idle Home view.
+    - Direct `"tauri://drag-drop"` auto-pinning with automatic switch to Section 0 Home and drawer presentation.
+    - Actions: Open (`ShellExecuteW`), Reveal in Explorer, Remove reference, Clear shelf, and Add file via native dialog.
+  - **20. Phase 3 (Windows Startup Registry & Reset Controls):**
+    - Native `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` synchronization (`sync_startup_registry`).
+    - Settings "Startup & Reset" card with Launch at Windows Sign-In toggle.
+    - "Reset Settings to Defaults" and "Clear Local Reminders & Shelf References" (`clear_local_data`) commands.
+  - **21. Phase 4 (v1.0.0 Production Release & Packaging):**
+    - Version bumped to `1.0.0` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
+    - Standalone release binary recompiled and relaunched as target/release/orbit.exe.
 
-- **Current Milestone:** Milestone 2 - Core Shell Refinements & Stabilization (Implemented; Ready for Physical Review)
-- **Active Branch:** `feat/core-shell`
-- **Environment:** Windows 11 (26300), Node 24.21.0, npm 11.19.0, Rust 1.98.1 (MSVC), Tauri CLI 2.12.2, WebView2 155.0.4283.45
-- **Stabilization Fixes Delivered:**
-  - **Native Windows Context Menu (`TrackPopupMenuEx`):** Replaced the clipped in-island HTML menu with a native Windows popup menu positioned beside the cursor using Tauri's native `Menu` API (`menu.popup(window)`). Displays outside/above the 400x184 native window boundary without clipping. Includes `Hide Island`, `Dismiss` (collapses expanded island to compact pill), `Theme >` submenu (`Dynamic`, `Dark`, `Light`, `Black` with native checkmark indicating active theme), separator, and `ORBIT Settings...`. Dismisses automatically on outside click or Escape.
-  - **Settings Scrolling & Reusable Controls:** Restructured Settings into a strict flexbox layout with pinned header (`shrink-0`), pinned footer with "Save Preferences" (`shrink-0`), and scrollable body (`flex-1 min-h-0 overflow-y-auto`, `tabIndex={0}`). Populated with 5 distinct PRD sections (Appearance & Placement, Interaction & Animation, Privacy & System Indicators, Process Memory Telemetry, About ORBIT). Exceeds 520px height by ~350px, enabling smooth vertical scrolling via mouse wheel, touchpad, and keyboard (ArrowUp, ArrowDown, PageUp, PageDown, Home, End), with Save button permanently accessible at all window heights.
-  - **Bounded Header Logo:** Strictly constrained `orbit-logo.png` to `style={{ height: "18px", maxHeight: "18px", maxWidth: "80px", width: "auto" }}` with `object-contain`. Preserves canonical logo aspect ratio in the top-left header without blowing out or clipping.
-  - **Zero-Ghosting Single-Clock Transition:** Replaced overlapping cross-fade elements with mutually exclusive view rendering (`{!isExpanded ? <CompactView /> : <ExpandedView />}`). Completely eliminates doubled or ghosted clock text (`9:32 PM` stacked on `9:32 PM`) during collapse while preserving smooth 250ms capsule resize.
-  - **Honest Memory Telemetry:** Main Rust process: 9.1 MB private commit charge (achieving the <30 MB aspiration and <50 MB target). Total WebView2 process tree: 209.88 MB private commit charge, 470.15 MB total working set. Recorded honestly per project directives; temporary overage is accepted during development without triggering feature removal.
-- **Verification Status:** Frontend build (`tsc && vite build`) passed in 2.07s; `cargo check` passed with 0 errors/warnings; fresh release binary built at `src-tauri/target/release/orbit.exe` in 1m 42s.
-- **Next Milestone:** Milestone 3 - Feature Slices (Do not begin until physical review of Core Shell is accepted).
+
+
