@@ -23,7 +23,7 @@ ORBIT Island brings Apple's glanceable, tactile Dynamic Island UX to Windows 11.
 
 Download the official standalone Windows installer from the [Releases page](https://github.com/Dineswarkumar/Orbit-Island/releases):
 
-- **Installer**: [`ORBIT_2.0.0_x64-setup.exe`](https://github.com/Dineswarkumar/Orbit-Island/releases/download/v2.0.0/ORBIT_2.0.0_x64-setup.exe) (~3.1 MB)
+- **Installer**: [`ORBIT_2.0.0_x64-setup.exe`](https://github.com/Dineswarkumar/Orbit-Island/releases/tag/release%2Fv2) (~3.1 MB)
 - **Architecture**: Windows 11 x64 (Native binary with embedded WebView2 runtime)
 - **Installation**: Run `ORBIT_2.0.0_x64-setup.exe` and follow the setup wizard. ORBIT launches automatically at the top of your primary display.
 
