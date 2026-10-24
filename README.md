@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**A sleek, 3D Dynamic Island desktop overlay engineered natively for Windows 11.**
+**A fluid, hardware-accelerated 3D Dynamic Island desktop companion engineered natively for Windows 11.**
 
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011-0078D4?logo=windows&logoColor=white)](https://github.com/Dineswarkumar/Orbit-Island)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
@@ -15,80 +15,182 @@
 
 ---
 
-ORBIT Island brings a fluid, glanceable desktop companion to Windows 11. Floating unobtrusively at the top of your display, ORBIT combines live system telemetry, native media controls, notification previews, focus timers, calendar reminders, and a drag-and-drop file shelf into a responsive, hardware-accelerated 3D overlay.
+ORBIT Island brings Apple's glanceable, tactile Dynamic Island UX to Windows 11. Floating discreetly at the top of your display, ORBIT blends hardware telemetry, system media controls, frequency-reactive equalizer bars, notification drops, focus countdowns, academic schedule calendars, a drag-and-drop file shelf, and real-time camera/microphone privacy indicators into an organic, glass-rendered desktop overlay.
 
 ---
 
-## Screenshots
-
-<div align="center">
-
-### Real-Time Hardware Telemetry Grid & Native Context Menu
-![ORBIT Hardware Monitor and Context Menu](docs/screenshots/hardware-monitor-menu.png)
-*Telemetry panel displaying live CPU utilization, GPU usage via Windows PDH, RAM with one-click Boost memory cleaner, Disk C storage, Net Up/Down bandwidth, and native right-click theme & action menu.*
-
----
-
-### Expanded Clock & Quick Timers
-![ORBIT Expanded Clock and Controls](docs/screenshots/expanded-clock.png)
-*Expanded home view featuring real-time clock, quick timer presets, drag-and-drop file shelf shortcut, and notification indicator.*
-
----
-
-### Compact Glance Capsule
-![ORBIT Compact Capsule](docs/screenshots/compact-pill.png)
-*Minimalist, unobtrusive desktop pill displaying glanceable time with fluid hover-expansion dynamics.*
-
----
-
-### Calendar & Productivity Hub
-![ORBIT Calendar Section](docs/screenshots/calendar.png)
-*Monthly calendar overview with active day highlight, date card, and local SQLite-backed task management.*
-
-</div>
-
----
-
-## Features
-
-- **3D Animated Shell**: Smooth transitions between compact glance capsule, dropped notification toast, and expanded multi-section hub powered by spring physics.
-- **Glanceable Live Clock**: Real-time time and date display in both compact mode and idle expanded state.
-- **Windows Media Controls (SMTC)**: Native integration with Windows System Media Transport Controls. Play, pause, skip, seek, and view album art and track metadata across Spotify, Brave, Chrome, Apple Music, and more with source pinning.
-- **Windows Notification Capture**: Non-intrusive notification drop banner with brand icon recognition (WhatsApp, Telegram, Snipping Tool, etc.), sender/body separation, queue browsing, and an optional Privacy Mode to hide message content.
-- **System Privacy Indicators**: Real-time visual status pills whenever the microphone or camera is active, complete with attribution to the active application.
-- **Hardware Telemetry Monitor**:
-  - Live CPU utilization.
-  - Dedicated GPU utilization tracked via native Windows Performance Data Helper (PDH).
-  - RAM monitoring with a one-click **Boost** memory cleaner.
-  - Disk storage utilization.
-  - Real-time Network upload and download bandwidth rates.
-  - Battery capacity percentage with dynamic charging state color indicators.
-- **Peripheral & Connectivity Pill Alerts**: Instant 2-second pill notifications for power connection/disconnection, Wi-Fi state changes, Bluetooth connections, and mobile hotspot toggles.
-- **Focus & Countdown Timer**: Quick-start timers (5m, 15m, 25m Focus) featuring a circular countdown progress ring in the compact capsule and audio/visual completion alerts.
-- **Calendar & Reminders**: Visual month calendar with selected date overview and local reminders stored in an embedded SQLite database.
-- **File Shelf**: Drag-and-drop storage drawer in Expanded Home for holding temporary file references and opening or revealing files instantly in File Explorer.
-- **8 Polished Themes**:
-  - Obsidian Studio
-  - Linear Indigo
-  - Titanium Slate
-  - OLED Black
-  - Warm Bronze
-  - Sage Emerald
-  - Arctic Frost
-  - Crystal Frost
-- **Materials & Translucency**: Selectable glass materials including Frosted Glass, Glossy Glass, Smoked Glass, and Solid styling.
-- **Desktop Overlay Intelligence**: Always-on-top window layering with smart fullscreen auto-hide that automatically suspends display during fullscreen games or media playback.
-- **System Tray & Single-Instance**: Lightweight background presence with single-instance process lock, Windows startup launch option, tray menu actions, and rotating local diagnostic logs.
-
----
-
-## Installation
+## Download & Setup
 
 Download the official standalone Windows installer from the [Releases page](https://github.com/Dineswarkumar/Orbit-Island/releases):
 
-1. Download **`ORBIT_1.0.0_x64-setup.exe`**.
-2. Run the installer and follow the setup wizard.
-3. ORBIT Island will launch at the top-center of your primary display.
+- **Installer**: [`ORBIT_2.0.0_x64-setup.exe`](https://github.com/Dineswarkumar/Orbit-Island/releases/download/v2.0.0/ORBIT_2.0.0_x64-setup.exe) (~3.1 MB)
+- **Architecture**: Windows 11 x64 (Native binary with embedded WebView2 runtime)
+- **Installation**: Run `ORBIT_2.0.0_x64-setup.exe` and follow the setup wizard. ORBIT launches automatically at the top of your primary display.
+
+---
+
+## System Architecture & Dynamic Flows
+
+ORBIT is built upon a hybrid architecture: a low-latency Rust backend communicating with a React 18 / Tailwind CSS frontend via Tauri v2 IPC.
+
+### 1. Shell Morphology & State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> CompactGlance: Application Startup
+    
+    CompactGlance --> NotificationDrop: Incoming Notification / Call
+    NotificationDrop --> CompactGlance: Timeout (4s) / Dismissed
+    NotificationDrop --> NotificationHover: Mouse Hover (Action Row)
+    NotificationHover --> CompactGlance: Open / View / Dismiss
+    
+    CompactGlance --> ExpandedStage: Click / Alt+O Hotkey
+    ExpandedStage --> CompactGlance: Mouse Leave / Island Click / Alt+O
+    
+    CompactGlance --> Suppressed: Fullscreen App / Meeting Mode
+    Suppressed --> CompactGlance: Restore Window / End Call
+    
+    state ExpandedStage {
+        [*] --> Section0_Home
+        Section0_Home --> Section1_MultiTask: Scroll Down (2+ Tasks Active)
+        Section1_MultiTask --> Section2_Calendar: Scroll Down
+        Section2_Calendar --> Section3_Hardware: Scroll Down
+        Section3_Hardware --> Section0_Home: Carousel Loop
+    }
+```
+
+### 2. Privacy Guard Telemetry Engine
+
+ORBIT employs a zero-hardware-locking, dual-engine privacy monitor to instantly detect active recording or streaming:
+
+```mermaid
+flowchart TD
+    subgraph Windows 11 Hardware & Drivers
+        CamDriver["Webcam / Sensor Hardware"]
+        MicDriver["Microphone Endpoint (eCapture)"]
+    end
+
+    subgraph Rust Core Privacy Monitor (lib.rs)
+        MFMonitor["Media Foundation IMFSensorActivityMonitor"]
+        WASAPIMonitor["WASAPI IAudioSessionManager2 Enumerator"]
+        RegStore["CapabilityAccessManager ConsentStore"]
+        PidCheck["is_pid_alive Process Survival Verifier"]
+    end
+
+    subgraph Frontend Reactive Stage (IslandApp.tsx)
+        IPCEvent["privacy-state-changed (350ms Polling / Event Callbacks)"]
+        CompactSlot["Compact Capsule Privacy Dot (Green / Yellow / Cyan)"]
+        ExpandedSlot["Live Call Deck & Top-Right Safety Pill"]
+    end
+
+    CamDriver -->|Streaming Callback| MFMonitor
+    MicDriver -->|Active Audio Session| WASAPIMonitor
+    CamDriver -.->|Registry Fallback| RegStore
+    MicDriver -.->|Registry Fallback| RegStore
+
+    MFMonitor --> PidCheck
+    WASAPIMonitor --> PidCheck
+    RegStore --> PidCheck
+
+    PidCheck --> IPCEvent
+    IPCEvent --> CompactSlot
+    IPCEvent --> ExpandedSlot
+```
+
+- **Microphone (WASAPI Core Audio API)**: Directly queries `IAudioSessionEnumerator` on all active capture devices (`eCapture`). Detects recording streams in real-time across Chrome, Discord, Zoom, Teams, and WhatsApp without registry latency.
+- **Camera (Windows Media Foundation)**: Listens for `IMFSensorActivitiesReportCallback` streaming transitions. Eliminates artificial polling timeouts and verifies process survival with `is_pid_alive` so indicators remain active for the full call duration and self-heal if an application crashes.
+
+---
+
+## Core Feature Overview
+
+### 1. Curated 11-Theme Signature Engine
+Designed with OKLCH-balanced surfaces, dynamic 3D borders, and custom ambient shadows:
+
+| Theme ID | Name | Accent | Characteristic |
+| :--- | :--- | :---: | :--- |
+| `obsidian` | **Apple Dynamic Island** | `#38bdf8` | Pure `#000000` OLED deep-black surface with subtle concentric border glow |
+| `linear` | **Linear Studio** | `#6366f1` | Raycast-inspired dark indigo `#0b0d16` with crisp violet outlines |
+| `dynamic` | **VisionOS Spatial Glass** | `#38bdf8` | Slate titanium `#0f172a` translucency with frosted glass depth |
+| `catppuccin` | **Catppuccin Mocha** | `#cba6f7` | Soothing `#181825` lavender-and-mauve aesthetic with soft card fills |
+| `cyber` | **Cyberpunk Neo-Tokyo** | `#06b6d4` | High-voltage neon cyan and magenta accents on `#030306` night pitch |
+| `espresso` | **Sunset Velvet & Amber**| `#fb923c` | Deep burgundy velvet `#12070c` with radiant amber accents |
+| `evergreen` | **Nordic Emerald** | `#34d399` | Scandinavian botanical `#06120e` with organic mint highlights |
+| `nord` | **Arc Ocean & Gold** | `#38bdf8` | Deep marine blue `#0a1220` with solar gold secondary badges |
+| `light` | **Apple Ceramic Alabaster**| `#2563eb` | High-contrast `#f1f5f9` pearlescent light mode with dark typography |
+| `system` | **System Auto** | Auto | Follows native Windows 11 Dark/Light mode preference automatically |
+
+---
+
+### 2. Dynamic Section 2: Live Multi-Task Bento Hub
+When 2 or more background activities occur simultaneously, ORBIT dynamically spawns a 4th navigation dot on the indicator rail, presenting a 2x2 Bento Hub:
+- **Slot 1 (Media Controller)**: Real-time track title, artist, live play/pause, and next-track skip.
+- **Slot 2 (Live Call & Privacy)**: Displays active app name (`Zoom`, `Google Chrome`, `WhatsApp`), call duration timer, and attribution. Clicking focuses the active call window.
+- **Slot 3 (Focus Timer)**: Shows live countdown progress, quick 15m/25m/45m presets, and inline pause/stop controls.
+- **Slot 4 (Today's Schedule)**: Highlights today's next academic exam, fest, deadline, or meeting.
+- **Header**: Quick access button to open the File Shelf (`📁 Shelf (N)`).
+
+---
+
+### 3. Smart 3D Calendar & Academic Schedule Hub
+A full monthly calendar overview powered by an embedded SQLite database:
+- **Full-Cell Category Color Highlights**:
+  - 🌹 **Exams**: Rose Red (`#fb7185`)
+  - 🍊 **Deadlines & Due Dates**: Vibrant Orange (`#f97316`)
+  - 🌿 **Holidays**: Emerald Green (`#34d399`)
+  - ☀️ **Fests & Events**: Amber Gold (`#fbbf24`)
+  - 💎 **Classes**: Sky Blue (`#38bdf8`)
+  - 🟣 **Meetings**: Violet Purple (`#a855f7`)
+- **Universal Schedule Importer**: 1-click import support for RFC 5545 iCalendar (`.ics`), `.csv` (`Title, Date, Time, Category`), and `.json` university or workplace timetables. Automatically prevents duplicates and maps colors across the calendar grid.
+- **15-Minute Event Alerts**: Dispatches glanceable 3D pill notifications 15 minutes before scheduled exams and meetings.
+
+---
+
+### 4. Frequency-Reactive Waveform Equalizer
+- Direct integration with Windows System Media Transport Controls (SMTC) to display track titles, artists, and album artwork from Spotify, Chrome, Brave, Edge, and YouTube Music.
+- Real-time WASAPI audio spectrum analysis driving 3-bar compact and 5-bar expanded frequency equalizers that react to audio peaks and collapse flat when silent.
+
+---
+
+### 5. Hardware Telemetry & One-Click RAM Boost
+- **CPU**: Real-time multi-core processor utilization.
+- **GPU**: Direct Windows Performance Data Helper (PDH) GPU engine load tracking.
+- **RAM**: Memory usage percentage with physical GB tracking and a one-click **Free RAM** cleaner calling Win32 `EmptyWorkingSet`.
+- **Storage & Network**: Disk space monitoring and real-time up/down bandwidth speed indicators.
+- **Battery**: Dynamic fill gauge with charging state animations and color-coded thresholds.
+
+---
+
+### 6. File Shelf & Desktop Productivity
+- Drag-and-drop storage drawer in Expanded Home for holding files during multi-task workflows.
+- One-click file opening or revealing in File Explorer.
+- Configurable storage mode: Reference links or managed temporary copies (`shelfStorageMode: "copy"`).
+
+---
+
+### 7. Global Keyboard Shortcuts & Stealth Capture
+- **`Alt+O`**: Expand / Collapse Island.
+- **`Alt+H`**: Hide / Show Island.
+- **`Alt+S`**: Toggle Screen-Recording Stealth (uses Win32 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` to make ORBIT completely invisible to OBS, Discord, Zoom, and Teams screen sharing).
+- **`Alt+M`**: Play / Pause current media track.
+
+---
+
+## Design References & Inspirations
+
+ORBIT Island is deeply indebted to pioneering work in glanceable interaction design and fluid desktop software:
+
+1. **Apple Dynamic Island (iPhone 14 Pro / 15 / 16)**:
+   - The foundational concept of an organic, concentric, glanceable pill that morphs to accommodate notifications, ongoing background tasks, and controls without interrupting user flow.
+2. **Apple Human Interface Guidelines (HIG) & Spring Physics**:
+   - Synthesizes design standards from the community's leading Apple UI engineering skillsets:
+     - **Emil Kowalski** ([`emilkowalski/skills`](https://github.com/emilkowalski)): Fluid layout transitions, spring physics (`cubic-bezier(0.22, 1.15, 0.36, 1)`), micro-interactions, and motion timing.
+     - **Dick Wu** ([`dickwu/apple-design-skill`](https://github.com/dickwu)): Concentric corner radii, subtle depth layers, and typographic hierarchy.
+     - **Wondelai** ([`wondelai/skills`](https://github.com/wondelai)): iOS HIG design rules adapted for desktop Tauri + React + Tailwind architectures.
+3. **Linear & Raycast Studio**:
+   - High-density dark mode design, tactile command responsiveness, monospace tabular numerals, and glowing border highlights (`0 0 12px var(--island-border)`).
+4. **Windows 11 Fluent Design & Core Audio APIs**:
+   - Deep integration with native Win32 GDI non-rectangular regions, Windows Media Foundation Sensor Monitor, and WASAPI audio session endpoints.
 
 ---
 
@@ -96,125 +198,42 @@ Download the official standalone Windows installer from the [Releases page](http
 
 ### Prerequisites
 
-Ensure the following tools are installed on your Windows 11 machine:
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [Rust](https://www.rust-lang.org/) (v1.90 or higher, 2024 edition)
+- Windows 11 with C++ Build Tools installed
 
-- **Node.js**: `v20.x` or higher
-- **Rust**: `1.90.0` or higher (`rustup default stable`)
-- **Visual Studio Build Tools**: C++ x64 build tools (MSVC toolchain)
-- **Microsoft Edge WebView2**: (Pre-installed by default on Windows 11)
+### Instructions
 
-### Setup & Development
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Dineswarkumar/Orbit-Island.git
+   cd Orbit-Island
+   ```
 
-```powershell
-# Clone the repository
-git clone https://github.com/Dineswarkumar/Orbit-Island.git
-cd Orbit-Island
+2. **Install frontend dependencies**:
+   ```bash
+   npm install
+   ```
 
-# Install frontend dependencies
-npm install
+3. **Run in development mode**:
+   ```bash
+   npm run tauri dev
+   ```
 
-# Start development mode (launches Vite dev server and Tauri shell)
-npm run tauri dev
-```
+4. **Run unit and stress test suite**:
+   ```bash
+   cargo test --manifest-path src-tauri/Cargo.toml
+   ```
 
-### Build Production Installer
-
-```powershell
-# Build the optimized production release
-npm run tauri build
-```
-
-The resulting standalone NSIS installer will be located at:
-```text
-src-tauri/target/release/bundle/nsis/ORBIT_1.0.0_x64-setup.exe
-```
-
----
-
-## Usage
-
-- **Hover to Expand**: Move your cursor over the compact capsule to expand the full multi-section island.
-- **Scroll Navigation**: Use the mouse scroll wheel or touchpad scroll over the expanded island to cycle through sections:
-  $$\text{Home} \longrightarrow \text{Calendar} \longrightarrow \text{Productivity Hub} \longrightarrow \text{Hardware Monitor}$$
-- **Right-Click Menu**: Right-click on the island at any time to access quick actions:
-  - Hide or Dismiss Island
-  - Start quick timers (5m, 15m, 25m Focus, or Cancel)
-  - Change active Theme on the fly
-  - Open ORBIT Settings
-- **System Tray**: Access the ORBIT tray icon in your Windows notification area to toggle visibility, open settings, or exit the application cleanly.
-
----
-
-## Settings
-
-ORBIT Island includes a dedicated Settings panel allowing you to configure:
-
-- **Appearance**: Switch themes, choose glass material styles (Frosted, Glossy, Smoked, Solid), and adjust opacity.
-- **Positioning**: Align the island to Top-Center, Top-Left, or Top-Right with custom vertical offsets.
-- **Notifications & Privacy**: Enable Privacy Mode to redact sensitive notification text, and manage app attribution settings.
-- **Startup & Performance**: Toggle automatic launch on Windows startup and tune background hardware polling intervals.
-
----
-
-## Project Structure
-
-```text
-Orbit-Island/
-├── src/                          # React + TypeScript frontend
-│   ├── assets/                   # Icons, sounds, and media assets
-│   ├── components/               # UI components
-│   │   ├── island/               # Island sections (Home, Calendar, Hardware, Capsule, Shelf)
-│   │   └── settings/             # Settings modal and configuration panels
-│   ├── core/                     # State stores, IPC client, and theme engines
-│   └── styles/                   # Tailwind CSS styling and theme definitions
-├── src-tauri/                    # Rust backend (Tauri 2)
-│   ├── src/
-│   │   ├── commands/             # IPC handlers (hardware, media, shelf, calendar, window)
-│   │   ├── services/             # Windows integrations (SMTC, PDH, notifications, SQLite, Win32)
-│   │   ├── lib.rs                # App setup, tray, and context menus
-│   │   └── main.rs               # Binary entry point
-│   ├── Cargo.toml                # Rust dependencies and custom build profiles
-│   └── tauri.conf.json           # Tauri window, permission, and bundle configuration
-├── docs/
-│   └── screenshots/              # Product screenshots and visual documentation
-├── .planning/                    # Project roadmap, state tracking, and architecture plans
-├── ORBIT-PRD.md                  # Comprehensive product requirements document
-└── LICENSE                       # MIT License
-```
-
----
-
-## Performance
-
-ORBIT Island is built with a native Rust core and high-performance Web technology:
-
-- **Memory Usage**: ~55 MB RAM during active usage.
-- **CPU Footprint**: <1% idle CPU utilization on modern Windows systems.
-- **Optimized Rendering**: Background polling and animations automatically idle when the island is collapsed.
-
----
-
-## Roadmap
-
-To view the upcoming feature milestones, architectural specifications, and release tracking, refer to [.planning/ROADMAP.md](.planning/ROADMAP.md).
-
----
-
-## Privacy
-
-ORBIT Island is 100% local-first:
-
-- **Zero Telemetry**: No tracking, user analytics, or background telemetry.
-- **Zero Cloud Dependencies**: Operates completely offline without external servers.
-- **Local Storage**: All settings, calendar reminders, file references, and local logs reside exclusively on your machine at:
-  ```text
-  %APPDATA%\com.orbit.island
-  ```
+5. **Build standalone release installer**:
+   ```bash
+   npm run tauri build
+   ```
+   The installer will be generated at:
+   `src-tauri/target/release/bundle/nsis/ORBIT_2.0.0_x64-setup.exe`
 
 ---
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
-Copyright (c) 2026 Dineswarkumar.
+This project is licensed under the [MIT License](LICENSE).
