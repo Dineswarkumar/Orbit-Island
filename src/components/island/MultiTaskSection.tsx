@@ -77,7 +77,10 @@ export const MultiTaskSection: React.FC<MultiTaskSectionProps> = ({
             className="w-2 h-2 rounded-full animate-pulse"
             style={{ backgroundColor: activeThemeMeta.accent }}
           />
-          <span className="text-[11.5px] font-bold tracking-tight text-white/95">
+          <span
+            className="text-[11.5px] font-bold tracking-tight"
+            style={{ color: "var(--island-text)" }}
+          >
             Live Multi-Task Hub
           </span>
         </div>
@@ -133,12 +136,18 @@ export const MultiTaskSection: React.FC<MultiTaskSectionProps> = ({
             )}
           </div>
           <div className="min-w-0">
-            <div className="text-[11.5px] font-bold text-white truncate">
+            <div
+              className="text-[11.5px] font-bold truncate"
+              style={{ color: "var(--island-text)" }}
+            >
               {isMediaActive && mediaSession
                 ? mediaSession.track.title || "Unknown Track"
                 : "No Active Media"}
             </div>
-            <div className="text-[10px] font-medium text-white/65 truncate">
+            <div
+              className="text-[10px] font-medium truncate"
+              style={{ color: "var(--island-muted)" }}
+            >
               {isMediaActive && mediaSession
                 ? mediaSession.track.artist || mediaSession.source_title || mediaSession.source_id
                 : "Play music to control here"}
@@ -161,7 +170,7 @@ export const MultiTaskSection: React.FC<MultiTaskSectionProps> = ({
           <div className="flex items-center justify-between">
             <span
               className="text-[10px] font-bold uppercase tracking-wider"
-              style={{ color: isCallOrSensorActive ? "#34d399" : "rgba(255,255,255,0.5)" }}
+              style={{ color: isCallOrSensorActive ? "#34d399" : "var(--island-muted)" }}
             >
               {isCallOrSensorActive ? "● Live Call / Mic" : "🛡️ Privacy Guard"}
             </span>
@@ -172,10 +181,16 @@ export const MultiTaskSection: React.FC<MultiTaskSectionProps> = ({
             )}
           </div>
           <div className="min-w-0">
-            <div className="text-[11.5px] font-bold text-white truncate">
+            <div
+              className="text-[11.5px] font-bold truncate"
+              style={{ color: "var(--island-text)" }}
+            >
               {isCallOrSensorActive ? activeSensorApp : "Cam & Mic Idle"}
             </div>
-            <div className="text-[10px] font-medium text-white/65 truncate">
+            <div
+              className="text-[10px] font-medium truncate"
+              style={{ color: "var(--island-muted)" }}
+            >
               {isCallOrSensorActive
                 ? `${privacyState?.cameraActive ? "Camera " : ""}${
                     privacyState?.microphoneActive ? "Mic " : ""
@@ -235,7 +250,8 @@ export const MultiTaskSection: React.FC<MultiTaskSectionProps> = ({
                     e.stopPropagation();
                     onStartTimer(preset.s, timerLabel);
                   }}
-                  className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-[10.5px] font-bold text-white/90 cursor-pointer transition-colors"
+                  className="px-2 py-0.5 rounded orbit-pill-badge-3d hover:bg-white/20 text-[10.5px] font-bold cursor-pointer transition-colors"
+                  style={{ color: "var(--island-text)" }}
                 >
                   {preset.l}
                 </button>
@@ -262,10 +278,16 @@ export const MultiTaskSection: React.FC<MultiTaskSectionProps> = ({
             <span className="text-[9.5px] font-semibold text-white/50">Calendar →</span>
           </div>
           <div className="min-w-0">
-            <div className="text-[11.5px] font-bold text-white truncate">
+            <div
+              className="text-[11.5px] font-bold truncate"
+              style={{ color: "var(--island-text)" }}
+            >
               {todayNextEvent ? todayNextEvent.title : "No Events Today"}
             </div>
-            <div className="text-[10px] font-medium text-white/65 truncate">
+            <div
+              className="text-[10px] font-medium truncate"
+              style={{ color: "var(--island-muted)" }}
+            >
               {todayNextEvent
                 ? new Date(todayNextEvent.dueTimestampMs).toLocaleTimeString([], {
                     hour: "2-digit",

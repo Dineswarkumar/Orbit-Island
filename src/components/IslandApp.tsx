@@ -2147,7 +2147,7 @@ export const IslandApp: React.FC = () => {
 
   const timeDisplay = formatTime(currentTime);
   const resolvedThemeId =
-    config.theme === "system" ? (systemIsLight ? "light" : "obsidian") : config.theme;
+    config.theme === "system" ? (systemIsLight ? "light" : "black") : config.theme;
   const baseThemeMeta = getThemeMeta(resolvedThemeId);
 
   const activeThemeMeta = useMemo(() => {

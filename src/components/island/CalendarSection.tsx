@@ -206,7 +206,10 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
 
         {/* Bottom Weekday & Summary Badge */}
         <div className="w-full flex flex-col items-center">
-          <span className="text-[11px] font-semibold text-white/75 truncate">
+          <span
+            className="text-[11px] font-semibold truncate"
+            style={{ color: "var(--island-muted)" }}
+          >
             {selectedWeekday}
           </span>
           <button
@@ -225,7 +228,7 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
                     boxShadow: `0 1px 8px ${selectedDayStyle.hex}40`,
                   }
                 : {
-                    color: "rgba(255,255,255,0.75)",
+                    color: "var(--island-muted)",
                   }
             }
             title="View or add tasks for this date"
@@ -246,7 +249,10 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
         {showTaskDrawer ? (
           <div className="flex flex-col h-full justify-between">
             <div className="flex items-center justify-between pb-1 border-b border-white/10 shrink-0">
-              <span className="text-[11.5px] font-bold text-white/95 truncate">
+              <span
+                className="text-[11.5px] font-bold truncate"
+                style={{ color: "var(--island-text)" }}
+              >
                 Schedule · {selectedCalendarDate.toLocaleString("default", { month: "short", day: "numeric" })}
               </span>
               <div className="flex items-center space-x-1.5">
@@ -426,7 +432,10 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
           <>
             {/* Weekday Header + Month Prev/Next Controls */}
             <div className="flex items-center justify-between pb-1 border-b border-white/10 shrink-0">
-              <div className="grid grid-cols-7 flex-1 text-center text-[10px] font-bold text-white/50">
+              <div
+                className="grid grid-cols-7 flex-1 text-center text-[10px] font-bold"
+                style={{ color: "var(--island-muted)" }}
+              >
                 {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
                   <span key={`${d}-${idx}`}>{d}</span>
                 ))}

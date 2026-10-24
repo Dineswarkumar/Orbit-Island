@@ -11,6 +11,8 @@ export const AppConfigSchema = z.object({
     "espresso",
     "evergreen",
     "nord",
+    "catppuccin",
+    "cyber",
     "custom"
   ]).default("obsidian"),
   position: z.enum(["top-center", "top-left", "top-right"]).default("top-center"),

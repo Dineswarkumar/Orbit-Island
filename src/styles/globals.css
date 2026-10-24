@@ -37,91 +37,121 @@ body {
 .theme-custom {
   --theme-accent: #38bdf8;
   --theme-accent-secondary: #2563eb;
-  --core-glow: rgba(56, 189, 248, 0.18);
+  --core-glow: rgba(56, 189, 248, 0.16);
   --rim-highlight: rgba(255, 255, 255, 0.28);
-  --island-panel: rgba(8, 11, 20, var(--surface-alpha, 0.94));
-  --island-pill: rgba(8, 11, 20, var(--surface-alpha, 0.97));
+  --island-panel: rgba(7, 10, 18, var(--surface-alpha, 0.95));
+  --island-pill: rgba(7, 10, 18, var(--surface-alpha, 0.98));
   --island-card-bg: rgba(56, 189, 248, 0.08);
-  --island-card-border: rgba(56, 189, 248, 0.22);
-  --island-badge-bg: rgba(56, 189, 248, 0.12);
+  --island-card-border: rgba(56, 189, 248, 0.20);
+  --island-badge-bg: rgba(56, 189, 248, 0.14);
   --island-text: #f8fafc;
   --island-muted: #94a3b8;
   --island-border: rgba(56, 189, 248, 0.32);
 }
 
 .theme-dynamic {
-  --theme-accent: #c084fc;
-  --theme-accent-secondary: #7c3aed;
-  --core-glow: rgba(192, 132, 252, 0.18);
-  --rim-highlight: rgba(255, 255, 255, 0.28);
-  --island-panel: rgba(18, 13, 34, var(--surface-alpha, 0.94));
-  --island-pill: rgba(18, 13, 34, var(--surface-alpha, 0.97));
-  --island-card-bg: rgba(192, 132, 252, 0.10);
-  --island-card-border: rgba(192, 132, 252, 0.24);
-  --island-badge-bg: rgba(192, 132, 252, 0.14);
-  --island-text: #faf5ff;
-  --island-muted: #c4b5fd;
-  --island-border: rgba(192, 132, 252, 0.35);
+  --theme-accent: #6366f1;
+  --theme-accent-secondary: #a855f7;
+  --core-glow: rgba(99, 102, 241, 0.16);
+  --rim-highlight: rgba(129, 140, 248, 0.32);
+  --island-panel: rgba(11, 13, 22, var(--surface-alpha, 0.95));
+  --island-pill: rgba(11, 13, 22, var(--surface-alpha, 0.98));
+  --island-card-bg: rgba(99, 102, 241, 0.09);
+  --island-card-border: rgba(99, 102, 241, 0.22);
+  --island-badge-bg: rgba(99, 102, 241, 0.16);
+  --island-text: #f8fafc;
+  --island-muted: #a5b4fc;
+  --island-border: rgba(99, 102, 241, 0.35);
 }
 
 .theme-dark {
   --theme-accent: #2dd4bf;
-  --theme-accent-secondary: #0ea5e9;
+  --theme-accent-secondary: #38bdf8;
   --core-glow: rgba(45, 212, 191, 0.16);
-  --rim-highlight: rgba(255, 255, 255, 0.42);
-  --island-panel: rgba(26, 31, 44, var(--surface-alpha, 0.94));
-  --island-pill: rgba(26, 31, 44, var(--surface-alpha, 0.97));
+  --rim-highlight: rgba(255, 255, 255, 0.45);
+  --island-panel: rgba(15, 23, 42, var(--surface-alpha, 0.92));
+  --island-pill: rgba(15, 23, 42, var(--surface-alpha, 0.96));
   --island-card-bg: rgba(255, 255, 255, 0.11);
   --island-card-border: rgba(226, 232, 240, 0.22);
-  --island-badge-bg: rgba(255, 255, 255, 0.14);
-  --island-text: #f8fafc;
+  --island-badge-bg: rgba(45, 212, 191, 0.14);
+  --island-text: #ffffff;
   --island-muted: #cbd5e1;
   --island-border: rgba(226, 232, 240, 0.32);
 }
 
 .theme-black {
-  --theme-accent: #00f5d4;
-  --theme-accent-secondary: #10b981;
-  --core-glow: rgba(0, 245, 212, 0.15);
-  --rim-highlight: rgba(255, 255, 255, 0.30);
-  --island-panel: rgba(2, 3, 5, var(--surface-alpha, 0.98));
-  --island-pill: rgba(2, 3, 5, var(--surface-alpha, 0.99));
-  --island-card-bg: rgba(0, 245, 212, 0.06);
-  --island-card-border: rgba(0, 245, 212, 0.20);
-  --island-badge-bg: rgba(0, 245, 212, 0.10);
+  --theme-accent: #0a84ff;
+  --theme-accent-secondary: #30d158;
+  --core-glow: rgba(10, 132, 255, 0.12);
+  --rim-highlight: rgba(255, 255, 255, 0.26);
+  --island-panel: rgba(0, 0, 0, var(--surface-alpha, 0.98));
+  --island-pill: rgba(0, 0, 0, var(--surface-alpha, 0.99));
+  --island-card-bg: rgba(255, 255, 255, 0.065);
+  --island-card-border: rgba(255, 255, 255, 0.12);
+  --island-badge-bg: rgba(10, 132, 255, 0.15);
+  --island-text: #f5f5f7;
+  --island-muted: #86868b;
+  --island-border: rgba(255, 255, 255, 0.18);
+}
+
+.theme-catppuccin {
+  --theme-accent: #cba6f7;
+  --theme-accent-secondary: #fab387;
+  --core-glow: rgba(203, 166, 247, 0.15);
+  --rim-highlight: rgba(203, 166, 247, 0.35);
+  --island-panel: rgba(24, 24, 37, var(--surface-alpha, 0.95));
+  --island-pill: rgba(24, 24, 37, var(--surface-alpha, 0.98));
+  --island-card-bg: rgba(203, 166, 247, 0.08);
+  --island-card-border: rgba(203, 166, 247, 0.20);
+  --island-badge-bg: rgba(203, 166, 247, 0.14);
+  --island-text: #cdd6f4;
+  --island-muted: #a6adc8;
+  --island-border: rgba(203, 166, 247, 0.36);
+}
+
+.theme-cyber {
+  --theme-accent: #00f0ff;
+  --theme-accent-secondary: #ff007f;
+  --core-glow: rgba(0, 240, 255, 0.18);
+  --rim-highlight: rgba(0, 240, 255, 0.45);
+  --island-panel: rgba(3, 3, 6, var(--surface-alpha, 0.98));
+  --island-pill: rgba(3, 3, 6, var(--surface-alpha, 0.99));
+  --island-card-bg: rgba(0, 240, 255, 0.07);
+  --island-card-border: rgba(0, 240, 255, 0.25);
+  --island-badge-bg: rgba(0, 240, 255, 0.15);
   --island-text: #ffffff;
-  --island-muted: #a1a1aa;
-  --island-border: rgba(0, 245, 212, 0.34);
+  --island-muted: #67e8f9;
+  --island-border: rgba(0, 240, 255, 0.40);
 }
 
 .theme-espresso {
-  --theme-accent: #fb7185;
+  --theme-accent: #f43f5e;
   --theme-accent-secondary: #f59e0b;
-  --core-glow: rgba(251, 113, 133, 0.18);
-  --rim-highlight: rgba(255, 255, 255, 0.26);
-  --island-panel: rgba(30, 14, 20, var(--surface-alpha, 0.95));
-  --island-pill: rgba(30, 14, 20, var(--surface-alpha, 0.98));
-  --island-card-bg: rgba(251, 113, 133, 0.10);
-  --island-card-border: rgba(251, 113, 133, 0.22);
-  --island-badge-bg: rgba(251, 113, 133, 0.14);
+  --core-glow: rgba(244, 63, 94, 0.16);
+  --rim-highlight: rgba(251, 113, 133, 0.32);
+  --island-panel: rgba(18, 7, 12, var(--surface-alpha, 0.96));
+  --island-pill: rgba(18, 7, 12, var(--surface-alpha, 0.98));
+  --island-card-bg: rgba(244, 63, 94, 0.09);
+  --island-card-border: rgba(244, 63, 94, 0.22);
+  --island-badge-bg: rgba(244, 63, 94, 0.15);
   --island-text: #fff1f2;
   --island-muted: #fda4af;
-  --island-border: rgba(251, 113, 133, 0.34);
+  --island-border: rgba(244, 63, 94, 0.35);
 }
 
 .theme-evergreen {
-  --theme-accent: #34d399;
-  --theme-accent-secondary: #059669;
-  --core-glow: rgba(52, 211, 153, 0.18);
-  --rim-highlight: rgba(255, 255, 255, 0.26);
-  --island-panel: rgba(8, 24, 18, var(--surface-alpha, 0.95));
-  --island-pill: rgba(8, 24, 18, var(--surface-alpha, 0.98));
-  --island-card-bg: rgba(52, 211, 153, 0.10);
-  --island-card-border: rgba(52, 211, 153, 0.22);
-  --island-badge-bg: rgba(52, 211, 153, 0.14);
+  --theme-accent: #10b981;
+  --theme-accent-secondary: #34d399;
+  --core-glow: rgba(16, 185, 129, 0.16);
+  --rim-highlight: rgba(52, 211, 153, 0.35);
+  --island-panel: rgba(6, 18, 14, var(--surface-alpha, 0.96));
+  --island-pill: rgba(6, 18, 14, var(--surface-alpha, 0.98));
+  --island-card-bg: rgba(16, 185, 129, 0.09);
+  --island-card-border: rgba(16, 185, 129, 0.22);
+  --island-badge-bg: rgba(16, 185, 129, 0.15);
   --island-text: #ecfdf5;
   --island-muted: #6ee7b7;
-  --island-border: rgba(52, 211, 153, 0.34);
+  --island-border: rgba(16, 185, 129, 0.35);
 }
 
 .theme-nord {
@@ -129,29 +159,29 @@ body {
   --theme-accent-secondary: #38bdf8;
   --core-glow: rgba(251, 191, 36, 0.16);
   --rim-highlight: rgba(255, 255, 255, 0.28);
-  --island-panel: rgba(11, 22, 40, var(--surface-alpha, 0.95));
-  --island-pill: rgba(11, 22, 40, var(--surface-alpha, 0.98));
-  --island-card-bg: rgba(56, 189, 248, 0.10);
-  --island-card-border: rgba(251, 191, 36, 0.24);
-  --island-badge-bg: rgba(56, 189, 248, 0.14);
+  --island-panel: rgba(10, 18, 32, var(--surface-alpha, 0.95));
+  --island-pill: rgba(10, 18, 32, var(--surface-alpha, 0.98));
+  --island-card-bg: rgba(56, 189, 248, 0.09);
+  --island-card-border: rgba(251, 191, 36, 0.22);
+  --island-badge-bg: rgba(251, 191, 36, 0.14);
   --island-text: #f0f9ff;
   --island-muted: #93c5fd;
-  --island-border: rgba(251, 191, 36, 0.35);
+  --island-border: rgba(251, 191, 36, 0.36);
 }
 
 .theme-light {
-  --theme-accent: #2563eb;
+  --theme-accent: #0066cc;
   --theme-accent-secondary: #4f46e5;
-  --core-glow: rgba(37, 99, 235, 0.12);
-  --rim-highlight: rgba(255, 255, 255, 0.85);
-  --island-panel: rgba(241, 245, 252, var(--surface-alpha, 0.98));
-  --island-pill: rgba(241, 245, 252, var(--surface-alpha, 0.99));
-  --island-card-bg: rgba(255, 255, 255, 0.82);
-  --island-card-border: rgba(37, 99, 235, 0.20);
-  --island-badge-bg: rgba(37, 99, 235, 0.10);
+  --core-glow: rgba(0, 102, 204, 0.10);
+  --rim-highlight: rgba(255, 255, 255, 0.95);
+  --island-panel: rgba(241, 245, 249, var(--surface-alpha, 0.98));
+  --island-pill: rgba(241, 245, 249, var(--surface-alpha, 0.99));
+  --island-card-bg: rgba(255, 255, 255, 0.90);
+  --island-card-border: rgba(0, 102, 204, 0.18);
+  --island-badge-bg: rgba(0, 102, 204, 0.08);
   --island-text: #0f172a;
-  --island-muted: #475569;
-  --island-border: rgba(37, 99, 235, 0.32);
+  --island-muted: #64748b;
+  --island-border: rgba(0, 102, 204, 0.28);
 }
 
 /* Scoped high-contrast overrides for Apple Ceramic Pearl (Light Theme) */

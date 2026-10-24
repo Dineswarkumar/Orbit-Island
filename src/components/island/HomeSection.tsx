@@ -1107,8 +1107,9 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         <div
           className="relative z-10 text-[13.5px] font-semibold tracking-normal mt-0.5"
           style={{
-            color: "rgba(255, 255, 255, 0.88)",
-            textShadow: "0 1px 3px rgba(0, 0, 0, 0.7)",
+            color: "var(--island-text)",
+            opacity: 0.88,
+            textShadow: "0 1px 3px rgba(0, 0, 0, 0.4)",
           }}
         >
           {formattedDate}
@@ -1280,7 +1281,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 const nextIdx = (labels.indexOf(timerLabel) + 1) % labels.length;
                 onChangeTimerLabel?.(labels[nextIdx]);
               }}
-              className="px-2 py-0.5 rounded text-[11px] font-extrabold uppercase tracking-wider bg-white/10 text-white/90 hover:bg-white/20 transition-colors cursor-pointer"
+              className="px-2 py-0.5 rounded text-[11px] font-extrabold uppercase tracking-wider orbit-pill-badge-3d hover:bg-white/20 transition-colors cursor-pointer"
+              style={{ color: "var(--island-text)" }}
               title="Click to cycle timer category"
             >
               {timerLabel}:
@@ -1298,7 +1300,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   e.stopPropagation();
                   onStartTimer?.(secs, timerLabel);
                 }}
-                className="px-2.5 py-0.5 rounded-md text-[11px] font-bold orbit-pill-badge-3d text-white/85 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+                className="px-2.5 py-0.5 rounded-md text-[11px] font-bold orbit-pill-badge-3d hover:bg-white/15 transition-colors cursor-pointer"
+                style={{ color: "var(--island-text)" }}
                 title={`Start ${label} ${timerLabel.toLowerCase()} timer`}
               >
                 {label}

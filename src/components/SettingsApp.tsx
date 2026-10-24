@@ -27,6 +27,7 @@ import {
   Trash2,
   GraduationCap,
   Briefcase,
+  Palette,
 } from "lucide-react";
 import { useConfigStore } from "../core/stores/useConfigStore";
 import { ipc } from "../core/ipc/client";
@@ -250,6 +251,14 @@ export const SettingsApp: React.FC = () => {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const selectTheme = (themeId: AppConfig["theme"]) => {
+    setFormData((prev) => {
+      const next = { ...prev, theme: themeId };
+      updateConfig(next).catch(() => {});
+      return next;
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -542,12 +551,127 @@ export const SettingsApp: React.FC = () => {
         className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 focus:outline-none"
       >
         <div className="max-w-5xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Bento Card 0: 3D Curated Theme Showcase Gallery (Full Width) */}
+          <div className={`rounded-2xl p-5 border space-y-4 lg:col-span-2 ${cardBg}`}>
+            <div className="flex items-center justify-between pb-1 border-b border-white/10">
+              <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
+                <Palette className="w-4 h-4 text-cyan-500" />
+                <span>Curated 3D Theme Showcase</span>
+              </h2>
+              <span className="text-[10px] text-cyan-500 bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded font-mono font-semibold">
+                {THEMES.length} Signature Styles
+              </span>
+            </div>
+
+            <p className={`text-xs ${subtextColor}`}>
+              Crafted with authentic desktop glassmorphism, calibrated surface depth, specular rim lighting, and fluid Apple HIG physics. Changes apply instantly to the floating Island overlay.
+            </p>
+
+            {/* Responsive Grid of Curated Theme Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 pt-1">
+              {THEMES.map((t) => {
+                const isSelected = formData.theme === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => selectTheme(t.id)}
+                    className={`relative p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between select-none ${
+                      isSelected
+                        ? "ring-2 ring-cyan-500 bg-cyan-500/10 border-cyan-500/40 shadow-lg scale-[1.01]"
+                        : isLight
+                        ? "bg-slate-50 hover:bg-slate-100 border-slate-200"
+                        : "bg-black/30 hover:bg-white/5 border-white/10"
+                    }`}
+                  >
+                    {/* Top Row: Mini Island Capsule Preview */}
+                    <div
+                      className="w-full h-8 rounded-full border px-2.5 flex items-center justify-between mb-2.5 overflow-hidden transition-all"
+                      style={{
+                        backgroundColor: `rgba(${t.surfaceBase}, 0.96)`,
+                        borderColor: t.borderGlow,
+                        boxShadow: `inset 0 1px 1px ${t.rimHighlight}, 0 2px 8px -1px rgba(0,0,0,0.4)`,
+                      }}
+                    >
+                      <div className="flex items-center space-x-1 min-w-0">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: t.accent }}
+                        />
+                        <span
+                          className="text-[9.5px] font-bold truncate tabular-nums"
+                          style={{ color: t.text }}
+                        >
+                          9:41
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-1 shrink-0">
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: t.accentSecondary }}
+                        />
+                        <span
+                          className="text-[8.5px] font-semibold px-1.5 py-0.2 rounded-full"
+                          style={{
+                            backgroundColor: t.surfaceElevated,
+                            color: t.accent,
+                          }}
+                        >
+                          Island
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Theme Meta Info */}
+                    <div className="min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-bold truncate ${labelColor}`}>
+                          {t.label}
+                        </span>
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#06b6d4] animate-pulse shrink-0 ml-1" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5 leading-snug">
+                        {t.tagline}
+                      </p>
+                    </div>
+
+                    {/* Bottom Swatches Row */}
+                    <div className="flex items-center justify-between pt-2 mt-2 border-t border-white/5">
+                      <div className="flex items-center space-x-1.5">
+                        {t.swatches.map((color, sIdx) => (
+                          <span
+                            key={sIdx}
+                            className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
+                            style={{ backgroundColor: color }}
+                            title={`Palette tone ${sIdx + 1}: ${color}`}
+                          />
+                        ))}
+                      </div>
+                      <span
+                        className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                          isSelected
+                            ? "bg-cyan-500/20 text-cyan-300 font-extrabold"
+                            : isLight
+                            ? "bg-slate-200 text-slate-600"
+                            : "bg-white/10 text-white/60"
+                        }`}
+                      >
+                        {isSelected ? "Active" : "Select"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Bento Card 1: 3D Appearance, Material & Placement (Cyan Accent) */}
           <div className={`rounded-2xl p-5 border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <Sparkles className="w-4 h-4 text-cyan-500" />
-                <span>3D Appearance & Placement</span>
+                <span>3D Glass & Placement</span>
               </h2>
               <span className="text-[10px] text-cyan-500 bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded font-mono font-semibold">
                 3D Shell
@@ -555,27 +679,6 @@ export const SettingsApp: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-3.5">
-              <div>
-                <label className={`block text-xs font-semibold mb-1 ${labelColor}`}>
-                  3D Orbital Theme
-                </label>
-                <select
-                  value={formData.theme}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      theme: e.target.value as AppConfig["theme"],
-                    })
-                  }
-                  className={`w-full rounded-xl px-3 py-2 text-xs border focus:outline-none cursor-pointer ${inputBg}`}
-                >
-                  {THEMES.map((t) => (
-                    <option key={t.id} value={t.id} className={optionCls}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
               <div>
                 <label className={`block text-xs font-semibold mb-1 ${labelColor}`}>

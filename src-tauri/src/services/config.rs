@@ -53,7 +53,7 @@ impl AppConfig {
         ];
         if ![
             "system", "obsidian", "dark", "dynamic", "light", "black", "espresso", "evergreen", "nord",
-            "custom",
+            "catppuccin", "cyber", "custom",
         ]
         .contains(&valid[0])
         {
@@ -511,6 +511,15 @@ mod tests {
         let mut cfg_system = config.clone();
         cfg_system.theme = "system".to_string();
         assert!(cfg_system.validate().is_ok());
+
+        for theme_name in [
+            "system", "obsidian", "dark", "dynamic", "light", "black", "espresso", "evergreen", "nord",
+            "catppuccin", "cyber", "custom",
+        ] {
+            let mut cfg_th = config.clone();
+            cfg_th.theme = theme_name.to_string();
+            assert!(cfg_th.validate().is_ok());
+        }
 
         let mut cfg_click = config.clone();
         cfg_click.expand_trigger = "click".to_string();
