@@ -1295,6 +1295,9 @@ export const IslandApp: React.FC = () => {
         if (p.cameraApp?.includes("(Test)") || p.microphoneApp?.includes("(Test)")) {
           // Hold off the periodic hardware poll so it can't overwrite the simulated state mid-cycle
           privacyTestUntilRef.current = Date.now() + 5000;
+        } else if (Date.now() < privacyTestUntilRef.current) {
+          // Respect active simulated test until timer elapses
+          return;
         }
         setPrivacyState(p);
       }

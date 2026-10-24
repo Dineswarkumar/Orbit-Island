@@ -29,6 +29,8 @@ static MF_LAST_ACTIVE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::Atom
 #[cfg(target_os = "windows")]
 static MF_CAMERA_APP: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 #[cfg(target_os = "windows")]
+static MF_CAMERA_PIDS: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+#[cfg(target_os = "windows")]
 struct MonitorWrapper(Option<windows::Win32::Media::MediaFoundation::IMFSensorActivityMonitor>);
 #[cfg(target_os = "windows")]
 unsafe impl Send for MonitorWrapper {}
@@ -39,7 +41,17 @@ unsafe impl Sync for MonitorWrapper {}
 static MONITOR_HANDLE: std::sync::Mutex<MonitorWrapper> = std::sync::Mutex::new(MonitorWrapper(None));
 
 #[cfg(target_os = "windows")]
-use windows_core::implement;
+use windows_core::{implement, Interface};
+#[cfg(target_os = "windows")]
+use windows::Win32::Media::Audio::{
+    eCapture, IMMDeviceEnumerator, MMDeviceEnumerator,
+    IAudioSessionManager2, IAudioSessionControl2,
+    AudioSessionStateActive, DEVICE_STATE_ACTIVE,
+};
+#[cfg(target_os = "windows")]
+use windows::Win32::Media::Audio::Endpoints::IAudioMeterInformation;
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
 #[cfg(target_os = "windows")]
 use windows::Win32::Media::MediaFoundation::{
     IMFSensorActivitiesReport, IMFSensorActivitiesReportCallback,
@@ -49,53 +61,67 @@ use windows::Win32::Media::MediaFoundation::{
 
 #[cfg(target_os = "windows")]
 pub fn clean_app_name(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    if lower.contains("windowscamera") || (lower.contains("camera") && !lower.contains("obs")) {
+        return "Windows Camera".to_string();
+    }
+    if lower.contains("whatsapp") {
+        return "WhatsApp".to_string();
+    }
+    if lower.contains("screensketch") || lower.contains("snippingtool") {
+        return "Snipping Tool".to_string();
+    }
+    if lower.contains("soundrecorder") || lower.contains("windowssoundrecorder") {
+        return "Sound Recorder".to_string();
+    }
+    if lower.contains("teams") {
+        return "Microsoft Teams".to_string();
+    }
+    if lower.contains("discord") {
+        return "Discord".to_string();
+    }
+    if lower.contains("zoom") {
+        return "Zoom".to_string();
+    }
+    if lower.contains("obs64") || lower.contains("obs-studio") || lower == "obs" {
+        return "OBS Studio".to_string();
+    }
+    if lower.contains("chrome") {
+        return "Google Chrome".to_string();
+    }
+    if lower.contains("msedge") {
+        return "Microsoft Edge".to_string();
+    }
+    if lower.contains("brave") {
+        return "Brave Browser".to_string();
+    }
+    if lower.contains("firefox") {
+        return "Mozilla Firefox".to_string();
+    }
+    if lower.contains("slack") {
+        return "Slack".to_string();
+    }
+    if lower.contains("immersivecontrolpanel") {
+        return "Windows Settings".to_string();
+    }
+
+    if raw.is_empty() {
+        return String::new();
+    }
+
+    // If it's a file path or registry key with # or \
     let clean_path = raw.replace('#', "\\");
     let path = std::path::Path::new(&clean_path);
     if let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) {
-        match file_stem.to_lowercase().as_str() {
-            "chrome" => "Google Chrome".to_string(),
-            "msedge" => "Microsoft Edge".to_string(),
-            "brave" => "Brave Browser".to_string(),
-            "firefox" => "Mozilla Firefox".to_string(),
-            "zoom" => "Zoom".to_string(),
-            "slack" => "Slack".to_string(),
-            "teams" | "msteams" => "Microsoft Teams".to_string(),
-            "discord" => "Discord".to_string(),
-            "obs64" | "obs" => "OBS Studio".to_string(),
-            "code" => "VS Code".to_string(),
-            "camera" | "windowscamera" => "Windows Camera".to_string(),
-            "whatsapp" | "whatsappdesktop" | "whatsapp.root" => "WhatsApp".to_string(),
-            "screensketch" | "snippingtool" => "Snipping Tool".to_string(),
-            "windowssoundrecorder" | "soundrecorder" => "Sound Recorder".to_string(),
-            other => {
-                let mut chars = other.chars();
-                match chars.next() {
-                    None => raw.to_string(),
-                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                }
-            }
-        }
-    } else {
-        if let Some(idx) = raw.find('_') {
-            let prefix = &raw[..idx];
-            let token = if let Some(dot_idx) = prefix.rfind('.') {
-                &prefix[dot_idx + 1..]
-            } else {
-                prefix
+        if !file_stem.is_empty() {
+            let mut chars = file_stem.chars();
+            return match chars.next() {
+                None => raw.to_string(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
             };
-            match token.to_lowercase().as_str() {
-                "whatsappdesktop" | "whatsapp" => "WhatsApp".to_string(),
-                "windowscamera" => "Windows Camera".to_string(),
-                "windowssoundrecorder" => "Sound Recorder".to_string(),
-                "screensketch" => "Snipping Tool".to_string(),
-                "msteams" => "Microsoft Teams".to_string(),
-                "immersivecontrolpanel" => "Windows Settings".to_string(),
-                _ => token.to_string(),
-            }
-        } else {
-            raw.to_string()
         }
     }
+    raw.to_string()
 }
 
 #[cfg(target_os = "windows")]
@@ -122,6 +148,82 @@ fn get_app_name_from_pid(pid: u32) -> String {
 }
 
 #[cfg(target_os = "windows")]
+fn is_pid_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if !h.is_null() {
+            CloseHandle(h);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn inspect_wasapi_microphones(out_apps: &mut Vec<String>) -> bool {
+    let mut any_mic_active = false;
+    unsafe {
+        let Ok(enumerator) =
+            CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
+        else {
+            return false;
+        };
+
+        // Enumerate all active capture endpoints (microphones, line inputs, headsets)
+        let Ok(devices) = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) else {
+            return false;
+        };
+
+        let count = devices.GetCount().unwrap_or(0);
+        for i in 0..count {
+            if let Ok(device) = devices.Item(i) {
+                // Check active audio sessions on this microphone endpoint
+                if let Ok(manager) = device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) {
+                    if let Ok(session_enum) = manager.GetSessionEnumerator() {
+                        let session_count = session_enum.GetCount().unwrap_or(0);
+                        for s in 0..session_count {
+                            if let Ok(control) = session_enum.GetSession(s) {
+                                if let Ok(state) = control.GetState() {
+                                    if state == AudioSessionStateActive {
+                                        any_mic_active = true;
+                                        if let Ok(control2) = control.cast::<IAudioSessionControl2>() {
+                                            if let Ok(pid) = control2.GetProcessId() {
+                                                if pid > 0 {
+                                                    let app_name = get_app_name_from_pid(pid);
+                                                    if !app_name.is_empty() && !out_apps.contains(&app_name) {
+                                                        out_apps.push(app_name);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Check meter peak as a secondary physical confirmation
+                if let Ok(meter) = device.Activate::<IAudioMeterInformation>(CLSCTX_ALL, None) {
+                    if let Ok(peak) = meter.GetPeakValue() {
+                        if peak > 0.005 {
+                            any_mic_active = true;
+                            if out_apps.is_empty() {
+                                out_apps.push("Microphone".to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    any_mic_active
+}
+
+#[cfg(target_os = "windows")]
 #[implement(IMFSensorActivitiesReportCallback)]
 struct OrbitSensorActivityCallback;
 
@@ -134,6 +236,7 @@ impl IMFSensorActivitiesReportCallback_Impl for OrbitSensorActivityCallback_Impl
         if let Ok(report) = sensoractivitiesreport.ok() {
             let mut any_streaming = false;
             let mut active_apps: Vec<String> = Vec::new();
+            let mut active_pids: Vec<u32> = Vec::new();
 
             let count = unsafe { report.GetCount().unwrap_or(0) };
             for i in 0..count {
@@ -159,6 +262,9 @@ impl IMFSensorActivitiesReportCallback_Impl for OrbitSensorActivityCallback_Impl
                             if streaming.as_bool() {
                                 any_streaming = true;
                                 if pid > 0 {
+                                    if !active_pids.contains(&pid) {
+                                        active_pids.push(pid);
+                                    }
                                     let name = get_app_name_from_pid(pid);
                                     if !name.is_empty() && !active_apps.contains(&name) {
                                         active_apps.push(name);
@@ -189,10 +295,16 @@ impl IMFSensorActivitiesReportCallback_Impl for OrbitSensorActivityCallback_Impl
                 if let Ok(mut lock) = MF_CAMERA_APP.lock() {
                     *lock = Some(app_str);
                 }
+                if let Ok(mut lock) = MF_CAMERA_PIDS.lock() {
+                    *lock = active_pids;
+                }
             } else {
                 MF_LAST_ACTIVE_MS.store(0, std::sync::atomic::Ordering::SeqCst);
                 if let Ok(mut lock) = MF_CAMERA_APP.lock() {
                     *lock = None;
+                }
+                if let Ok(mut lock) = MF_CAMERA_PIDS.lock() {
+                    lock.clear();
                 }
             }
         }
@@ -327,6 +439,14 @@ pub fn inspect_privacy_indicators() -> PrivacyState {
     let mut cam_apps = Vec::new();
     let mut mic_apps = Vec::new();
 
+    // 1. WASAPI Real-Time Microphone Session Inspection:
+    // Core Audio session enumeration directly queries all physical recording sessions on Windows
+    // with sub-millisecond accuracy, avoiding registry delays, buffering, and focus dropouts.
+    let wasapi_mic_active = inspect_wasapi_microphones(&mut mic_apps);
+    let mut mic_ok = wasapi_mic_active;
+
+    // 2. Windows CapabilityAccessManager ConsentStore Registry scan:
+    // Checks standard packaged and non-packaged app capability permissions in registry.
     let cam_path: Vec<u16> =
         "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\webcam\0"
             .encode_utf16()
@@ -337,7 +457,6 @@ pub fn inspect_privacy_indicators() -> PrivacyState {
             .collect();
 
     let mut cam_ok = false;
-    let mut mic_ok = false;
 
     for &hive in &[HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
         let mut cam_key = 0 as HKEY;
@@ -359,27 +478,38 @@ pub fn inspect_privacy_indicators() -> PrivacyState {
         }
     }
 
-    // Supplementary Media Foundation Sensor Activity check:
-    // Instantly catches any Windows 11 camera streaming in Chrome, Brave, Zoom, Discord, OBS, Camera, etc.
-    // Media Foundation dispatches OnActivitiesReport every ~1s while streaming; expire after 3.5s if idle.
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-    let last_mf_ms = MF_LAST_ACTIVE_MS.load(std::sync::atomic::Ordering::Relaxed);
-    if MF_CAMERA_ACTIVE.load(std::sync::atomic::Ordering::Relaxed)
-        && last_mf_ms > 0
-        && now_ms.saturating_sub(last_mf_ms) < 3500
-    {
-        if let Ok(lock) = MF_CAMERA_APP.lock() {
-            let app_name = lock.clone().unwrap_or_else(|| "Camera".to_string());
-            if !cam_apps.contains(&app_name) {
-                cam_apps.push(app_name);
+    // 3. Media Foundation Sensor Activity Monitor for camera hardware streaming:
+    // When an app (Chrome, Brave, Zoom, Teams, Discord, OBS, Camera, etc.) opens a video capture stream,
+    // MF sensor activities monitor dispatches OnActivitiesReport with streaming = true.
+    // We maintain active status as long as the stream is active and the capturing process is alive.
+    if MF_CAMERA_ACTIVE.load(std::sync::atomic::Ordering::SeqCst) {
+        let mut pids_still_running = true;
+        if let Ok(lock) = MF_CAMERA_PIDS.lock() {
+            if !lock.is_empty() {
+                pids_still_running = lock.iter().any(|&pid| is_pid_alive(pid));
             }
-        } else if cam_apps.is_empty() {
-            cam_apps.push("Camera".to_string());
         }
-        cam_ok = true;
+
+        if pids_still_running {
+            if let Ok(lock) = MF_CAMERA_APP.lock() {
+                let app_name = lock.clone().unwrap_or_else(|| "Camera".to_string());
+                if !cam_apps.contains(&app_name) {
+                    cam_apps.push(app_name);
+                }
+            } else if cam_apps.is_empty() {
+                cam_apps.push("Camera".to_string());
+            }
+            cam_ok = true;
+        } else {
+            // Process terminated without sensor release callback
+            MF_CAMERA_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+            if let Ok(mut lock) = MF_CAMERA_APP.lock() {
+                *lock = None;
+            }
+            if let Ok(mut lock) = MF_CAMERA_PIDS.lock() {
+                lock.clear();
+            }
+        }
     }
 
     PrivacyState {
@@ -407,9 +537,11 @@ pub fn inspect_privacy_indicators() -> PrivacyState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn test_inspect_privacy() {
+        let _guard = TEST_MUTEX.lock().unwrap();
         init_camera_monitor();
         let state = inspect_privacy_indicators();
         eprintln!(
@@ -417,5 +549,79 @@ mod tests {
             state.camera_active, state.microphone_active, state.camera_app, state.microphone_app
         );
         assert!(state.is_reliable);
+    }
+
+    #[test]
+    fn test_camera_stream_retention_with_live_pid() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        let current_pid = std::process::id();
+        MF_CAMERA_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut lock) = MF_CAMERA_APP.lock() {
+            *lock = Some("Test Camera App".to_string());
+        }
+        if let Ok(mut lock) = MF_CAMERA_PIDS.lock() {
+            *lock = vec![current_pid];
+        }
+
+        // Even after time passes, camera must remain active because the PID is alive
+        let state = inspect_privacy_indicators();
+        assert!(state.camera_active, "Camera indicator must persist while streaming process is alive");
+        assert!(
+            state.camera_app.as_deref().unwrap_or("").contains("Test Camera App"),
+            "Camera app name must be preserved"
+        );
+
+        // Cleanup
+        MF_CAMERA_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut lock) = MF_CAMERA_APP.lock() {
+            *lock = None;
+        }
+        if let Ok(mut lock) = MF_CAMERA_PIDS.lock() {
+            lock.clear();
+        }
+    }
+
+    #[test]
+    fn test_camera_stream_self_heals_when_process_dies() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        // PID 99999999 is virtually guaranteed to not exist
+        MF_CAMERA_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut lock) = MF_CAMERA_APP.lock() {
+            *lock = Some("Crashed App".to_string());
+        }
+        if let Ok(mut lock) = MF_CAMERA_PIDS.lock() {
+            *lock = vec![99_999_999];
+        }
+
+        let state = inspect_privacy_indicators();
+        // Since PID is dead and not in registry, it must clear
+        assert!(
+            !MF_CAMERA_ACTIVE.load(std::sync::atomic::Ordering::SeqCst),
+            "Camera state must self-heal to false when process dies"
+        );
+        assert!(!state.camera_active || state.camera_app != Some("Crashed App".to_string()));
+    }
+
+    #[test]
+    fn test_clean_app_name_edge_cases() {
+        assert_eq!(clean_app_name("chrome.exe"), "Google Chrome");
+        assert_eq!(clean_app_name("msedge.exe"), "Microsoft Edge");
+        assert_eq!(clean_app_name("brave.exe"), "Brave Browser");
+        assert_eq!(clean_app_name("zoom.exe"), "Zoom");
+        assert_eq!(clean_app_name("discord.exe"), "Discord");
+        assert_eq!(clean_app_name("obs64.exe"), "OBS Studio");
+        assert_eq!(clean_app_name("C:#Program Files#WhatsApp#whatsapp.exe"), "WhatsApp");
+        assert_eq!(clean_app_name("Microsoft.WindowsCamera_8wekyb3d8bbwe!App"), "Windows Camera");
+        assert_eq!(clean_app_name(""), "");
+        assert_eq!(clean_app_name("customapp.exe"), "Customapp");
+    }
+
+    #[test]
+    fn test_rapid_consecutive_privacy_inspections() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        for _ in 0..50 {
+            let state = inspect_privacy_indicators();
+            let _ = state.is_reliable;
+        }
     }
 }

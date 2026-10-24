@@ -562,6 +562,13 @@ pub fn run() {
             std::thread::Builder::new()
                 .name("orbit-privacy-monitor".into())
                 .spawn(move || {
+                    let _com = match services::media::ComGuard::new() {
+                        Ok(g) => g,
+                        Err(err) => {
+                            log::error!("Failed to initialize COM for privacy monitor thread: {err}");
+                            return;
+                        }
+                    };
                     let mut last_cam = false;
                     let mut last_mic = false;
                     let mut last_cam_app: Option<String> = None;

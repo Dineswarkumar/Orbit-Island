@@ -513,7 +513,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
             {/* Text Snippet */}
             <div
               className={`flex flex-col min-w-0 flex-1 overflow-hidden leading-tight text-left pl-3 justify-center ${
-                privacyLight ? "pr-5" : "pr-1"
+                privacyLight ? "pr-2" : "pr-1"
               }`}
             >
               {config.privacyMode ? (
