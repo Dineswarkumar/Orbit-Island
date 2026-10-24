@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ShelfItem } from "../../core/types/shelf";
 import { ipc } from "../../core/ipc/client";
+import { useConfigStore } from "../../core/stores/useConfigStore";
 
 interface FileShelfDrawerProps {
   items: ShelfItem[];
@@ -19,8 +20,33 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
   onBack,
   onRefresh,
 }) => {
+  const { config, updateConfig } = useConfigStore();
   const [actionError, setActionError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyPath = async (id: string, filePath: string) => {
+    try {
+      await navigator.clipboard.writeText(filePath);
+      setCopiedId(id);
+      setTimeout(() => {
+        setCopiedId((prev) => (prev === id ? null : prev));
+      }, 1800);
+    } catch (err) {
+      setActionError("Failed to copy path: " + String(err));
+      setTimeout(() => setActionError(null), 3000);
+    }
+  };
+
+  const handleToggleStorageMode = async () => {
+    const nextMode = config.shelfStorageMode === "copy" ? "reference" : "copy";
+    try {
+      await updateConfig({ ...config, shelfStorageMode: nextMode });
+    } catch (err) {
+      setActionError(String(err));
+      setTimeout(() => setActionError(null), 3000);
+    }
+  };
 
   const handleAddFile = async () => {
     setActionError(null);
@@ -104,6 +130,25 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
           <span className="text-[9.5px] px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 font-semibold tabular-nums">
             {items.length}/10
           </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggleStorageMode();
+            }}
+            className={`text-[8.5px] px-1.5 py-0.5 rounded font-semibold transition-colors cursor-pointer border ${
+              config.shelfStorageMode === "copy"
+                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/35"
+                : "bg-white/5 text-white/60 border-white/10 hover:text-white"
+            }`}
+            title={
+              config.shelfStorageMode === "copy"
+                ? "Mode: Managed Copy (copies files ≤50MB into ORBIT storage). Click to switch to Reference mode."
+                : "Mode: Reference Only (links original file without copying). Click to switch to Managed Copy mode."
+            }
+          >
+            {config.shelfStorageMode === "copy" ? "Copy ≤50M" : "Ref Mode"}
+          </button>
         </div>
 
         <div className="flex items-center space-x-1.5 shrink-0">
@@ -165,22 +210,51 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
         ) : (
           items.map((item) => {
             const ext = (item.extension || "file").toUpperCase().slice(0, 4);
+            const isMissing = item.exists === false;
             return (
               <div
                 key={item.id}
-                className="orbit-well-3d rounded-lg px-2 py-1 flex items-center justify-between text-left group hover:bg-white/[0.04] transition-colors"
+                className={`orbit-well-3d rounded-lg px-2 py-1 flex items-center justify-between text-left group hover:bg-white/[0.04] transition-colors ${
+                  isMissing ? "border border-rose-500/30 opacity-80" : ""
+                }`}
               >
                 {/* File Icon Badge + Name + Size */}
                 <div className="flex items-center space-x-2 min-w-0 flex-1 mr-2">
-                  <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase shrink-0">
+                  <span
+                    className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${
+                      isMissing
+                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                        : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                    }`}
+                  >
                     {ext}
                   </span>
                   <div className="min-w-0 flex-1 leading-tight">
-                    <div
-                      className="text-[10.5px] font-medium text-white truncate"
-                      title={item.filePath}
-                    >
-                      {item.displayName}
+                    <div className="flex items-center space-x-1 min-w-0">
+                      <span
+                        className={`text-[10.5px] font-medium truncate ${
+                          isMissing ? "text-rose-200 line-through" : "text-white"
+                        }`}
+                        title={item.filePath}
+                      >
+                        {item.displayName}
+                      </span>
+                      {isMissing && (
+                        <span
+                          className="text-[7.5px] px-1 py-0.2 rounded bg-rose-500/25 text-rose-300 border border-rose-500/40 font-bold uppercase shrink-0"
+                          title="File was moved or deleted from its original location"
+                        >
+                          Missing
+                        </span>
+                      )}
+                      {!isMissing && item.isManagedCopy && (
+                        <span
+                          className="text-[7.5px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold uppercase shrink-0"
+                          title="Stored in ORBIT managed shelf storage"
+                        >
+                          Copy
+                        </span>
+                      )}
                     </div>
                     <div className="text-[8.5px] text-white/40 font-mono">
                       {formatFileSize(item.fileSize)}
@@ -188,16 +262,58 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
                   </div>
                 </div>
 
-                {/* Actions: Open, Reveal, Remove */}
+                {/* Actions: Copy Path, Open, Reveal, Remove */}
                 <div className="flex items-center space-x-1 shrink-0">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      handleCopyPath(item.id, item.filePath);
+                    }}
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      copiedId === item.id
+                        ? "text-emerald-300 bg-emerald-500/20"
+                        : "text-white/60 hover:text-white hover:bg-white/10"
+                    }`}
+                    title={
+                      copiedId === item.id
+                        ? "Copied path to clipboard!"
+                        : `Copy path: ${item.filePath}`
+                    }
+                  >
+                    {copiedId === item.id ? (
+                      <svg
+                        className="w-3 h-3"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="w-3 h-3"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isMissing}
+                    onClick={(e) => {
+                      e.stopPropagation();
                       handleOpen(item.id);
                     }}
-                    className="p-1 rounded text-white/60 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Open file"
+                    className="p-1 rounded text-white/60 hover:text-white hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                    title={isMissing ? "File missing at original path" : "Open file"}
                   >
                     <svg
                       className="w-3 h-3"
@@ -214,12 +330,13 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
 
                   <button
                     type="button"
+                    disabled={isMissing}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleReveal(item.id);
                     }}
-                    className="p-1 rounded text-white/60 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Reveal in File Explorer"
+                    className="p-1 rounded text-white/60 hover:text-white hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                    title={isMissing ? "File missing at original path" : "Reveal in File Explorer"}
                   >
                     <svg
                       className="w-3 h-3"
@@ -239,7 +356,7 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
                       handleRemove(item.id);
                     }}
                     className="p-1 rounded text-white/40 hover:text-rose-300 hover:bg-rose-500/20 transition-colors cursor-pointer"
-                    title="Remove from Shelf (never deletes original file)"
+                    title="Remove from Shelf (never deletes original user file)"
                   >
                     <svg
                       className="w-3 h-3"

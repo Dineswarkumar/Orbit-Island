@@ -1,114 +1,191 @@
-# ORBIT V1.0 Master Execution Blueprint for 3.8 Flash (`PLAN.md`)
+# ORBIT — Execution Plan for Phase 12: The Elite Theme Engine & Visual Showcase Overhaul
 
-> **HOW TO USE THIS FILE WITH 3.8 FLASH:**
-> 1. Switch your Antigravity model selector dropdown to **3.8 Flash**.
-> 2. Paste this prompt to 3.8 Flash:
->    `Read .planning/PLAN.md and execute Phase 1, Phase 2, Phase 3, and Phase 4 in order. Obey all Section 1 Guardrails, run verification after each phase, and rebuild/relaunch target\release\orbit.exe at the end.`
+> **Instructions for 3.8 Flash / Builder Agent**: Execute Tasks 1 through 4 in exact sequential order. Do NOT skip any file or CSS selector. After completing all code edits, run `npm run build`, `cargo test --manifest-path src-tauri/Cargo.toml`, and `cargo build --release --manifest-path src-tauri/Cargo.toml`, then relaunch `src-tauri\target\release\orbit.exe`.
 
 ---
 
-## 1. Non-Negotiable Guardrails for 3.8 Flash (DO NOT VIOLATE)
+## Task 1: Complete Theme Token System & 10-Theme Curated Lineup (`src/core/theme.ts` & `src/styles/globals.css`)
 
-1. **Preserve Win32 GDI Breathing Margins (`src-tauri/src/services/window.rs`)**:
-   - `compact`: `(126.0, 0.0, 274.0, 48.0, 46.0)`
-   - `notification`: `(36.0, 0.0, 364.0, 74.0, 58.0)`
-   - `expanded`: `(16.0, 0.0, 384.0, 180.0, 56.0)`
-   - Never shrink these regions or call `enforce_frameless` during runtime state transitions.
-2. **Preserve Modular Component Structure (`src/components/island/`)**:
-   - Keep `CompactCapsule.tsx`, `HomeSection.tsx`, `CalendarSection.tsx`, `HardwareSection.tsx`, and `NotificationBrandIcon.tsx` modular. Do NOT dump large JSX blocks back into `IslandApp.tsx`.
-3. **Preserve Studio Colors, Per-Metric Hardware Colors, & Zero Mouse Glow**:
-   - Never re-add cursor spotlight radial gradients (`--spot-x`, `--spot-y`, `--glow-x`, `--glow-y`).
-   - Keep the 6 distinct semantic colors in `HardwareSection.tsx` (CPU `#3b82f6`, NET UP `#10b981`, RAM `#8b5cf6`, NET DOWN `#06b6d4`, Battery `#22c55e`/`#f59e0b`/`#ef4444` with NO "Power" title, Disk `#f59e0b`).
-   - Keep 1-decimal precision (`.toFixed(1)`) across all hardware percentages.
-4. **Preserve Notification Drop-Expand-Rewind & Brand Icons**:
-   - Keep the 3-stage notification choreography (`316×56`, `translate3d(0, 7px, 6px)`, `280ms` delayed compact region shrink) and `NotificationBrandIcon` + sender (`title`) & message (`body`) separation.
-5. **Standalone Release Binary Rule (`src-tauri/Cargo.toml`)**:
-   - Keep `default = ["custom-protocol"]` in `src-tauri/Cargo.toml` so `cargo build --release` always embeds `../dist` and never shows the WebView2 `localhost:1420` error.
+### Goal
+Replace murky backgrounds and shallow variable swaps with **10 world-class desktop themes** inspired by Apple Dynamic Island, Raycast Theme Studio, Linear, Catppuccin Mocha, and VisionOS. Provide complete token coverage so card backgrounds, borders, text, muted subtitles, and specular rims transform completely with each theme.
+
+### 1.1 Update `src/core/theme.ts`
+Expand the `ThemeMeta` interface and replace `THEMES` with the following 10 calibrated palettes:
+
+```typescript
+export interface ThemeMeta {
+  id: AppConfig["theme"];
+  label: string;
+  tagline: string;
+  accent: string;           // Primary vibrant action color
+  accentSecondary: string;  // Supporting harmony color
+  color: string;            // Compatibility alias for accent
+  borderGlow: string;       // Outer orbital aura
+  coreGlow: string;         // Volumetric center radial depth
+  rimHighlight: string;     // Top specular catch-light
+  surfaceBase: string;      // RGB triplet for base canvas (e.g., "0, 0, 0")
+  surfaceElevated: string;  // Card background tint
+  surfaceCardBorder: string;// Card border tint
+  text: string;             // High-contrast primary text
+  muted: string;            // Secondary / metadata text
+  badgeBg: string;          // Pill / tag background
+  swatches: string[];       // 3 hex colors for visual preview in Settings
+}
+```
+
+#### The 10 Curated Themes:
+1. **`cupertino_black` (Apple Dynamic Island - Pure OLED)**:
+   - `id`: `"black"`
+   - `surfaceBase`: `"0, 0, 0"`
+   - `accent`: `"#0a84ff"` (Apple System Blue)
+   - `accentSecondary`: `"#30d158"` (Apple System Green)
+   - `text`: `"#f5f5f7"`, `muted`: `"#86868b"`
+   - `rimHighlight`: `"rgba(255, 255, 255, 0.28)"`
+   - `swatches`: `["#000000", "#0a84ff", "#30d158"]`
+
+2. **`obsidian` (Midnight Sapphire)**:
+   - `id`: `"obsidian"`
+   - `surfaceBase`: `"8, 11, 20"`
+   - `accent`: `"#38bdf8"` (Electric Cyan)
+   - `accentSecondary`: `"#2563eb"` (Royal Cobalt)
+   - `text`: `"#f8fafc"`, `muted`: `"#94a3b8"`
+   - `rimHighlight`: `"rgba(255, 255, 255, 0.28)"`
+   - `swatches`: `["#080b14", "#38bdf8", "#2563eb"]`
+
+3. **`linear_indigo` (Linear & Raycast Studio)**:
+   - `id`: `"dynamic"`
+   - `surfaceBase`: `"11, 13, 20"`
+   - `accent`: `"#6366f1"` (Linear Indigo)
+   - `accentSecondary`: `"#a855f7"` (Electric Violet)
+   - `text`: `"#f8fafc"`, `muted`: `"#a5b4fc"`
+   - `rimHighlight`: `"rgba(129, 140, 248, 0.35)"`
+   - `swatches`: `["#0b0d14", "#6366f1", "#a855f7"]`
+
+4. **`vision_spatial` (VisionOS Spatial Glass)**:
+   - `id`: `"dark"`
+   - `surfaceBase`: `"15, 23, 42"`
+   - `accent`: `"#2dd4bf"` (Spatial Teal)
+   - `accentSecondary`: `"#38bdf8"` (Glacier Sky)
+   - `text`: `"#ffffff"`, `muted`: `"#94a3b8"`
+   - `rimHighlight`: `"rgba(255, 255, 255, 0.45)"`
+   - `swatches`: `["#0f172a", "#2dd4bf", "#38bdf8"]`
+
+5. **`catppuccin_mocha` (Catppuccin Mocha - Developer Favorite)**:
+   - `id`: `"catppuccin"` (or update config validation)
+   - `surfaceBase`: `"24, 24, 37"` (#181825 base)
+   - `accent`: `"#cba6f7"` (Mocha Mauve)
+   - `accentSecondary`: `"#fab387"` (Mocha Peach)
+   - `text`: `"#cdd6f4"`, `muted`: `"#a6adc8"`
+   - `rimHighlight`: `"rgba(203, 166, 247, 0.38)"`
+   - `swatches`: `["#181825", "#cba6f7", "#fab387"]`
+
+6. **`cyber_neon` (Cyberpunk Neo-Tokyo)**:
+   - `id`: `"cyber"`
+   - `surfaceBase`: `"3, 3, 6"`
+   - `accent`: `"#00f0ff"` (Cyber Cyan)
+   - `accentSecondary`: `"#ff007f"` (Neon Magenta)
+   - `text`: `"#ffffff"`, `muted`: `"#67e8f9"`
+   - `rimHighlight`: `"rgba(0, 240, 255, 0.45)"`
+   - `swatches`: `["#030306", "#00f0ff", "#ff007f"]`
+
+7. **`sunset_crimson` (Warm Sunset Velvet & Amber)**:
+   - `id`: `"espresso"`
+   - `surfaceBase`: `"18, 7, 12"` (Deep velvety plum, not muddy brown!)
+   - `accent`: `"#f43f5e"` (Sunset Rose)
+   - `accentSecondary`: `"#f59e0b"` (Radiant Amber Gold)
+   - `text`: `"#fff1f2"`, `muted`: `"#fda4af"`
+   - `rimHighlight`: `"rgba(251, 113, 133, 0.36)"`
+   - `swatches`: `["#12070c", "#f43f5e", "#f59e0b"]`
+
+8. **`emerald_aurora` (Nordic Botanical Emerald)**:
+   - `id`: `"evergreen"`
+   - `surfaceBase`: `"6, 18, 14"` (Deep abyssal pine, not murky pond!)
+   - `accent`: `"#10b981"` (Vivid Emerald)
+   - `accentSecondary`: `"#34d399"` (Fresh Mint)
+   - `text`: `"#ecfdf5"`, `muted`: `"#6ee7b7"`
+   - `rimHighlight`: `"rgba(52, 211, 153, 0.38)"`
+   - `swatches`: `["#06120e", "#10b981", "#34d399"]`
+
+9. **`nord_ocean` (Abyssal Ocean & Solar Gold)**:
+   - `id`: `"nord"`
+   - `surfaceBase`: `"10, 18, 32"`
+   - `accent`: `"#fbbf24"` (Solar Gold)
+   - `accentSecondary`: `"#38bdf8"` (Glacier Sky)
+   - `text`: `"#f0f9ff"`, `muted`: `"#93c5fd"`
+   - `rimHighlight`: `"rgba(251, 191, 36, 0.35)"`
+   - `swatches`: `["#0a1220", "#fbbf24", "#38bdf8"]`
+
+10. **`ceramic_pearl` (Apple Ceramic Alabaster - Light Theme)**:
+    - `id`: `"light"`
+    - `surfaceBase`: `"241, 245, 249"`
+    - `accent`: `"#0066cc"` (Apple Royal Blue)
+    - `accentSecondary`: `"#4f46e5"` (Deep Indigo)
+    - `text`: `"#0f172a"`, `muted`: `"#64748b"`
+    - `rimHighlight`: `"rgba(255, 255, 255, 0.95)"`
+    - `swatches`: `["#f1f5f9", "#0066cc", "#ffffff"]`
+
+11. **`system` (System Auto - Follow Windows)**:
+    - Automatically switches to `light` when Windows is in Light Mode, or `black` when in Dark Mode.
+
+### 1.2 Update `src/styles/globals.css`
+For each theme class (`.theme-black`, `.theme-obsidian`, `.theme-dynamic`, `.theme-dark`, `.theme-catppuccin`, `.theme-cyber`, `.theme-espresso`, `.theme-evergreen`, `.theme-nord`, `.theme-light`), declare full CSS variables:
+- `--theme-accent`
+- `--theme-accent-secondary`
+- `--core-glow`
+- `--rim-highlight`
+- `--island-panel`
+- `--island-pill`
+- `--island-card-bg`
+- `--island-card-border`
+- `--island-badge-bg`
+- `--island-text`
+- `--island-muted`
+- `--island-border`
 
 ---
 
-## 2. Step-by-Step Phases to Complete ORBIT Version 1.0
+## Task 2: Deep Theme Token Binding in Island Components (`HomeSection.tsx`, `MultiTaskSection.tsx`, `CalendarSection.tsx`, `CompactCapsule.tsx`)
 
-### Phase 1 — Built-In Countdown / Focus Timer (PRD §5.3 & `reference-timer-and-media.png`)
-- **Objective**: Allow the user to start/pause/cancel a quick countdown timer (e.g., 5m, 15m, 25m, 45m) from the right-click context menu or Expanded Home, persist the target deadline timestamp in `localStorage` so it survives restarts, and show a sleek circular progress ring + `MM:SS` countdown.
-- **Files to Create / Modify**:
-  - `src-tauri/src/lib.rs` (Context Menu Timer actions)
-  - `src/components/IslandApp.tsx`
-  - `src/components/island/CompactCapsule.tsx`
-  - `src/components/island/HomeSection.tsx`
-- **Exact Implementation Spec**:
-  1. **Context Menu Timer Triggers (`src-tauri/src/lib.rs`)**:
-     - In `show_context_menu` (or the context menu builder in `src-tauri/src/commands/mod.rs` / `lib.rs`), add a `"Timer"` submenu with options:
-       - `ctx_timer_5`: `"Start 5m Timer"`
-       - `ctx_timer_15`: `"Start 15m Timer"`
-       - `ctx_timer_25`: `"Start 25m Focus"`
-       - `ctx_timer_stop`: `"Cancel Timer"`
-     - When clicked, emit `"timer-command"` event to the frontend with payload `{ action: "start", durationSecs: 300 | 900 | 1500 }` or `{ action: "stop" }`.
-  2. **Deadline-Based Timer State (`src/components/IslandApp.tsx`)**:
-     - Store `timerDeadlineMs: number | null` and `timerTotalSecs: number` (persisted in `localStorage` under `"orbit_timer_state"` so it survives app restarts per PRD §5.3).
-     - Compute `timerRemainingSecs = timerDeadlineMs ? Math.max(0, Math.ceil((timerDeadlineMs - Date.now()) / 1000)) : 0`.
-     - When `timerRemainingSecs` reaches `0` from an active countdown, clear `timerDeadlineMs` and trigger a high-priority transient notification (`title: "Timer Complete"`, `body: "Your countdown timer has finished."`, `isCritical: true`).
-  3. **Compact & Expanded Display (`CompactCapsule.tsx` & `HomeSection.tsx`)**:
-     - In `CompactCapsule.tsx`: When a timer is active (and no transient notification is overriding), show a sleek circular SVG progress ring (`#f59e0b` amber) + formatted `MM:SS` countdown next to the clock (or media).
-     - In `HomeSection.tsx`: Add a subtle quick-timer pill bar (`5m`, `15m`, `25m`, or `Stop MM:SS` when active) at the bottom of the idle Home view (when privacy pill is not occupying the slot) so users can also start/stop a timer with one click inside the expanded island.
+### Goal
+Eliminate hardcoded generic Tailwind classes (`bg-white/10`, `border-white/10`, `text-white/40`) so all island surfaces, buttons, wells, headers, and badges dynamically adopt the active theme's colors, borders, and text tones.
+
+### 2.1 Update `HomeSection.tsx`
+- Replace hardcoded `bg-white/10` and `border-white/10` on top pills, quick action cards, and timer presets with `var(--island-card-bg)` and `var(--island-card-border)`.
+- Use `style={{ color: "var(--island-text)" }}` and `style={{ color: "var(--island-muted)" }}` or dedicated utility classes so titles and subtitles match the theme.
+- Ensure the Media Player progress bar, frequency bars, and volume slider use `activeThemeMeta.accent` and `activeThemeMeta.accentSecondary`.
+
+### 2.2 Update `MultiTaskSection.tsx`
+- Update the 4 Bento slots to use `style={{ background: "var(--island-card-bg)", borderColor: "var(--island-card-border)" }}`.
+- Update icons and badges to use `activeThemeMeta.accent`.
+
+### 2.3 Update `CalendarSection.tsx`
+- Ensure the month navigation buttons, category pills, and add-task inputs use `var(--island-card-bg)` and `var(--island-card-border)`.
+- Keep the category colors for exams, holidays, and events crisp and distinct against all theme backgrounds.
 
 ---
 
-### Phase 2 — File Shelf Drawer & Drag-and-Drop Access in Expanded Home (PRD §5.8)
-- **Objective**: Connect the existing SQLite `file_shelf` backend (`getShelfItems`, `addShelfItem`, `removeShelfItem`, `openShelfItem`, `revealShelfItem`, `pickShelfFile` in `src/core/ipc/client.ts`) to a clean, toggleable File Shelf view inside Expanded Home (`HomeSection.tsx`) and auto-open it on file drag-over.
-- **Files to Create / Modify**:
-  - Create `src/components/island/FileShelfDrawer.tsx`
-  - Modify `src/components/island/HomeSection.tsx` and `src/components/IslandApp.tsx`
-- **Exact Implementation Spec**:
-  1. Create `src/components/island/FileShelfDrawer.tsx`:
-     - Displays held files (`ShelfItem[]` from `src/core/types/shelf.ts`) in a compact scrollable list inside the `356×168` expanded canvas.
-     - Header bar: `"File Shelf ({items.length}/10)"`, `"+ Add File"` button (calls `ipc.pickShelfFile()`), `"Clear"` button (`ipc.clearShelf()`), and `"← Back"` button.
-     - Each file row (`orbit-well-3d rounded-lg px-2 py-1 flex items-center justify-between`):
-       - Extension badge (`PDF`, `PNG`, `ZIP`, etc. in `#60a5fa`), truncated file name, and quick icon buttons for **Open** (`ipc.openShelfItem(id)`), **Reveal in Explorer** (`ipc.revealShelfItem(id)`), and **Remove** (`ipc.removeShelfItem(id)` — never deletes original file).
-  2. In `src/components/island/HomeSection.tsx`:
-     - Add a subtle top-left pill button (`Shelf ({shelfItems.length})`) on the Idle Home view to toggle `showFileShelf`.
-  3. In `src/components/IslandApp.tsx`:
-     - Load initial shelf items via `ipc.getShelfItems()`.
-     - Listen to `"tauri://drag-drop"` (or Tauri v2 `tauri://drag-drop` payload `{ paths: string[] }`): when files are dropped onto the island, call `ipc.addShelfItem(path, "reference")`, refresh `shelfItems`, expand the island to Section 0 (`Home`), and set `showFileShelf(true)`.
+## Task 3: Interactive Visual Theme Showcase Gallery in Settings (`src/components/SettingsApp.tsx`)
+
+### Goal
+Replace the plain `<select>` theme dropdown with a **Visual Bento Theme Gallery**:
+- A responsive 2-column or 3-column grid of interactive Theme Cards.
+- Each Theme Card features:
+  - Mini **Dynamic Island Preview Pill** showing the theme's background, specular rim highlight, and live accent glow.
+  - Theme Label and descriptive Tagline.
+  - 3 Circular Swatch Dots displaying the theme's canvas, primary accent, and secondary accent.
+  - Active Radio Checkmark with glowing ring when selected.
+  - Instant live IPC update to the island overlay on click.
 
 ---
 
-### Phase 3 — Windows Sign-In Auto-Launch (`HKCU\...\Run`) & Data Reset Controls in Settings (PRD §6)
-- **Objective**: Make `launchAtStartup` in `AppConfig` genuinely register/unregister `orbit.exe` in Windows CurrentUser Startup registry, and add a "Reset & Diagnostics" card in `SettingsApp.tsx`.
-- **Files to Modify**:
-  - `src-tauri/src/services/config.rs`
-  - `src-tauri/src/commands/mod.rs`
-  - `src-tauri/src/lib.rs`
-  - `src/core/ipc/client.ts`
-  - `src/components/SettingsApp.tsx`
-- **Exact Implementation Spec**:
-  1. **Windows Startup Registry Sync (`src-tauri/src/services/config.rs`)**:
-     - Add `pub fn sync_startup_registry(enable: bool)`:
-       - Under `#[cfg(target_os = "windows")]`, open `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` using `windows_sys::Win32::System::Registry::{RegOpenKeyExW, RegSetValueExW, RegDeleteValueW, RegCloseKey, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_SZ}`.
-       - If `enable == true`, set value `"ORBIT"` to the current executable path (`std::env::current_exe()`).
-       - If `enable == false`, delete value `"ORBIT"` (ignoring not-found errors).
-     - Call `sync_startup_registry(config.launch_at_startup)` inside `save_config` (`commands/mod.rs`).
-  2. **Clear Local Data Command (`src-tauri/src/commands/mod.rs`)**:
-     - Add `#[tauri::command] pub async fn clear_local_data(db_state: State<'_, Arc<DbManager>>) -> Result<(), String>` that clears `reminders` and `file_shelf` tables in `orbit.db` without touching original user files on disk.
-  3. **Settings UI (`src/components/SettingsApp.tsx`)**:
-     - Add a **"Startup & Reset"** section at the bottom of `SettingsApp.tsx` with:
-       - Toggle for **Launch ORBIT at Windows Sign-In** (`config.launchAtStartup`).
-       - Button for **Reset Settings to Defaults**.
-       - Button for **Clear Local Reminders & Shelf References** (calls `ipc.clearLocalData()`).
+## Task 4: Configuration Validation & Backward Compatibility (`src-tauri/src/services/config.rs` & `src/core/types/config.ts`)
 
----
+### Goal
+Ensure any newly introduced theme IDs (e.g. `"catppuccin"`, `"cyber"`) are fully validated in Rust (`services/config.rs`) and TypeScript (`core/types/config.ts`), with seamless fallback to `"obsidian"` for invalid/legacy IDs so existing user config files never crash.
 
-### Phase 4 — Version 1.0.0 Release Bump, Final Test Suite & Production Binary Launch
-- **Objective**: Bump version to `1.0.0`, run all unit tests and production builds, launch the final `1.0.0` `orbit.exe`, and update `.planning/STATE.md`, `.planning/ROADMAP.md`, and `.planning/UAT.md`.
-- **Files to Modify**:
-  - `package.json` (`"version": "1.0.0"`)
-  - `src-tauri/Cargo.toml` (`version = "1.0.0"`)
-  - `src-tauri/tauri.conf.json` (`"version": "1.0.0"`)
-  - `.planning/STATE.md`, `.planning/ROADMAP.md`, `.planning/UAT.md`
-- **Verification & Launch Sequence (Mandatory)**:
-  1. Run `npm run build` (must exit 0 with zero TypeScript or Vite errors).
-  2. Run `cargo test --manifest-path src-tauri/Cargo.toml` (all unit tests must pass).
-  3. Run `Stop-Process -Name orbit -Force -ErrorAction SilentlyContinue`.
-  4. Run `cargo build --release --manifest-path src-tauri/Cargo.toml`.
-  5. Run `Start-Process "T:\B-Tech\Projects\Orbit-island\src-tauri\target\release\orbit.exe"` and verify via `Get-Process orbit`.
-  6. Update `.planning/STATE.md` and `.planning/ROADMAP.md` to record **ORBIT v1.0.0 Complete**.
+### Verification Steps
+1. Run `npm run build` — must pass with 0 TypeScript/Vite errors.
+2. Run `cargo test --manifest-path src-tauri/Cargo.toml` — all 34+ Rust backend unit tests must pass.
+3. Run `cargo build --release --manifest-path src-tauri/Cargo.toml` — must compile clean release binary.
+4. Launch `src-tauri\target\release\orbit.exe` and confirm live PID.
+5. Open Settings (`Alt+S` or right-click System Tray -> Settings) and verify the Theme Showcase Gallery displays all themes with live previews and immediate island transformation upon selection.

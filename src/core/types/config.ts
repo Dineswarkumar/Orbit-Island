@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const AppConfigSchema = z.object({
   theme: z.enum([
+    "system",
     "obsidian",
     "dark",
     "dynamic",
@@ -10,6 +11,8 @@ export const AppConfigSchema = z.object({
     "espresso",
     "evergreen",
     "nord",
+    "catppuccin",
+    "cyber",
     "custom"
   ]).default("obsidian"),
   position: z.enum(["top-center", "top-left", "top-right"]).default("top-center"),
@@ -25,6 +28,31 @@ export const AppConfigSchema = z.object({
   showPrivacyIndicators: z.boolean().default(true),
   blockedApps: z.array(z.string()).default([]),
   surfaceOpacity: z.union([z.literal(20), z.literal(50), z.literal(80), z.literal(100)]).default(80),
+  showWeather: z.boolean().default(false),
+  weatherUnit: z.enum(["C", "F"]).default("C"),
+  adaptiveAlbumAccent: z.boolean().default(true),
+  expandTrigger: z.enum(["hover", "click"]).default("hover"),
+  pauseInFullscreen: z.boolean().default(true),
+  shelfStorageMode: z.enum(["reference", "copy"]).default("reference"),
+  fontFamily: z.enum(["inter", "bold", "claude", "mono", "rounded", "cyber"]).default("inter"),
+  onboardingCompleted: z.boolean().default(false),
+  compactRightSlot: z.enum([
+    "weather",
+    "orbit_logo",
+    "windows_logo",
+    "apple_logo",
+    "linux_logo",
+    "custom_text",
+    "custom_image",
+    "smart",
+  ]).default("weather"),
+  customRightText: z.string().max(5).default("ORBIT"),
+  customRightTextStyle: z.enum(["neon_glow", "cyber_badge", "aurora_pill", "liquid_gold"]).default("neon_glow"),
+  customRightImageBase64: z.string().max(512000).default(""),
+  hideFromScreenCapture: z.boolean().default(false),
+  shortcutsEnabled: z.boolean().default(true),
+  autoHideInMeetings: z.boolean().default(true),
+  networkActivityMode: z.enum(["off", "speed_only", "full"]).default("speed_only"),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;

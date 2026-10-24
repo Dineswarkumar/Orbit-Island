@@ -2,14 +2,15 @@ pub mod commands;
 pub mod services;
 
 use commands::{
-    add_reminder, add_shelf_item, clear_all_notifications, clear_local_data, clear_shelf,
-    close_settings_window, delete_reminder, dismiss_notification, free_up_memory, get_config,
-    get_hardware_metrics, get_media_sources, get_media_state, get_memory_metrics,
-    get_notification_access_status, get_notification_state, get_privacy_state, get_reminders,
-    get_shelf_items, hide_island_window, media_seek, media_send_command, open_settings_window,
-    open_shelf_file, pick_shelf_file, pin_media_source, remove_shelf_item,
-    request_notification_access, save_config, set_island_state, show_context_menu,
-    show_shelf_file_in_folder, toggle_reminder, MediaState,
+    activate_app_source, add_reminder, add_shelf_item, clear_all_notifications, clear_imported_calendar,
+    clear_local_data, clear_shelf, close_settings_window, delete_reminder, dismiss_notification,
+    free_up_memory, get_config, get_hardware_metrics, get_media_sources, get_media_state,
+    get_memory_metrics, get_notification_access_status, get_notification_state, get_privacy_state,
+    get_reminders, get_shelf_items, hide_island_window, media_seek, media_send_command,
+    open_settings_window, open_shelf_file, pick_and_import_calendar, pick_shelf_file,
+    pin_media_source, remove_shelf_item, request_notification_access, reveal_diagnostic_log,
+    save_config, set_island_state, show_context_menu, show_shelf_file_in_folder, toggle_reminder,
+    trigger_privacy_test, update_island_region, MediaState,
 };
 use services::config::load_config;
 use services::notifications::NotificationManager;
@@ -24,6 +25,7 @@ pub struct TrayState(pub std::sync::Arc<TrayIcon>);
 pub struct IslandVisibilityState {
     pub user_manually_hidden: std::sync::atomic::AtomicBool,
     pub auto_suppressed_fullscreen: std::sync::atomic::AtomicBool,
+    pub shortcuts_enabled: std::sync::atomic::AtomicBool,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -65,6 +67,47 @@ pub fn run() {
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             match id {
+                "ctx_pin_expanded" => {
+                    let _ = app.emit("toggle-pin-expanded", ());
+                }
+                "ctx_pause_fullscreen" => {
+                    let mut cfg = load_config(app);
+                    cfg.pause_in_fullscreen = !cfg.pause_in_fullscreen;
+                    match services::config::save_config(app, &cfg) {
+                        Ok(()) => {
+                            let _ = app.emit("config-changed", &cfg);
+                        }
+                        Err(error) => log::error!("Failed to save pause_in_fullscreen from context menu: {error}"),
+                    }
+                }
+                "ctx_expand_click" => {
+                    let mut cfg = load_config(app);
+                    cfg.expand_trigger = if cfg.expand_trigger == "click" {
+                        "hover".to_string()
+                    } else {
+                        "click".to_string()
+                    };
+                    match services::config::save_config(app, &cfg) {
+                        Ok(()) => {
+                            let _ = app.emit("config-changed", &cfg);
+                        }
+                        Err(error) => log::error!("Failed to save expand_trigger from context menu: {error}"),
+                    }
+                }
+                "ctx_stealth_capture" => {
+                    let mut cfg = load_config(app);
+                    cfg.hide_from_screen_capture = !cfg.hide_from_screen_capture;
+                    if let Some(main_win) = app.get_webview_window("main") {
+                        services::window::set_window_capture_stealth(&main_win, cfg.hide_from_screen_capture);
+                    }
+                    match services::config::save_config(app, &cfg) {
+                        Ok(()) => {
+                            let _ = app.emit("config-changed", &cfg);
+                            let _ = app.emit("stealth-mode-toggled", cfg.hide_from_screen_capture);
+                        }
+                        Err(error) => log::error!("Failed to save hide_from_screen_capture from context menu: {error}"),
+                    }
+                }
                 "ctx_hide" => {
                     if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
                         vis.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -73,6 +116,9 @@ pub fn run() {
                 }
                 "ctx_dismiss" => {
                     let _ = app.emit("collapse-island", ());
+                }
+                "ctx_test_privacy" => {
+                    let _ = commands::trigger_privacy_test(app.clone());
                 }
                 "ctx_timer_5" => {
                     let _ = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 300 }));
@@ -111,7 +157,8 @@ pub fn run() {
                 "quit" => {
                     app.exit(0);
                 }
-                "theme_obsidian"
+                "theme_system"
+                | "theme_obsidian"
                 | "theme_dark"
                 | "theme_dynamic"
                 | "theme_light"
@@ -120,6 +167,7 @@ pub fn run() {
                 | "theme_evergreen"
                 | "theme_nord" => {
                     let theme_id = match id {
+                        "theme_system" => "system",
                         "theme_obsidian" => "obsidian",
                         "theme_dynamic" => "dynamic",
                         "theme_dark" => "dark",
@@ -128,7 +176,7 @@ pub fn run() {
                         "theme_espresso" => "espresso",
                         "theme_evergreen" => "evergreen",
                         "theme_nord" => "nord",
-                        _ => "dark",
+                        _ => "obsidian",
                     };
                     let mut cfg = load_config(app);
                     cfg.theme = theme_id.to_string();
@@ -143,6 +191,11 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
+            services::logger::log_event(
+                "DEBUG",
+                "window_event",
+                &format!("label: {}, event: {:?}", window.label(), event),
+            );
             if window.label() == "main" {
                 if let tauri::WindowEvent::ScaleFactorChanged { .. } = event {
                     let app = window.app_handle();
@@ -163,9 +216,10 @@ pub fn run() {
                     log::error!("Failed to initialize island window geometry: {error}");
                 }
 
-                // Apply always_on_top from config AFTER init_island_window
+                // Apply always_on_top and screen-capture stealth from config AFTER init_island_window
                 let _ = main_win.set_always_on_top(initial_config.always_on_top);
                 services::window::set_window_topmost(&main_win, initial_config.always_on_top);
+                services::window::set_window_capture_stealth(&main_win, initial_config.hide_from_screen_capture);
             }
 
             // Build Tray Menu
@@ -205,7 +259,138 @@ pub fn run() {
 
             // Manage island visibility and auto-suppression state (Task M4.1)
             let visibility_state = std::sync::Arc::new(IslandVisibilityState::default());
+            visibility_state
+                .shortcuts_enabled
+                .store(initial_config.shortcuts_enabled, std::sync::atomic::Ordering::SeqCst);
             app.manage(visibility_state.clone());
+
+            // Spawn global keyboard shortcuts manager thread (Phase 9)
+            #[cfg(target_os = "windows")]
+            {
+                let app_handle_hk = app.handle().clone();
+                let vis_hk = visibility_state.clone();
+                std::thread::Builder::new()
+                    .name("orbit-hotkey-manager".into())
+                    .spawn(move || {
+                        use windows_sys::Win32::Foundation::HWND;
+                        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+                            RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_NOREPEAT,
+                        };
+                        use windows_sys::Win32::UI::WindowsAndMessaging::{
+                            PeekMessageW, MSG, PM_REMOVE, WM_HOTKEY,
+                        };
+
+                        let mut registered = false;
+                        // ID 1 = Alt+O (Expand/Collapse), ID 2 = Alt+H (Hide/Show), ID 3 = Alt+S (Stealth Capture), ID 4 = Alt+M (Play/Pause Media)
+                        let hotkeys: [(i32, u32); 4] = [
+                            (1, b'O' as u32),
+                            (2, b'H' as u32),
+                            (3, b'S' as u32),
+                            (4, b'M' as u32),
+                        ];
+
+                        loop {
+                            let should_enable = vis_hk
+                                .shortcuts_enabled
+                                .load(std::sync::atomic::Ordering::Relaxed);
+
+                            if should_enable && !registered {
+                                unsafe {
+                                    for &(id, vk) in &hotkeys {
+                                        let _ = RegisterHotKey(
+                                            0 as HWND,
+                                            id,
+                                            MOD_ALT | MOD_NOREPEAT,
+                                            vk,
+                                        );
+                                    }
+                                }
+                                registered = true;
+                            } else if !should_enable && registered {
+                                unsafe {
+                                    for &(id, _) in &hotkeys {
+                                        let _ = UnregisterHotKey(0 as HWND, id);
+                                    }
+                                    let mut dummy: MSG = std::mem::zeroed();
+                                    while PeekMessageW(&mut dummy, 0 as HWND, WM_HOTKEY, WM_HOTKEY, PM_REMOVE) != 0 {}
+                                }
+                                registered = false;
+                            }
+
+                            if registered {
+                                unsafe {
+                                    let mut msg: MSG = std::mem::zeroed();
+                                    while PeekMessageW(
+                                        &mut msg,
+                                        0 as HWND,
+                                        WM_HOTKEY,
+                                        WM_HOTKEY,
+                                        PM_REMOVE,
+                                    ) != 0
+                                    {
+                                        services::logger::log_event(
+                                            "DEBUG",
+                                            "hotkey",
+                                            &format!("Hotkey msg.wParam: {}", msg.wParam),
+                                        );
+                                        match msg.wParam as i32 {
+                                            1 => {
+                                                // Alt+O: Expand / Collapse Island
+                                                if let Some(main_win) = app_handle_hk.get_webview_window("main") {
+                                                    if !main_win.is_visible().unwrap_or(true) {
+                                                        vis_hk.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                                                        let _ = main_win.show();
+                                                        let _ = app_handle_hk.emit("island-shown", ());
+                                                    }
+                                                }
+                                                let _ = app_handle_hk.emit("hotkey-toggle-expand", ());
+                                            }
+                                            2 => {
+                                                // Alt+H: Hide / Show Island
+                                                if let Some(main_win) = app_handle_hk.get_webview_window("main") {
+                                                    if let Ok(is_visible) = main_win.is_visible() {
+                                                        if is_visible {
+                                                            vis_hk.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
+                                                            let _ = app_handle_hk.emit("request-hide-island", ());
+                                                        } else {
+                                                            vis_hk.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                                                            let _ = main_win.show();
+                                                            let _ = main_win.set_focus();
+                                                            let _ = app_handle_hk.emit("island-shown", ());
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            3 => {
+                                                // Alt+S: Toggle Screen-Share / Recording Stealth
+                                                let mut cfg = load_config(&app_handle_hk);
+                                                cfg.hide_from_screen_capture = !cfg.hide_from_screen_capture;
+                                                if let Some(main_win) = app_handle_hk.get_webview_window("main") {
+                                                    services::window::set_window_capture_stealth(
+                                                        &main_win,
+                                                        cfg.hide_from_screen_capture,
+                                                    );
+                                                }
+                                                if services::config::save_config(&app_handle_hk, &cfg).is_ok() {
+                                                    let _ = app_handle_hk.emit("config-changed", &cfg);
+                                                    let _ = app_handle_hk.emit("stealth-mode-toggled", cfg.hide_from_screen_capture);
+                                                }
+                                            }
+                                            4 => {
+                                                // Alt+M: Play / Pause Media
+                                                let _ = app_handle_hk.emit("hotkey-media-play-pause", ());
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+
+                            std::thread::sleep(std::time::Duration::from_millis(45));
+                        }
+                    })
+                    .expect("failed to spawn hotkey manager thread");
+            }
 
             // Manage media state
             let media_state = MediaState::default();
@@ -241,8 +426,11 @@ pub fn run() {
                                 let is_fs = services::window::is_foreground_fullscreen(hwnd.0 as isize);
                                 let auto_suppressed = vis_fs.auto_suppressed_fullscreen.load(std::sync::atomic::Ordering::Relaxed);
                                 let manually_hidden = vis_fs.user_manually_hidden.load(std::sync::atomic::Ordering::Relaxed);
+                                let cfg = load_config(&app_handle_fs);
+                                let should_pause = cfg.pause_in_fullscreen;
 
-                                if is_fs && !auto_suppressed && !manually_hidden {
+                                if is_fs && should_pause && !auto_suppressed && !manually_hidden {
+                                    services::logger::log_event("DEBUG", "fullscreen", "Auto-suppressing window due to fullscreen");
                                     vis_fs.auto_suppressed_fullscreen.store(true, std::sync::atomic::Ordering::SeqCst);
                                     let _ = app_handle_fs.emit("fullscreen-state-changed", true);
                                     if let Ok(is_vis) = main_win.is_visible() {
@@ -250,16 +438,14 @@ pub fn run() {
                                             let _ = main_win.hide();
                                         }
                                     }
-                                } else if !is_fs && auto_suppressed && !manually_hidden {
+                                } else if (!is_fs || !should_pause) && auto_suppressed && !manually_hidden {
                                     vis_fs.auto_suppressed_fullscreen.store(false, std::sync::atomic::Ordering::SeqCst);
                                     let _ = app_handle_fs.emit("fullscreen-state-changed", false);
-                                    let cfg = load_config(&app_handle_fs);
                                     let _ = main_win.set_always_on_top(cfg.always_on_top);
                                     services::window::set_window_topmost(&main_win, cfg.always_on_top);
                                     let _ = main_win.show();
                                     let _ = app_handle_fs.emit("island-shown", ());
                                 } else if !is_fs && !auto_suppressed && !manually_hidden {
-                                    let cfg = load_config(&app_handle_fs);
                                     if cfg.always_on_top {
                                         services::window::set_window_topmost(&main_win, true);
                                     }
@@ -334,6 +520,85 @@ pub fn run() {
                 })
                 .expect("failed to spawn media monitor thread");
 
+            // Spawn real-time WASAPI audio peak/spectrum monitor for frequency-reactive music waveforms
+            let app_handle_spectrum = app.handle().clone();
+            std::thread::Builder::new()
+                .name("orbit-audio-spectrum".into())
+                .spawn(move || {
+                    let _com = match services::media::ComGuard::new() {
+                        Ok(g) => g,
+                        Err(err) => {
+                            log::error!("Failed to initialize COM for audio spectrum thread: {err}");
+                            return;
+                        }
+                    };
+                    let mut prev_peak = 0.0f32;
+                    let mut smooth_low = 0.0f32;
+                    let mut phase = 0.0f32;
+                    let mut was_active = false;
+
+                    loop {
+                        let spectrum = services::media::sample_audio_spectrum(
+                            &mut prev_peak,
+                            &mut smooth_low,
+                            &mut phase,
+                        );
+                        let is_active = spectrum.peak > 0.004;
+                        if is_active || was_active {
+                            was_active = is_active;
+                            let _ = app_handle_spectrum.emit("media-audio-spectrum", &spectrum);
+                        }
+                        let delay = if is_active { 95 } else { 220 };
+                        std::thread::sleep(std::time::Duration::from_millis(delay));
+                    }
+                })
+                .expect("failed to spawn audio spectrum thread");
+
+            // Initialize native Media Foundation sensor activity monitor for camera hardware streaming
+            services::privacy::init_camera_monitor();
+
+            // Spawn real-time background thread to continuously inspect camera & mic privacy indicators
+            let app_handle_privacy = app.handle().clone();
+            std::thread::Builder::new()
+                .name("orbit-privacy-monitor".into())
+                .spawn(move || {
+                    let _com = match services::media::ComGuard::new() {
+                        Ok(g) => g,
+                        Err(err) => {
+                            log::error!("Failed to initialize COM for privacy monitor thread: {err}");
+                            return;
+                        }
+                    };
+                    let mut last_cam = false;
+                    let mut last_mic = false;
+                    let mut last_cam_app: Option<String> = None;
+                    let mut last_mic_app: Option<String> = None;
+
+                    loop {
+                        let state = services::privacy::inspect_privacy_indicators();
+                        let changed = state.camera_active != last_cam
+                            || state.microphone_active != last_mic
+                            || state.camera_app != last_cam_app
+                            || state.microphone_app != last_mic_app;
+
+                        if changed {
+                            last_cam = state.camera_active;
+                            last_mic = state.microphone_active;
+                            last_cam_app = state.camera_app.clone();
+                            last_mic_app = state.microphone_app.clone();
+                            let _ = app_handle_privacy.emit("privacy-state-changed", &state);
+                        }
+
+                        let delay = if state.camera_active || state.microphone_active {
+                            350 // poll faster during active calls/recording
+                        } else {
+                            750
+                        };
+                        std::thread::sleep(std::time::Duration::from_millis(delay));
+                    }
+                })
+                .expect("failed to spawn privacy monitor thread");
+
             // Intercept settings window close requested event to hide instead of destroy
             if let Some(settings_win) = app.get_webview_window("settings") {
                 let win_clone = settings_win.clone();
@@ -367,10 +632,14 @@ pub fn run() {
             dismiss_notification,
             clear_all_notifications,
             get_privacy_state,
+            trigger_privacy_test,
+            update_island_region,
             get_reminders,
             add_reminder,
             toggle_reminder,
             delete_reminder,
+            pick_and_import_calendar,
+            clear_imported_calendar,
             get_hardware_metrics,
             free_up_memory,
             get_shelf_items,
@@ -380,8 +649,11 @@ pub fn run() {
             show_shelf_file_in_folder,
             pick_shelf_file,
             clear_shelf,
-            clear_local_data
+            clear_local_data,
+            activate_app_source,
+            reveal_diagnostic_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+    services::logger::log_event("INFO", "system", "ORBIT run loop ended normally");
 }

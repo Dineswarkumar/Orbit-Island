@@ -24,6 +24,9 @@ pub struct HardwareMetrics {
     pub network_download_speed_bps: u64,
     pub gpu_name: String,
     pub gpu_usage: Option<f32>, // None when unsupported; never fabricated
+    pub screen_recording_active: bool,
+    pub active_download_count: u32,
+    pub last_completed_download: Option<String>,
 }
 
 impl Default for HardwareMetrics {
@@ -46,6 +49,9 @@ impl Default for HardwareMetrics {
             network_download_speed_bps: 0,
             gpu_name: "Unavailable".to_string(),
             gpu_usage: None,
+            screen_recording_active: false,
+            active_download_count: 0,
+            last_completed_download: None,
         }
     }
 }
@@ -115,6 +121,7 @@ impl HardwareManager {
                 let mut prev_net = get_network_octets();
                 let mut prev_time = Instant::now();
                 let mut gpu_tracker = PdhGpuTracker::new();
+                let mut downloads_tracker = DownloadsTracker::new();
 
                 while is_running.load(Ordering::Relaxed) {
                     std::thread::sleep(Duration::from_millis(1000));
@@ -142,6 +149,8 @@ impl HardwareManager {
                     let cpu_cores = get_cpu_cores();
                     let gpu_name = get_gpu_name();
                     let gpu_usage = gpu_tracker.sample();
+                    let screen_recording_active = is_screen_recording_active();
+                    let (active_download_count, last_completed_download) = downloads_tracker.sample();
 
                     let metrics = HardwareMetrics {
                         cpu_usage,
@@ -161,6 +170,9 @@ impl HardwareManager {
                         network_download_speed_bps: download_bps,
                         gpu_name,
                         gpu_usage,
+                        screen_recording_active,
+                        active_download_count,
+                        last_completed_download,
                     };
 
                     {
@@ -204,6 +216,9 @@ pub fn collect_metrics_once(
         network_download_speed_bps: 0,
         gpu_name,
         gpu_usage: Some(0.0),
+        screen_recording_active: is_screen_recording_active(),
+        active_download_count: 0,
+        last_completed_download: None,
     }
 }
 
@@ -655,6 +670,150 @@ impl PdhGpuTracker {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn is_screen_recording_active() -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, FALSE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+
+    const RECORDERS: &[&str] = &[
+        "bcastdvr.exe",
+        "captureservice.exe",
+        "obs64.exe",
+        "obs32.exe",
+        "bdcam.exe",
+        "action.exe",
+        "camtasia.exe",
+        "screenrec.exe",
+        "loom.exe",
+    ];
+
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return false;
+        }
+
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut active = false;
+
+        if Process32FirstW(snapshot, &mut entry) != FALSE {
+            loop {
+                let len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                let exe_name = String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase();
+                if RECORDERS.iter().any(|&rec| exe_name == rec) {
+                    active = true;
+                    break;
+                }
+                if Process32NextW(snapshot, &mut entry) == FALSE {
+                    break;
+                }
+            }
+        }
+
+        CloseHandle(snapshot);
+        active
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_screen_recording_active() -> bool {
+    false
+}
+
+struct DownloadsTracker {
+    downloads_dir: Option<std::path::PathBuf>,
+    prev_temp_files: std::collections::HashSet<String>,
+    prev_regular_files: std::collections::HashSet<String>,
+    initialized: bool,
+}
+
+impl DownloadsTracker {
+    fn new() -> Self {
+        let downloads_dir = std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .map(|p| std::path::PathBuf::from(p).join("Downloads"));
+        Self {
+            downloads_dir,
+            prev_temp_files: std::collections::HashSet::new(),
+            prev_regular_files: std::collections::HashSet::new(),
+            initialized: false,
+        }
+    }
+
+    fn sample(&mut self) -> (u32, Option<String>) {
+        let Some(dir) = self.downloads_dir.clone() else {
+            return (0, None);
+        };
+        self.sample_dir(&dir)
+    }
+
+    fn sample_dir(&mut self, dir: &std::path::Path) -> (u32, Option<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return (0, None);
+        };
+
+        let mut cur_temp = std::collections::HashSet::new();
+        let mut cur_regular = std::collections::HashSet::new();
+
+        for entry in entries.flatten() {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let lower = file_name.to_lowercase();
+            if lower.ends_with(".crdownload")
+                || lower.ends_with(".part")
+                || lower.ends_with(".opdownload")
+                || lower.ends_with(".download")
+            {
+                cur_temp.insert(file_name);
+            } else if !lower.ends_with(".tmp") && !lower.starts_with('.') {
+                cur_regular.insert(file_name);
+            }
+        }
+
+        let active_count = cur_temp.len() as u32;
+        let mut completed: Option<String> = None;
+
+        if self.initialized {
+            // If an in-progress download file disappeared and a new regular file appeared
+            let temp_finished = self.prev_temp_files.iter().any(|t| !cur_temp.contains(t));
+            if temp_finished {
+                if let Some(new_file) = cur_regular
+                    .iter()
+                    .find(|f| !self.prev_regular_files.contains(*f))
+                {
+                    completed = Some(new_file.clone());
+                } else if let Some(finished_temp) =
+                    self.prev_temp_files.iter().find(|t| !cur_temp.contains(*t))
+                {
+                    // Fallback: strip the temporary extension
+                    let stripped = finished_temp
+                        .trim_end_matches(".crdownload")
+                        .trim_end_matches(".part")
+                        .trim_end_matches(".opdownload")
+                        .trim_end_matches(".download")
+                        .to_string();
+                    if !stripped.is_empty() {
+                        completed = Some(stripped);
+                    }
+                }
+            }
+        }
+
+        self.prev_temp_files = cur_temp;
+        self.prev_regular_files = cur_regular;
+        self.initialized = true;
+
+        (active_count, completed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,5 +847,40 @@ mod tests {
         let current = hw.get_metrics();
         assert_eq!(current.ram_used_bytes, result.ram_used_bytes);
         assert_eq!(current.ram_percentage, result.ram_percentage);
+    }
+
+    #[test]
+    fn downloads_tracker_detects_in_progress_and_completed_downloads() {
+        let temp_dir = std::env::temp_dir().join(format!("orbit-dl-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let mut tracker = DownloadsTracker {
+            downloads_dir: Some(temp_dir.clone()),
+            prev_temp_files: std::collections::HashSet::new(),
+            prev_regular_files: std::collections::HashSet::new(),
+            initialized: false,
+        };
+
+        // Tick 1: initial empty dir
+        let (active1, done1) = tracker.sample_dir(&temp_dir);
+        assert_eq!(active1, 0);
+        assert_eq!(done1, None);
+
+        // Tick 2: browser starts downloading report.pdf.crdownload
+        let part_path = temp_dir.join("report.pdf.crdownload");
+        std::fs::write(&part_path, b"partial").unwrap();
+        let (active2, done2) = tracker.sample_dir(&temp_dir);
+        assert_eq!(active2, 1);
+        assert_eq!(done2, None);
+
+        // Tick 3: browser renames report.pdf.crdownload -> report.pdf
+        let final_path = temp_dir.join("report.pdf");
+        std::fs::rename(&part_path, &final_path).unwrap();
+        let (active3, done3) = tracker.sample_dir(&temp_dir);
+        assert_eq!(active3, 0);
+        assert_eq!(done3, Some("report.pdf".to_string()));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
