@@ -1,10 +1,17 @@
 # ORBIT — Project State
 
 ## Current Status
-- **Active Milestone**: ORBIT v2.0.0 (Full PRD & iOS Dynamic Island Redesign Completed) — **ALL PHASES INCLUDING PHASE 12 COMPLETED & VERIFIED**
+- **Active Milestone**: ORBIT v2.0.0 (Full PRD & iOS Dynamic Island Redesign Completed) — **ALL PHASES INCLUDING PHASE 12 COMPLETED & FULL AUDIT VERIFIED**
 - **Version**: `2.0.0` across `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`
-- **Last Verified Build**: Release Build (`src-tauri/target/release/orbit.exe`) — **PASSING** (`npm run build` 0 errors, `cargo test` 34/34 passed, live binary PID 8860 running).
+- **Last Verified Build**: Release & Dev Build (`src-tauri/target/debug/orbit.exe` / `release/orbit.exe`) — **PASSING** (`npm run build` 0 errors, `cargo test` 38/38 passed with zero regressions).
 - **Core Bug Fixes & Polish Shipped**:
+  - **Privacy Indicator Persistence & WASAPI Capture Session Engine**:
+    - *Root Cause 1 (Camera False Expiration)*: Fixed critical bug in `src-tauri/src/services/privacy.rs` where `MF_CAMERA_ACTIVE` was being artificially cleared after 3.5 seconds (`now_ms.saturating_sub(last_mf_ms) < 3500`), which caused the camera indicator to disappear after initial launch or right after a notification arrived. Removed arbitrary timeout; camera status is now linked to true Media Foundation hardware streaming state and process survival.
+    - *Root Cause 2 (Microphone Audio Focus & Registry Latency)*: Implemented real-time Core Audio (WASAPI) session inspection using `IAudioSessionManager2`, `IAudioSessionControl2`, and `AudioSessionStateActive` on `eCapture` endpoints. Provides instantaneous detection of recording streams across Chrome, Zoom, WhatsApp, Teams, Discord, and desktop apps without relying on delayed registry writes.
+    - *Process Survival Validation*: Added `is_pid_alive` checks on streaming PIDs so that if a video/audio application terminates or crashes without firing clean sensor release callbacks, ORBIT immediately self-heals and turns off the indicator.
+    - *Thread Safety & COM Guard*: Initialized `services::media::ComGuard` on the `orbit-privacy-monitor` thread in `src-tauri/src/lib.rs`.
+    - *Layout & Notification Polishing*: Adjusted text container padding from `pr-5` to `pr-2` in `CompactCapsule.tsx` so long notification messages never compress or occlude the dedicated right-hand `privacyLight` slot. Added `privacyTestUntilRef` safeguard in `IslandApp.tsx` preventing hardware poll overrides during simulated test sequences.
+    - *Comprehensive Edge-Case Testing*: Added 4 new worst-case test cases in `privacy.rs` (live PID streaming retention, dead PID crash recovery, clean app name edge cases, and 50-cycle rapid inspection burst), raising test suite to 38/38 passing tests.
   - **Phase 12 Shipped (The Elite Theme Engine & Visual Showcase Overhaul)**:
     - Upgraded `src/core/theme.ts` and `src/styles/globals.css` with 11 authentic signature themes (Apple Dynamic Island Pure OLED, Linear/Raycast Studio, VisionOS Spatial Glass, Catppuccin Mocha, Cyberpunk Neo-Tokyo, Sunset Velvet & Amber, Nordic Botanical Emerald, Arc Ocean & Solar Gold, Apple Ceramic Alabaster, and System Auto).
     - Deep token integration across `HomeSection.tsx`, `MultiTaskSection.tsx`, and `CalendarSection.tsx`, binding card surfaces, borders, text, and muted captions directly to CSS variables (`--island-card-bg`, `--island-card-border`, `--island-text`, `--island-muted`, `--theme-accent`).
