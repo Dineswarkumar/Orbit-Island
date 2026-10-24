@@ -154,6 +154,12 @@ pub fn init_logger() {
     if let Some(parent) = log_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
+
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("Panic: {info}");
+        log_event("FATAL", "panic", &msg);
+    }));
+
     log_event("INFO", "system", "ORBIT diagnostic logger initialized");
 }
 

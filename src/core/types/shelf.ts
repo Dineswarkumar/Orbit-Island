@@ -5,4 +5,6 @@ export interface ShelfItem {
   fileSize: number;
   extension: string;
   addedAt: number;
+  exists?: boolean;
+  isManagedCopy?: boolean;
 }

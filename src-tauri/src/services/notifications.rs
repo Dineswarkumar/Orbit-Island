@@ -495,38 +495,85 @@ fn fetch_notifications_internal(
                                                         };
 
                                                         let web_brand = if lower_str.contains("whatsapp") {
-                                                            Some("WhatsApp")
+                                                            Some("WhatsApp".to_string())
                                                         } else if lower_str.contains("telegram") || lower_str.contains("t.me") {
-                                                            Some("Telegram")
+                                                            Some("Telegram".to_string())
                                                         } else if lower_str.contains("discord") {
-                                                            Some("Discord")
+                                                            Some("Discord".to_string())
                                                         } else if lower_str.contains("gmail") || lower_str.contains("mail.google") {
-                                                            Some("Gmail")
+                                                            Some("Gmail".to_string())
+                                                        } else if lower_str.contains("calendar.google") {
+                                                            Some("Google Calendar".to_string())
+                                                        } else if lower_str.contains("drive.google") || lower_str.contains("docs.google") {
+                                                            Some("Google Drive".to_string())
+                                                        } else if lower_str.contains("meet.google") {
+                                                            Some("Google Meet".to_string())
                                                         } else if lower_str.contains("instagram") {
-                                                            Some("Instagram")
+                                                            Some("Instagram".to_string())
+                                                        } else if lower_str.contains("music.youtube") || lower_str.contains("youtube music") {
+                                                            Some("YouTube Music".to_string())
                                                         } else if lower_str.contains("youtube") {
-                                                            Some("YouTube")
+                                                            Some("YouTube".to_string())
+                                                        } else if lower_str.contains("github") {
+                                                            Some("GitHub".to_string())
+                                                        } else if lower_str.contains("linkedin") {
+                                                            Some("LinkedIn".to_string())
+                                                        } else if lower_str.contains("chatgpt") || lower_str.contains("openai") {
+                                                            Some("ChatGPT".to_string())
+                                                        } else if lower_str.contains("x.com") || lower_str.contains("twitter") {
+                                                            Some("X".to_string())
+                                                        } else if lower_str.contains("reddit") {
+                                                            Some("Reddit".to_string())
+                                                        } else if lower_str.contains("spotify") {
+                                                            Some("Spotify".to_string())
                                                         } else if lower_str.contains("slack") {
-                                                            Some("Slack")
+                                                            Some("Slack".to_string())
                                                         } else if lower_str.contains("teams") {
-                                                            Some("Microsoft Teams")
-                                                        } else if lower_str.contains("outlook") {
-                                                            Some("Outlook")
+                                                            Some("Microsoft Teams".to_string())
+                                                        } else if lower_str.contains("outlook") || lower_str.contains("office.com") || lower_str.contains("live.com") {
+                                                            Some("Outlook".to_string())
                                                         } else {
                                                             None
                                                         };
 
                                                         if let Some(brand) = web_brand {
                                                             if is_browser {
-                                                                app_name = brand.to_string();
+                                                                app_name = brand;
                                                             }
                                                         } else if lower_str.starts_with("http")
                                                             || lower_str.contains(".com")
                                                             || lower_str.contains(".org")
                                                             || lower_str.contains(".net")
                                                             || lower_str.contains(".app")
+                                                            || lower_str.contains(".io")
+                                                            || lower_str.contains(".dev")
+                                                            || lower_str.contains(".in")
+                                                            || lower_str.contains(".edu")
                                                         {
-                                                            // Skip domain clutter
+                                                            // Extract clean site domain name for browser notifications so UIA tab matching can find the site tab
+                                                            if is_browser {
+                                                                let host = lower_str
+                                                                    .trim_start_matches("https://")
+                                                                    .trim_start_matches("http://")
+                                                                    .split('/')
+                                                                    .next()
+                                                                    .unwrap_or("")
+                                                                    .split(':')
+                                                                    .next()
+                                                                    .unwrap_or("");
+                                                                let parts: Vec<&str> = host
+                                                                    .split('.')
+                                                                    .filter(|p| !p.is_empty() && *p != "www" && *p != "web" && *p != "app" && *p != "m")
+                                                                    .collect();
+                                                                if let Some(&domain_core) = parts.first() {
+                                                                    if domain_core.len() >= 3 {
+                                                                        let mut chars = domain_core.chars();
+                                                                        if let Some(first) = chars.next() {
+                                                                            app_name = first.to_uppercase().collect::<String>() + chars.as_str();
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
                                                         } else {
                                                             body.push_str(" · ");
                                                             body.push_str(&text_str);

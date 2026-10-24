@@ -42,6 +42,24 @@ pub struct MediaSessionSnapshot {
     pub is_pinned: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioSpectrumState {
+    pub peak: f32,
+    pub compact_bars: [f32; 4],
+    pub wave_bars: [f32; 20],
+}
+
+impl Default for AudioSpectrumState {
+    fn default() -> Self {
+        Self {
+            peak: 0.0,
+            compact_bars: [0.0; 4],
+            wave_bars: [0.0; 20],
+        }
+    }
+}
+
 fn format_source_title(id: &str) -> String {
     let lower = id.to_lowercase();
     if lower.contains("spotify") {
@@ -484,6 +502,93 @@ mod win {
         op.join().map_err(|e| e.to_string())?;
         Ok(())
     }
+
+    pub fn sample_audio_spectrum(
+        prev_peak: &mut f32,
+        smooth_low: &mut f32,
+        phase: &mut f32,
+    ) -> AudioSpectrumState {
+        use windows::Win32::Media::Audio::Endpoints::IAudioMeterInformation;
+        use windows::Win32::Media::Audio::{
+            eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator,
+        };
+        use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
+
+        let (raw_peak, left, right) = unsafe {
+            let Ok(enumerator) =
+                CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
+            else {
+                return AudioSpectrumState::default();
+            };
+            let Ok(device) = enumerator.GetDefaultAudioEndpoint(eRender, eConsole) else {
+                return AudioSpectrumState::default();
+            };
+            let Ok(meter) = device.Activate::<IAudioMeterInformation>(CLSCTX_ALL, None) else {
+                return AudioSpectrumState::default();
+            };
+            let peak = meter.GetPeakValue().unwrap_or(0.0).clamp(0.0, 1.0);
+            let count = meter.GetMeteringChannelCount().unwrap_or(0);
+            if count >= 2 {
+                let mut ch = vec![0.0f32; count as usize];
+                if meter.GetChannelsPeakValues(&mut ch).is_ok() {
+                    (peak, ch[0].clamp(0.0, 1.0), ch[1].clamp(0.0, 1.0))
+                } else {
+                    (peak, peak, peak)
+                }
+            } else {
+                (peak, peak, peak)
+            }
+        };
+
+        // When audio output is silent / muted / 0 frequency, keep all bars strictly at 0.0 (no fake rising!)
+        if raw_peak < 0.004 {
+            *prev_peak = 0.0;
+            *smooth_low *= 0.55;
+            if *smooth_low < 0.004 {
+                *smooth_low = 0.0;
+                return AudioSpectrumState::default();
+            }
+        }
+
+        let level = raw_peak.powf(0.62).clamp(0.0, 1.0);
+        *smooth_low = (*smooth_low * 0.68 + level * 0.32).clamp(0.0, 1.0);
+        let transient = ((level - *prev_peak).abs() * 2.3).clamp(0.0, 1.0);
+        *prev_peak = level;
+
+        let stereo_diff = (left - right).abs().powf(0.65).clamp(0.0, 1.0);
+        let bass = *smooth_low;
+        let mid = (level * 0.78 + stereo_diff * 0.42).clamp(0.0, 1.0);
+        let treble = (level * 0.52 + transient * 0.72).clamp(0.0, 1.0);
+
+        *phase = (*phase + 0.65 + level * 0.95) % std::f32::consts::TAU;
+        let p = *phase;
+
+        let compact_bars = [
+            (bass * (0.78 + 0.22 * (p).sin().abs())).clamp(0.0, 1.0),
+            (mid * (0.75 + 0.25 * (p + 1.3).sin().abs())).clamp(0.0, 1.0),
+            (treble * (0.74 + 0.26 * (p + 2.5).sin().abs())).clamp(0.0, 1.0),
+            (((bass + mid) * 0.5) * (0.76 + 0.24 * (p + 3.8).sin().abs())).clamp(0.0, 1.0),
+        ];
+
+        let mut wave_bars = [0.0f32; 20];
+        for (idx, bar) in wave_bars.iter_mut().enumerate() {
+            let base = if idx < 6 {
+                bass
+            } else if idx < 14 {
+                mid
+            } else {
+                treble
+            };
+            let harmonic = ((p + (idx as f32) * 0.62).sin() * 0.5 + 0.5) * 0.35 + 0.65;
+            *bar = (base * harmonic).clamp(0.0, 1.0);
+        }
+
+        AudioSpectrumState {
+            peak: level,
+            compact_bars,
+            wave_bars,
+        }
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -505,9 +610,20 @@ mod win {
     pub fn seek_media(_position_secs: f64, _pinned_source: Option<&str>) -> Result<(), String> {
         Err("Media sessions unsupported on this platform".to_string())
     }
+
+    pub fn sample_audio_spectrum(
+        _prev_peak: &mut f32,
+        _smooth_low: &mut f32,
+        _phase: &mut f32,
+    ) -> AudioSpectrumState {
+        AudioSpectrumState::default()
+    }
 }
 
-pub use win::{get_available_media_sources, get_current_media_session, seek_media, send_media_command};
+pub use win::{
+    get_available_media_sources, get_current_media_session, sample_audio_spectrum, seek_media,
+    send_media_command,
+};
 
 #[cfg(test)]
 mod tests {

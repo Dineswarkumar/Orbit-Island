@@ -34,3 +34,10 @@ export interface MediaSessionSnapshot {
   controls: MediaControls;
   is_pinned: boolean;
 }
+
+export interface AudioSpectrumState {
+  peak: number;
+  compactBars: [number, number, number, number];
+  waveBars: number[];
+}
+

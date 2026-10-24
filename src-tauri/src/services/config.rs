@@ -24,6 +24,22 @@ pub struct AppConfig {
     pub show_privacy_indicators: bool,
     pub blocked_apps: Vec<String>,
     pub surface_opacity: u32,
+    pub show_weather: bool,
+    pub weather_unit: String,
+    pub adaptive_album_accent: bool,
+    pub expand_trigger: String,
+    pub pause_in_fullscreen: bool,
+    pub shelf_storage_mode: String,
+    pub font_family: String,
+    pub onboarding_completed: bool,
+    pub compact_right_slot: String,
+    pub custom_right_text: String,
+    pub custom_right_text_style: String,
+    pub custom_right_image_base64: String,
+    pub hide_from_screen_capture: bool,
+    pub shortcuts_enabled: bool,
+    pub auto_hide_in_meetings: bool,
+    pub network_activity_mode: String,
 }
 
 impl AppConfig {
@@ -36,7 +52,7 @@ impl AppConfig {
             self.transparency_mode.as_str(),
         ];
         if ![
-            "obsidian", "dark", "dynamic", "light", "black", "espresso", "evergreen", "nord",
+            "system", "obsidian", "dark", "dynamic", "light", "black", "espresso", "evergreen", "nord",
             "custom",
         ]
         .contains(&valid[0])
@@ -61,6 +77,51 @@ impl AppConfig {
         if ![20, 50, 80, 100].contains(&self.surface_opacity) {
             return Err("Unsupported surface opacity preset. Must be 20, 50, 80, or 100".to_string());
         }
+        if !["C", "F"].contains(&self.weather_unit.as_str()) {
+            return Err("Unsupported weather unit. Must be C or F".to_string());
+        }
+        if !["hover", "click"].contains(&self.expand_trigger.as_str()) {
+            return Err("Unsupported expand trigger. Must be hover or click".to_string());
+        }
+        if !["reference", "copy"].contains(&self.shelf_storage_mode.as_str()) {
+            return Err("Unsupported shelf storage mode. Must be reference or copy".to_string());
+        }
+        if !["inter", "bold", "claude", "mono", "rounded", "cyber"]
+            .contains(&self.font_family.as_str())
+        {
+            return Err(
+                "Unsupported font family. Must be inter, bold, claude, mono, rounded, or cyber"
+                    .to_string(),
+            );
+        }
+        if ![
+            "weather",
+            "orbit_logo",
+            "windows_logo",
+            "apple_logo",
+            "linux_logo",
+            "custom_text",
+            "custom_image",
+            "smart",
+        ]
+        .contains(&self.compact_right_slot.as_str())
+        {
+            return Err("Unsupported compact right slot mode".to_string());
+        }
+        if self.custom_right_text.chars().count() > 5 {
+            return Err("Custom right slot text must be at most 5 characters".to_string());
+        }
+        if !["neon_glow", "cyber_badge", "aurora_pill", "liquid_gold"]
+            .contains(&self.custom_right_text_style.as_str())
+        {
+            return Err("Unsupported custom right text style".to_string());
+        }
+        if self.custom_right_image_base64.len() > 512_000 {
+            return Err("Custom right image data exceeds maximum size".to_string());
+        }
+        if !["off", "speed_only", "full"].contains(&self.network_activity_mode.as_str()) {
+            return Err("Unsupported network activity mode. Must be off, speed_only, or full".to_string());
+        }
         Ok(())
     }
 }
@@ -82,6 +143,22 @@ impl Default for AppConfig {
             show_privacy_indicators: true,
             blocked_apps: Vec::new(),
             surface_opacity: 80,
+            show_weather: false,
+            weather_unit: "C".to_string(),
+            adaptive_album_accent: true,
+            expand_trigger: "hover".to_string(),
+            pause_in_fullscreen: true,
+            shelf_storage_mode: "reference".to_string(),
+            font_family: "inter".to_string(),
+            onboarding_completed: false,
+            compact_right_slot: "weather".to_string(),
+            custom_right_text: "ORBIT".to_string(),
+            custom_right_text_style: "neon_glow".to_string(),
+            custom_right_image_base64: String::new(),
+            hide_from_screen_capture: false,
+            shortcuts_enabled: true,
+            auto_hide_in_meetings: true,
+            network_activity_mode: "speed_only".to_string(),
         }
     }
 }
@@ -396,5 +473,98 @@ mod tests {
             cfg.surface_opacity = invalid_preset;
             assert!(cfg.validate().is_err());
         }
+    }
+
+    #[test]
+    fn weather_config_validation_and_backward_compatibility() {
+        // Missing showWeather / weatherUnit in older json defaults safely
+        let old_json = r#"{"theme":"obsidian","position":"top-center"}"#;
+        let config: AppConfig = serde_json::from_str(old_json).unwrap();
+        assert!(!config.show_weather);
+        assert_eq!(config.weather_unit, "C");
+        assert!(config.validate().is_ok());
+
+        let mut cfg_c = config.clone();
+        cfg_c.weather_unit = "C".to_string();
+        cfg_c.show_weather = true;
+        assert!(cfg_c.validate().is_ok());
+
+        let mut cfg_f = config.clone();
+        cfg_f.weather_unit = "F".to_string();
+        cfg_f.show_weather = true;
+        assert!(cfg_f.validate().is_ok());
+
+        let mut cfg_invalid = config.clone();
+        cfg_invalid.weather_unit = "Kelvin".to_string();
+        assert!(cfg_invalid.validate().is_err());
+    }
+
+    #[test]
+    fn phase_6_config_validation_and_backward_compatibility() {
+        let old_json = r#"{"theme":"obsidian","position":"top-center"}"#;
+        let config: AppConfig = serde_json::from_str(old_json).unwrap();
+        assert!(config.adaptive_album_accent);
+        assert_eq!(config.expand_trigger, "hover");
+        assert!(config.pause_in_fullscreen);
+        assert!(config.validate().is_ok());
+
+        let mut cfg_system = config.clone();
+        cfg_system.theme = "system".to_string();
+        assert!(cfg_system.validate().is_ok());
+
+        let mut cfg_click = config.clone();
+        cfg_click.expand_trigger = "click".to_string();
+        assert!(cfg_click.validate().is_ok());
+
+        let mut cfg_bad_trigger = config.clone();
+        cfg_bad_trigger.expand_trigger = "double_click".to_string();
+        assert!(cfg_bad_trigger.validate().is_err());
+
+        for valid_font in ["inter", "bold", "claude", "mono", "rounded", "cyber"] {
+            let mut cfg_font = config.clone();
+            cfg_font.font_family = valid_font.to_string();
+            assert!(cfg_font.validate().is_ok());
+        }
+
+        let mut cfg_bad_font = config.clone();
+        cfg_bad_font.font_family = "papyrus".to_string();
+        assert!(cfg_bad_font.validate().is_err());
+    }
+
+    #[test]
+    fn phase_9_config_validation_and_backward_compatibility() {
+        let old_json = r#"{"theme":"obsidian","position":"top-center"}"#;
+        let config: AppConfig = serde_json::from_str(old_json).unwrap();
+        assert_eq!(config.compact_right_slot, "weather");
+        assert_eq!(config.custom_right_text, "ORBIT");
+        assert_eq!(config.custom_right_text_style, "neon_glow");
+        assert!(!config.hide_from_screen_capture);
+        assert!(config.shortcuts_enabled);
+        assert!(config.auto_hide_in_meetings);
+        assert_eq!(config.network_activity_mode, "speed_only");
+        assert!(config.validate().is_ok());
+
+        for valid_slot in [
+            "weather",
+            "orbit_logo",
+            "windows_logo",
+            "apple_logo",
+            "linux_logo",
+            "custom_text",
+            "custom_image",
+            "smart",
+        ] {
+            let mut cfg = config.clone();
+            cfg.compact_right_slot = valid_slot.to_string();
+            assert!(cfg.validate().is_ok());
+        }
+
+        let mut cfg_long_text = config.clone();
+        cfg_long_text.custom_right_text = "TOO_LONG".to_string();
+        assert!(cfg_long_text.validate().is_err());
+
+        let mut cfg_bad_net = config.clone();
+        cfg_bad_net.network_activity_mode = "invalid".to_string();
+        assert!(cfg_bad_net.validate().is_err());
     }
 }

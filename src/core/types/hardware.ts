@@ -16,6 +16,9 @@ export interface HardwareMetrics {
   networkDownloadSpeedBps: number;
   gpuName: string;
   gpuUsage: number | null;
+  screenRecordingActive: boolean;
+  activeDownloadCount: number;
+  lastCompletedDownload: string | null;
 }
 
 export interface MemoryCleanResult {

@@ -35,99 +35,150 @@ body {
    ========================================================================== */
 .theme-obsidian,
 .theme-custom {
-  --theme-accent: #60a5fa;
-  --theme-accent-secondary: #3b82f6;
-  --core-glow: rgba(59, 130, 246, 0.16);
-  --rim-highlight: rgba(255, 255, 255, 0.22);
-  --island-panel: rgba(10, 12, 18, var(--surface-alpha, 0.92));
-  --island-pill: rgba(10, 12, 18, var(--surface-alpha, 0.95));
+  --theme-accent: #38bdf8;
+  --theme-accent-secondary: #2563eb;
+  --core-glow: rgba(56, 189, 248, 0.18);
+  --rim-highlight: rgba(255, 255, 255, 0.28);
+  --island-panel: rgba(8, 11, 20, var(--surface-alpha, 0.94));
+  --island-pill: rgba(8, 11, 20, var(--surface-alpha, 0.97));
+  --island-card-bg: rgba(56, 189, 248, 0.08);
+  --island-card-border: rgba(56, 189, 248, 0.22);
+  --island-badge-bg: rgba(56, 189, 248, 0.12);
   --island-text: #f8fafc;
   --island-muted: #94a3b8;
-  --island-border: rgba(96, 165, 250, 0.28);
+  --island-border: rgba(56, 189, 248, 0.32);
 }
 
 .theme-dynamic {
-  --theme-accent: #818cf8;
-  --theme-accent-secondary: #6366f1;
-  --core-glow: rgba(99, 102, 241, 0.16);
-  --rim-highlight: rgba(255, 255, 255, 0.22);
-  --island-panel: rgba(12, 13, 22, var(--surface-alpha, 0.92));
-  --island-pill: rgba(12, 13, 22, var(--surface-alpha, 0.95));
-  --island-text: #f8fafc;
-  --island-muted: #94a3b8;
-  --island-border: rgba(129, 140, 248, 0.28);
+  --theme-accent: #c084fc;
+  --theme-accent-secondary: #7c3aed;
+  --core-glow: rgba(192, 132, 252, 0.18);
+  --rim-highlight: rgba(255, 255, 255, 0.28);
+  --island-panel: rgba(18, 13, 34, var(--surface-alpha, 0.94));
+  --island-pill: rgba(18, 13, 34, var(--surface-alpha, 0.97));
+  --island-card-bg: rgba(192, 132, 252, 0.10);
+  --island-card-border: rgba(192, 132, 252, 0.24);
+  --island-badge-bg: rgba(192, 132, 252, 0.14);
+  --island-text: #faf5ff;
+  --island-muted: #c4b5fd;
+  --island-border: rgba(192, 132, 252, 0.35);
 }
 
 .theme-dark {
-  --theme-accent: #cbd5e1;
-  --theme-accent-secondary: #94a3b8;
-  --core-glow: rgba(148, 163, 184, 0.12);
-  --rim-highlight: rgba(255, 255, 255, 0.24);
-  --island-panel: rgba(16, 18, 23, var(--surface-alpha, 0.92));
-  --island-pill: rgba(16, 18, 23, var(--surface-alpha, 0.95));
+  --theme-accent: #2dd4bf;
+  --theme-accent-secondary: #0ea5e9;
+  --core-glow: rgba(45, 212, 191, 0.16);
+  --rim-highlight: rgba(255, 255, 255, 0.42);
+  --island-panel: rgba(26, 31, 44, var(--surface-alpha, 0.94));
+  --island-pill: rgba(26, 31, 44, var(--surface-alpha, 0.97));
+  --island-card-bg: rgba(255, 255, 255, 0.11);
+  --island-card-border: rgba(226, 232, 240, 0.22);
+  --island-badge-bg: rgba(255, 255, 255, 0.14);
   --island-text: #f8fafc;
-  --island-muted: #94a3b8;
-  --island-border: rgba(203, 213, 225, 0.24);
+  --island-muted: #cbd5e1;
+  --island-border: rgba(226, 232, 240, 0.32);
 }
 
 .theme-black {
-  --theme-accent: #e2e8f0;
-  --theme-accent-secondary: #94a3b8;
-  --core-glow: rgba(148, 163, 184, 0.10);
-  --rim-highlight: rgba(255, 255, 255, 0.26);
-  --island-panel: rgba(3, 4, 7, var(--surface-alpha, 0.98));
-  --island-pill: rgba(3, 4, 7, var(--surface-alpha, 0.99));
+  --theme-accent: #00f5d4;
+  --theme-accent-secondary: #10b981;
+  --core-glow: rgba(0, 245, 212, 0.15);
+  --rim-highlight: rgba(255, 255, 255, 0.30);
+  --island-panel: rgba(2, 3, 5, var(--surface-alpha, 0.98));
+  --island-pill: rgba(2, 3, 5, var(--surface-alpha, 0.99));
+  --island-card-bg: rgba(0, 245, 212, 0.06);
+  --island-card-border: rgba(0, 245, 212, 0.20);
+  --island-badge-bg: rgba(0, 245, 212, 0.10);
   --island-text: #ffffff;
   --island-muted: #a1a1aa;
-  --island-border: rgba(226, 232, 240, 0.22);
+  --island-border: rgba(0, 245, 212, 0.34);
 }
 
 .theme-espresso {
-  --theme-accent: #f59e0b;
-  --theme-accent-secondary: #d97706;
-  --core-glow: rgba(217, 119, 6, 0.14);
-  --rim-highlight: rgba(255, 255, 255, 0.20);
-  --island-panel: rgba(17, 14, 12, var(--surface-alpha, 0.93));
-  --island-pill: rgba(17, 14, 12, var(--surface-alpha, 0.96));
-  --island-text: #fafaf9;
-  --island-muted: #a8a29e;
-  --island-border: rgba(245, 158, 11, 0.26);
+  --theme-accent: #fb7185;
+  --theme-accent-secondary: #f59e0b;
+  --core-glow: rgba(251, 113, 133, 0.18);
+  --rim-highlight: rgba(255, 255, 255, 0.26);
+  --island-panel: rgba(30, 14, 20, var(--surface-alpha, 0.95));
+  --island-pill: rgba(30, 14, 20, var(--surface-alpha, 0.98));
+  --island-card-bg: rgba(251, 113, 133, 0.10);
+  --island-card-border: rgba(251, 113, 133, 0.22);
+  --island-badge-bg: rgba(251, 113, 133, 0.14);
+  --island-text: #fff1f2;
+  --island-muted: #fda4af;
+  --island-border: rgba(251, 113, 133, 0.34);
 }
 
 .theme-evergreen {
   --theme-accent: #34d399;
-  --theme-accent-secondary: #10b981;
-  --core-glow: rgba(16, 185, 129, 0.14);
-  --rim-highlight: rgba(255, 255, 255, 0.20);
-  --island-panel: rgba(10, 16, 14, var(--surface-alpha, 0.93));
-  --island-pill: rgba(10, 16, 14, var(--surface-alpha, 0.96));
-  --island-text: #f8fafc;
-  --island-muted: #94a3b8;
-  --island-border: rgba(52, 211, 153, 0.26);
+  --theme-accent-secondary: #059669;
+  --core-glow: rgba(52, 211, 153, 0.18);
+  --rim-highlight: rgba(255, 255, 255, 0.26);
+  --island-panel: rgba(8, 24, 18, var(--surface-alpha, 0.95));
+  --island-pill: rgba(8, 24, 18, var(--surface-alpha, 0.98));
+  --island-card-bg: rgba(52, 211, 153, 0.10);
+  --island-card-border: rgba(52, 211, 153, 0.22);
+  --island-badge-bg: rgba(52, 211, 153, 0.14);
+  --island-text: #ecfdf5;
+  --island-muted: #6ee7b7;
+  --island-border: rgba(52, 211, 153, 0.34);
 }
 
 .theme-nord {
-  --theme-accent: #7dd3fc;
+  --theme-accent: #fbbf24;
   --theme-accent-secondary: #38bdf8;
-  --core-glow: rgba(56, 189, 248, 0.15);
-  --rim-highlight: rgba(255, 255, 255, 0.22);
-  --island-panel: rgba(22, 26, 34, var(--surface-alpha, 0.93));
-  --island-pill: rgba(22, 26, 34, var(--surface-alpha, 0.96));
-  --island-text: #f8fafc;
-  --island-muted: #94a3b8;
-  --island-border: rgba(125, 211, 252, 0.26);
+  --core-glow: rgba(251, 191, 36, 0.16);
+  --rim-highlight: rgba(255, 255, 255, 0.28);
+  --island-panel: rgba(11, 22, 40, var(--surface-alpha, 0.95));
+  --island-pill: rgba(11, 22, 40, var(--surface-alpha, 0.98));
+  --island-card-bg: rgba(56, 189, 248, 0.10);
+  --island-card-border: rgba(251, 191, 36, 0.24);
+  --island-badge-bg: rgba(56, 189, 248, 0.14);
+  --island-text: #f0f9ff;
+  --island-muted: #93c5fd;
+  --island-border: rgba(251, 191, 36, 0.35);
 }
 
 .theme-light {
-  --theme-accent: #38bdf8;
-  --theme-accent-secondary: #0284c7;
-  --core-glow: rgba(56, 189, 248, 0.16);
-  --rim-highlight: rgba(241, 245, 249, 0.48);
-  --island-panel: rgba(24, 32, 48, var(--surface-alpha, 0.98));
-  --island-pill: rgba(24, 32, 48, var(--surface-alpha, 0.99));
-  --island-text: #f8fafc;
-  --island-muted: #cbd5e1;
-  --island-border: rgba(148, 163, 184, 0.42);
+  --theme-accent: #2563eb;
+  --theme-accent-secondary: #4f46e5;
+  --core-glow: rgba(37, 99, 235, 0.12);
+  --rim-highlight: rgba(255, 255, 255, 0.85);
+  --island-panel: rgba(241, 245, 252, var(--surface-alpha, 0.98));
+  --island-pill: rgba(241, 245, 252, var(--surface-alpha, 0.99));
+  --island-card-bg: rgba(255, 255, 255, 0.82);
+  --island-card-border: rgba(37, 99, 235, 0.20);
+  --island-badge-bg: rgba(37, 99, 235, 0.10);
+  --island-text: #0f172a;
+  --island-muted: #475569;
+  --island-border: rgba(37, 99, 235, 0.32);
+}
+
+/* Scoped high-contrast overrides for Apple Ceramic Pearl (Light Theme) */
+.theme-light .text-white {
+  color: #0f172a !important;
+}
+.theme-light .text-white\/90,
+.theme-light .text-white\/85,
+.theme-light .text-white\/80 {
+  color: #1e293b !important;
+}
+.theme-light .text-white\/75,
+.theme-light .text-white\/70,
+.theme-light .text-white\/65,
+.theme-light .text-white\/60,
+.theme-light .text-white\/55,
+.theme-light .text-white\/50,
+.theme-light .text-white\/45,
+.theme-light .text-white\/40 {
+  color: #475569 !important;
+}
+.theme-light .orbit-shell-3d {
+  box-shadow:
+    0 16px 36px -8px rgba(15, 23, 42, 0.18),
+    0 6px 16px -4px rgba(15, 23, 42, 0.12),
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 16px rgba(186, 230, 253, 0.25) !important;
 }
 
 /* ==========================================================================
@@ -236,31 +287,31 @@ body {
 
 /* 3D Recessed & Elevated Interior Surfaces */
 .orbit-card-3d {
-  background: linear-gradient(
+  background: var(--island-card-bg, linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.085) 0%,
     rgba(255, 255, 255, 0.035) 100%
-  );
-  border: 1px solid rgba(255, 255, 255, 0.11);
+  ));
+  border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.11));
   box-shadow:
-    0 4px 10px -2px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.20),
-    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.45);
+    0 4px 10px -2px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0.5px 0 var(--rim-highlight, rgba(255, 255, 255, 0.20)),
+    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.35);
   transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), border-color 200ms ease, background 200ms ease, box-shadow 200ms ease;
 }
 
 .orbit-card-3d:hover {
-  background: linear-gradient(
+  background: var(--island-card-bg, linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.115) 0%,
     rgba(255, 255, 255, 0.05) 100%
-  );
-  border-color: rgba(255, 255, 255, 0.20);
+  ));
+  border-color: var(--island-border, rgba(255, 255, 255, 0.20));
   transform: translate3d(0, -1px, 6px);
   box-shadow:
-    0 6px 14px -2px rgba(0, 0, 0, 0.65),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.5);
+    0 6px 14px -2px rgba(0, 0, 0, 0.55),
+    inset 0 1px 1px 0 var(--rim-highlight, rgba(255, 255, 255, 0.28)),
+    inset 0 -1px 1px 0 rgba(0, 0, 0, 0.4);
 }
 
 .orbit-well-3d {
@@ -276,15 +327,15 @@ body {
 }
 
 .orbit-pill-badge-3d {
-  background: linear-gradient(
+  background: var(--island-badge-bg, linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.10) 0%,
     rgba(255, 255, 255, 0.04) 100%
-  );
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  ));
+  border: 1px solid var(--island-card-border, rgba(255, 255, 255, 0.13));
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0.5px rgba(255, 255, 255, 0.22);
+    0 2px 6px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0.5px var(--rim-highlight, rgba(255, 255, 255, 0.22));
 }
 
 /* 3D Sculpted Clock Typography Shadow */
@@ -311,14 +362,37 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* Media Equalizer Bars Animation (Matches reference-timer-and-media.png) */
-@keyframes eq-pulse {
-  0%, 100% {
-    transform: scaleY(0.28);
-  }
-  50% {
-    transform: scaleY(1);
-  }
+/* Media Equalizer Bars Animation (Matches iOS Dynamic Island audio frequencies) */
+@keyframes eq-bass {
+  0% { transform: scaleY(0.25); }
+  25% { transform: scaleY(0.85); }
+  50% { transform: scaleY(0.40); }
+  75% { transform: scaleY(1.0); }
+  100% { transform: scaleY(0.25); }
+}
+
+@keyframes eq-low-mid {
+  0% { transform: scaleY(0.35); }
+  30% { transform: scaleY(0.95); }
+  60% { transform: scaleY(0.20); }
+  85% { transform: scaleY(0.75); }
+  100% { transform: scaleY(0.35); }
+}
+
+@keyframes eq-high-mid {
+  0% { transform: scaleY(0.20); }
+  20% { transform: scaleY(0.70); }
+  45% { transform: scaleY(0.30); }
+  70% { transform: scaleY(0.90); }
+  100% { transform: scaleY(0.20); }
+}
+
+@keyframes eq-treble {
+  0% { transform: scaleY(0.40); }
+  35% { transform: scaleY(0.80); }
+  55% { transform: scaleY(0.25); }
+  80% { transform: scaleY(0.65); }
+  100% { transform: scaleY(0.40); }
 }
 
 .eq-bar {
@@ -327,20 +401,9 @@ body {
   border-radius: 9999px;
   background-color: var(--theme-accent, #22d3ee);
   box-shadow: 0 0 6px var(--theme-accent, #22d3ee);
-  transform-origin: center;
-  transition: transform 150ms ease;
+  transform-origin: bottom !important;
+  transition: transform 95ms ease-out, opacity 150ms ease;
 }
-
-.eq-bar-animate {
-  animation: eq-pulse 1.05s ease-in-out infinite;
-  --animation-reduced: none;
-}
-.eq-bar-1 { animation-delay: 0.08s; }
-.eq-bar-2 { animation-delay: 0.38s; }
-.eq-bar-3 { animation-delay: 0.18s; }
-.eq-bar-4 { animation-delay: 0.55s; }
-.eq-bar-5 { animation-delay: 0.28s; }
-.eq-bar-6 { animation-delay: 0.46s; }
 
 /* Media Progress Range Input */
 .media-slider {
@@ -428,6 +491,134 @@ body {
   transform-origin: left center;
   animation: notification-progress-shrink var(--notif-duration, 4000ms) linear forwards;
   --animation-reduced: none;
+}
+
+/* ==========================================================================
+   iOS DYNAMIC ISLAND AMBIENT AUDIO WAVES (Sub-Phase 7.4a)
+   ========================================================================== */
+@keyframes orbitIosWaveDrift {
+  0% {
+    transform: translateX(0) scaleY(1);
+  }
+  50% {
+    transform: translateX(-25%) scaleY(1.22);
+  }
+  100% {
+    transform: translateX(-50%) scaleY(1);
+  }
+}
+
+@keyframes orbitIosWaveBarBass {
+  0%, 100% { transform: scaleY(0.24); opacity: 0.45; }
+  50% { transform: scaleY(0.96); opacity: 0.95; }
+}
+@keyframes orbitIosWaveBarMid {
+  0%, 100% { transform: scaleY(0.18); opacity: 0.40; }
+  40% { transform: scaleY(0.85); opacity: 0.90; }
+  80% { transform: scaleY(0.32); opacity: 0.55; }
+}
+@keyframes orbitIosWaveBarTreble {
+  0%, 100% { transform: scaleY(0.20); opacity: 0.35; }
+  35% { transform: scaleY(0.72); opacity: 0.85; }
+  70% { transform: scaleY(0.42); opacity: 0.60; }
+}
+
+.orbit-ios-wave-ribbon {
+  animation: orbitIosWaveDrift 5s ease-in-out infinite;
+  --animation-reduced: none;
+}
+
+.orbit-ios-wave-ribbon-slow {
+  animation: orbitIosWaveDrift 7.5s ease-in-out infinite reverse;
+  --animation-reduced: none;
+}
+
+.orbit-ios-wave-bar {
+  transform-origin: bottom !important;
+  --animation-reduced: none;
+}
+
+/* ==========================================================================
+   TYPOGRAPHY & FONT PRESETS (Sub-Phase 7.4b)
+   ========================================================================== */
+.orbit-font-inter {
+  font-family: "Segoe UI Variable Display", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+.orbit-font-bold {
+  font-family: "Segoe UI Variable Display", "SF Pro Display", system-ui, sans-serif;
+  font-weight: 700 !important;
+  letter-spacing: -0.015em;
+}
+.orbit-font-bold span,
+.orbit-font-bold p,
+.orbit-font-bold div,
+.orbit-font-bold button,
+.orbit-font-bold h1,
+.orbit-font-bold h2,
+.orbit-font-bold h3,
+.orbit-font-bold h4 {
+  font-weight: 700;
+}
+
+.orbit-font-claude {
+  font-family: "Georgia", "Cambria", "Newsreader", "Times New Roman", serif;
+  letter-spacing: -0.005em;
+}
+
+.orbit-font-mono {
+  font-family: "Cascadia Code", "JetBrains Mono", "Consolas", ui-monospace, monospace;
+  letter-spacing: -0.02em;
+}
+
+.orbit-font-rounded {
+  font-family: "Trebuchet MS", "Segoe UI Historic", "Verdana", ui-rounded, sans-serif;
+}
+
+.orbit-font-cyber {
+  font-family: "Bahnschrift", "Franklin Gothic Medium", "Segoe UI Semibold", sans-serif;
+  letter-spacing: 0.03em;
+}
+
+/* ==========================================================================
+   COMPACT RIGHT SLOT 3D & GLOWING BADGE STYLES (Sub-Phase 9.1)
+   ========================================================================== */
+@keyframes orbitNeonPulse {
+  0%, 100% { filter: drop-shadow(0 0 5px var(--badge-glow, #38bdf8)); }
+  50% { filter: drop-shadow(0 0 10px var(--badge-glow, #38bdf8)) brightness(1.18); }
+}
+
+.orbit-right-badge-neon_glow {
+  color: #ffffff;
+  text-shadow: 0 0 8px var(--badge-glow, #38bdf8), 0 0 14px var(--badge-glow, #38bdf8);
+  animation: orbitNeonPulse 2.6s ease-in-out infinite;
+}
+
+.orbit-right-badge-cyber_badge {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.28));
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+  color: #e0f2fe;
+  padding: 1px 5px;
+  border-radius: 6px;
+}
+
+.orbit-right-badge-aurora_pill {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.28), rgba(56, 189, 248, 0.28), rgba(168, 85, 247, 0.28));
+  border: 1px solid rgba(167, 243, 208, 0.45);
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+  color: #ecfdf5;
+  padding: 1px 5px;
+  border-radius: 9999px;
+}
+
+.orbit-right-badge-liquid_gold {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.28), rgba(217, 119, 6, 0.22));
+  border: 1px solid rgba(251, 191, 36, 0.6);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.4), inset 0 1px 1px rgba(254, 243, 199, 0.5);
+  color: #fef3c7;
+  padding: 1px 5px;
+  border-radius: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {
