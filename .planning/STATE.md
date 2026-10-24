@@ -1,10 +1,15 @@
 # ORBIT — Project State
 
 ## Current Status
-- **Active Milestone**: ORBIT v2.0.0 (Full PRD & iOS Dynamic Island Redesign Completed) — **ALL PHASES INCLUDING PHASE 11 COMPLETED & VERIFIED**
+- **Active Milestone**: ORBIT v2.0.0 (Full PRD & iOS Dynamic Island Redesign Completed) — **ALL PHASES INCLUDING PHASE 12 COMPLETED & VERIFIED**
 - **Version**: `2.0.0` across `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`
-- **Last Verified Build**: Release Build (`src-tauri/target/release/orbit.exe`) — **PASSING** (`npm run build` 0 errors, `cargo test` 34/34 passed, live binary PID 24568 running).
+- **Last Verified Build**: Release Build (`src-tauri/target/release/orbit.exe`) — **PASSING** (`npm run build` 0 errors, `cargo test` 34/34 passed, live binary PID 8860 running).
 - **Core Bug Fixes & Polish Shipped**:
+  - **Phase 12 Shipped (The Elite Theme Engine & Visual Showcase Overhaul)**:
+    - Upgraded `src/core/theme.ts` and `src/styles/globals.css` with 11 authentic signature themes (Apple Dynamic Island Pure OLED, Linear/Raycast Studio, VisionOS Spatial Glass, Catppuccin Mocha, Cyberpunk Neo-Tokyo, Sunset Velvet & Amber, Nordic Botanical Emerald, Arc Ocean & Solar Gold, Apple Ceramic Alabaster, and System Auto).
+    - Deep token integration across `HomeSection.tsx`, `MultiTaskSection.tsx`, and `CalendarSection.tsx`, binding card surfaces, borders, text, and muted captions directly to CSS variables (`--island-card-bg`, `--island-card-border`, `--island-text`, `--island-muted`, `--theme-accent`).
+    - Added responsive full-width Bento Theme Showcase Gallery in `SettingsApp.tsx` featuring live mini Dynamic Island previews, 3-color swatch dots, and instant live preview IPC dispatch upon selection.
+    - Added Rust configuration validation and unit tests in `src-tauri/src/services/config.rs` for `catppuccin` and `cyber`.
   - **Phase 11 Shipped (Dynamic Section 2 Multi-Task Hub, Full-Cell Colored Calendar Grid & Eye-Friendly Typography Upgrade)**:
     - Created `MultiTaskSection.tsx` 2x2 Bento Hub for simultaneous activities (Media, Call/Privacy, Focus Timer, Schedule Card) dynamically inserted at Dot 2 when 2+ tasks run.
     - Unclipped Home top bar in `HomeSection.tsx` by locking right-side `[🔔 N]` and `[⚙️]` buttons with `shrink-0`, repositioning `todayNextEvent` under the date as a centered `11.5px` pill badge.
