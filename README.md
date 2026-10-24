@@ -29,6 +29,29 @@ Download the official standalone Windows installer from the [Releases page](http
 
 ---
 
+## Visual Tour & Experience (Version 2.0)
+
+<div align="center">
+
+### Expanded Experience & Media Island
+| Home Stage (Expanded Clock & Controls) | Audio Stream & Frequency Equalizer |
+| :---: | :---: |
+| <img src="docs/screenshots/homepagev.2.0.png" width="460" alt="ORBIT v2.0 Home Stage" /> | <img src="docs/screenshots/musicislandv2.0.png" width="460" alt="ORBIT v2.0 Music Island" /> |
+
+### Compact Multi-Tasking & Dynamic Drops
+| Dual-Tasking Compact Capsule | 3D Notification Drop |
+| :---: | :---: |
+| <img src="docs/screenshots/dualtaskingcompactv2.0.png" width="460" alt="ORBIT v2.0 Dual-Tasking Compact Capsule" /> | <img src="docs/screenshots/notificationv2.0.png" width="460" alt="ORBIT v2.0 Notification Drop" /> |
+
+### Academic & Schedule Hub
+| Full-Month Interactive Academic Calendar & Event Color Highlights |
+| :---: |
+| <img src="docs/screenshots/calenderv2.0.png" width="740" alt="ORBIT v2.0 Academic Calendar Hub" /> |
+
+</div>
+
+---
+
 ## System Architecture & Dynamic Flows
 
 ORBIT is built upon a hybrid architecture: a low-latency Rust backend communicating with a React 18 / Tailwind CSS frontend via Tauri v2 IPC.
@@ -40,7 +63,7 @@ stateDiagram-v2
     [*] --> CompactGlance: Application Startup
     
     CompactGlance --> NotificationDrop: Incoming Notification / Call
-    NotificationDrop --> CompactGlance: Timeout (4s) / Dismissed
+    NotificationDrop --> CompactGlance: Timeout 4s or Dismissed
     NotificationDrop --> NotificationHover: Mouse Hover (Action Row)
     NotificationHover --> CompactGlance: Open / View / Dismiss
     
@@ -52,7 +75,7 @@ stateDiagram-v2
     
     state ExpandedStage {
         [*] --> Section0_Home
-        Section0_Home --> Section1_MultiTask: Scroll Down (2+ Tasks Active)
+        Section0_Home --> Section1_MultiTask: Scroll Down with 2+ Tasks Active
         Section1_MultiTask --> Section2_Calendar: Scroll Down
         Section2_Calendar --> Section3_Hardware: Scroll Down
         Section3_Hardware --> Section0_Home: Carousel Loop
@@ -65,22 +88,22 @@ ORBIT employs a zero-hardware-locking, dual-engine privacy monitor to instantly 
 
 ```mermaid
 flowchart TD
-    subgraph Windows 11 Hardware & Drivers
+    subgraph HW ["Windows 11 Hardware and Drivers"]
         CamDriver["Webcam / Sensor Hardware"]
         MicDriver["Microphone Endpoint (eCapture)"]
     end
 
-    subgraph Rust Core Privacy Monitor (lib.rs)
+    subgraph Core ["Rust Core Privacy Monitor"]
         MFMonitor["Media Foundation IMFSensorActivityMonitor"]
         WASAPIMonitor["WASAPI IAudioSessionManager2 Enumerator"]
         RegStore["CapabilityAccessManager ConsentStore"]
         PidCheck["is_pid_alive Process Survival Verifier"]
     end
 
-    subgraph Frontend Reactive Stage (IslandApp.tsx)
-        IPCEvent["privacy-state-changed (350ms Polling / Event Callbacks)"]
-        CompactSlot["Compact Capsule Privacy Dot (Green / Yellow / Cyan)"]
-        ExpandedSlot["Live Call Deck & Top-Right Safety Pill"]
+    subgraph UI ["Frontend Reactive Stage"]
+        IPCEvent["privacy-state-changed Event Stream"]
+        CompactSlot["Compact Capsule Privacy Dot"]
+        ExpandedSlot["Live Call Deck and Top-Right Safety Pill"]
     end
 
     CamDriver -->|Streaming Callback| MFMonitor
