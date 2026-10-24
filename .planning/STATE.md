@@ -1,10 +1,15 @@
 # ORBIT — Project State
 
 ## Current Status
-- **Active Milestone**: ORBIT v2.0.0 (Full PRD & iOS Dynamic Island Redesign Completed) — **ALL PHASES INCLUDING PHASE 10 COMPLETED & VERIFIED**
+- **Active Milestone**: ORBIT v2.0.0 (Full PRD & iOS Dynamic Island Redesign Completed) — **ALL PHASES INCLUDING PHASE 11 COMPLETED & VERIFIED**
 - **Version**: `2.0.0` across `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`
-- **Last Verified Build**: Release Build (`src-tauri/target/release/orbit.exe`) — **PASSING** (`npm run build` 0 errors, `cargo test` 34/34 passed, live binary PID 21768 running).
+- **Last Verified Build**: Release Build (`src-tauri/target/release/orbit.exe`) — **PASSING** (`npm run build` 0 errors, `cargo test` 34/34 passed, live binary PID 24568 running).
 - **Core Bug Fixes & Polish Shipped**:
+  - **Phase 11 Shipped (Dynamic Section 2 Multi-Task Hub, Full-Cell Colored Calendar Grid & Eye-Friendly Typography Upgrade)**:
+    - Created `MultiTaskSection.tsx` 2x2 Bento Hub for simultaneous activities (Media, Call/Privacy, Focus Timer, Schedule Card) dynamically inserted at Dot 2 when 2+ tasks run.
+    - Unclipped Home top bar in `HomeSection.tsx` by locking right-side `[🔔 N]` and `[⚙️]` buttons with `shrink-0`, repositioning `todayNextEvent` under the date as a centered `11.5px` pill badge.
+    - Upgraded 7-column calendar matrix in `CalendarSection.tsx` with full-cell category color highlights (Rose-Red for Exams, Emerald-Green for Holidays, Amber-Gold for Events/Fests, Coral-Orange for Deadlines, Sky-Blue for Classes) and synced the Left Hero Card.
+    - Boosted typography floor to `11px–12.5px` across clock view, timer presets, and calendar drawer.
   - **Phase 10 Shipped (Smart Calendar Hub & Academic/Office Schedule Importer)**:
     - Rust SQLite calendar engine with duplicate prevention (`ABS(due_timestamp_ms - ?2) < 60000`), local time UTC bias calculation via Win32 `GetTimeZoneInformation` with `unsafe extern "system"` (Rust 2024 compliance), RFC 5545 iCalendar (`.ics`), `.csv` (`Title, Date, Time, Category`), and `.json` flexible parsing, and category auto-tagging (`exam`, `deadline`, `meeting`, `class`, `holiday`, `event`).
     - Added Tauri commands `pick_and_import_calendar` with native Windows Forms file picker and `clear_imported_calendar` preserving manual tasks (`source = 'local'`). Emitted `"reminders-updated"` to synchronize all views live.
