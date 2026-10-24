@@ -22,6 +22,9 @@ pub fn show_context_menu(app: AppHandle, window: tauri::Window) -> Result<bool, 
     let cfg = load_config(&app);
     let active_theme = cfg.theme.as_str();
 
+    let pin_item =
+        MenuItem::with_id(&app, "ctx_pin_expanded", "Pin Expanded Island", true, None::<&str>)
+            .map_err(|e| e.to_string())?;
     let hide_item =
         MenuItem::with_id(&app, "ctx_hide", "Hide Island", true, None::<&str>)
             .map_err(|e| e.to_string())?;
@@ -29,15 +32,55 @@ pub fn show_context_menu(app: AppHandle, window: tauri::Window) -> Result<bool, 
         MenuItem::with_id(&app, "ctx_dismiss", "Dismiss", true, None::<&str>)
             .map_err(|e| e.to_string())?;
 
+    let pause_fs_item = CheckMenuItem::with_id(
+        &app,
+        "ctx_pause_fullscreen",
+        "Auto-Hide in Fullscreen Video",
+        true,
+        cfg.pause_in_fullscreen,
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let expand_click_item = CheckMenuItem::with_id(
+        &app,
+        "ctx_expand_click",
+        "Expand on Click Only",
+        true,
+        cfg.expand_trigger == "click",
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let stealth_capture_item = CheckMenuItem::with_id(
+        &app,
+        "ctx_stealth_capture",
+        "Hide in Screen Recording / Share",
+        true,
+        cfg.hide_from_screen_capture,
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let test_privacy_item = MenuItem::with_id(
+        &app,
+        "ctx_test_privacy",
+        "Test Privacy Light (4s)",
+        true,
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
+
     let theme_specs = [
-        ("theme_obsidian", "Obsidian Dark", "obsidian"),
-        ("theme_dark", "Dark", "dark"),
-        ("theme_dynamic", "Dynamic", "dynamic"),
-        ("theme_light", "Crystal Frost", "light"),
-        ("theme_black", "Black", "black"),
-        ("theme_espresso", "Espresso Warm", "espresso"),
-        ("theme_evergreen", "Evergreen", "evergreen"),
-        ("theme_nord", "Nord Frost", "nord"),
+        ("theme_system", "System Auto", "system"),
+        ("theme_obsidian", "Midnight Sapphire", "obsidian"),
+        ("theme_dynamic", "Nebula Violet", "dynamic"),
+        ("theme_dark", "VisionOS Spatial Titanium", "dark"),
+        ("theme_black", "OLED Cyber Pitch", "black"),
+        ("theme_espresso", "Sunset Rose & Amber", "espresso"),
+        ("theme_evergreen", "Aurora Botanical Emerald", "evergreen"),
+        ("theme_nord", "Arc Ocean & Solar Gold", "nord"),
+        ("theme_light", "Apple Ceramic Pearl", "light"),
     ];
     let theme_items = theme_specs
         .iter()
@@ -83,7 +126,8 @@ pub fn show_context_menu(app: AppHandle, window: tauri::Window) -> Result<bool, 
     )
     .map_err(|e| e.to_string())?;
 
-    let sep = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+    let sep1 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+    let sep2 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
     let settings_item =
         MenuItem::with_id(&app, "ctx_settings", "ORBIT Settings...", true, None::<&str>)
             .map_err(|e| e.to_string())?;
@@ -91,11 +135,17 @@ pub fn show_context_menu(app: AppHandle, window: tauri::Window) -> Result<bool, 
     let menu = Menu::with_items(
         &app,
         &[
+            &pin_item,
             &hide_item,
             &dismiss_item,
+            &sep1,
+            &pause_fs_item,
+            &expand_click_item,
+            &stealth_capture_item,
+            &test_privacy_item,
             &timer_submenu,
             &theme_submenu,
-            &sep,
+            &sep2,
             &settings_item,
         ],
     )
@@ -142,6 +192,7 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, Strin
         .set_always_on_top(config.always_on_top)
         .map_err(|e| e.to_string())?;
     crate::services::window::set_window_topmost(&main_win, config.always_on_top);
+    crate::services::window::set_window_capture_stealth(&main_win, config.hide_from_screen_capture);
     if config.position != previous.position {
         let _ = crate::services::window::position_island_window(&main_win, &config.position);
     }
@@ -150,7 +201,13 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, Strin
             log::error!("Failed to roll back always-on-top after config save failed: {rollback_error}");
         }
         crate::services::window::set_window_topmost(&main_win, previous.always_on_top);
+        crate::services::window::set_window_capture_stealth(&main_win, previous.hide_from_screen_capture);
         return Err(error);
+    }
+
+    if let Some(vis) = app.try_state::<std::sync::Arc<crate::IslandVisibilityState>>() {
+        vis.shortcuts_enabled
+            .store(config.shortcuts_enabled, std::sync::atomic::Ordering::SeqCst);
     }
 
     let _ = app.emit("config-changed", &config);
@@ -194,12 +251,16 @@ pub fn get_memory_metrics() -> Result<MemoryReport, String> {
 }
 
 #[tauri::command]
-pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
+pub fn set_island_state(
+    app: AppHandle,
+    state: String,
+    width: Option<f64>,
+) -> Result<(), String> {
     let main_win = app
         .get_webview_window("main")
         .ok_or_else(|| "Main island window not found".to_string())?;
 
-    crate::services::window::apply_island_region(&main_win, &state)?;
+    crate::services::window::apply_island_region_sized(&main_win, &state, width)?;
 
     // Smart Z-Order: When Always on Top is OFF in config (and not suppressed by fullscreen video),
     // temporarily promote the island to top for transient notifications, reminders, or active expansion,
@@ -212,15 +273,31 @@ pub fn set_island_state(app: AppHandle, state: String) -> Result<(), String> {
     if !is_fs_suppressed {
         let cfg = load_config(&app);
         if !cfg.always_on_top {
-            let should_temp_top = state == "notification" || state == "expanded" || state == "compact_alert";
+            let should_temp_top = state == "notification"
+                || state == "notification_hover"
+                || state == "expanded"
+                || state == "compact_alert";
             let _ = main_win.set_always_on_top(should_temp_top);
-            crate::services::window::set_window_topmost(&main_win, should_temp_top);
+            crate::services::window::force_window_topmost(&main_win, should_temp_top);
         } else {
             crate::services::window::set_window_topmost(&main_win, true);
         }
     }
 
     Ok(())
+}
+
+/// Resizes only the native hit region of a compact-family state to match the live pill width.
+/// Intentionally does NOT touch z-order, so temporary alert promotion is never disturbed.
+#[tauri::command]
+pub fn update_island_region(app: AppHandle, state: String, width: f64) -> Result<(), String> {
+    if !matches!(state.as_str(), "compact" | "compact_alert" | "compact_dual") {
+        return Ok(());
+    }
+    let main_win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Main island window not found".to_string())?;
+    crate::services::window::apply_island_region_sized(&main_win, &state, Some(width))
 }
 
 #[derive(Default, Clone)]
@@ -382,6 +459,56 @@ pub fn get_privacy_state(app: AppHandle) -> Result<PrivacyState, String> {
     Ok(inspect_privacy_indicators())
 }
 
+#[tauri::command]
+pub fn trigger_privacy_test(app: AppHandle) -> Result<(), String> {
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        // Step 1: Camera active (Green) - 1.3s
+        let _ = app_handle.emit(
+            "privacy-state-changed",
+            PrivacyState {
+                camera_active: true,
+                camera_app: Some("Camera (Test)".to_string()),
+                microphone_active: false,
+                microphone_app: None,
+                is_reliable: true,
+            },
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1300));
+
+        // Step 2: Microphone active (Yellow) - 1.3s
+        let _ = app_handle.emit(
+            "privacy-state-changed",
+            PrivacyState {
+                camera_active: false,
+                camera_app: None,
+                microphone_active: true,
+                microphone_app: Some("Microphone (Test)".to_string()),
+                is_reliable: true,
+            },
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1300));
+
+        // Step 3: Both active (Cyan) - 1.4s
+        let _ = app_handle.emit(
+            "privacy-state-changed",
+            PrivacyState {
+                camera_active: true,
+                camera_app: Some("Dual Cam & Mic (Test)".to_string()),
+                microphone_active: true,
+                microphone_app: Some("Dual Cam & Mic (Test)".to_string()),
+                is_reliable: true,
+            },
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1400));
+
+        // Step 4: Revert to actual hardware telemetry
+        let real_state = inspect_privacy_indicators();
+        let _ = app_handle.emit("privacy-state-changed", real_state);
+    });
+    Ok(())
+}
+
 // Reminders & Productivity Hub (SQLite persistence)
 #[tauri::command]
 pub fn get_reminders(
@@ -392,29 +519,99 @@ pub fn get_reminders(
 
 #[tauri::command]
 pub fn add_reminder(
+    app: AppHandle,
     title: String,
     due_timestamp_ms: u64,
     category: String,
     source: String,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<crate::services::db::ReminderItem, String> {
-    db.add_reminder(&title, due_timestamp_ms, &category, &source)
+    let item = db.add_reminder(&title, due_timestamp_ms, &category, &source)?;
+    if let Ok(updated) = db.get_reminders() {
+        let _ = app.emit("reminders-updated", &updated);
+    }
+    Ok(item)
 }
 
 #[tauri::command]
 pub fn toggle_reminder(
+    app: AppHandle,
     id: String,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<bool, String> {
-    db.toggle_reminder(&id)
+    let res = db.toggle_reminder(&id)?;
+    if let Ok(updated) = db.get_reminders() {
+        let _ = app.emit("reminders-updated", &updated);
+    }
+    Ok(res)
 }
 
 #[tauri::command]
 pub fn delete_reminder(
+    app: AppHandle,
     id: String,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<(), String> {
-    db.delete_reminder(&id)
+    db.delete_reminder(&id)?;
+    if let Ok(updated) = db.get_reminders() {
+        let _ = app.emit("reminders-updated", &updated);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn pick_and_import_calendar(
+    app: AppHandle,
+    source_tag: String,
+    db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
+) -> Result<usize, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let script = r#"
+            Add-Type -AssemblyName System.Windows.Forms
+            $dialog = New-Object System.Windows.Forms.OpenFileDialog
+            $dialog.Title = 'Import Academic or Office Calendar (.ics, .csv, .json)'
+            $dialog.Filter = 'Calendar & Schedule Files (*.ics;*.ical;*.csv;*.json)|*.ics;*.ical;*.csv;*.json|All Files (*.*)|*.*'
+            $dialog.Multiselect = $false
+            if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                Write-Output $dialog.FileName
+            }
+        "#;
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| format!("Failed to open calendar file picker: {e}"))?;
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if path.is_empty() {
+            return Ok(0);
+        }
+        let count = db.import_calendar_file(&path, &source_tag)?;
+        if let Ok(updated) = db.get_reminders() {
+            let _ = app.emit("reminders-updated", &updated);
+        }
+        Ok(count)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, source_tag, db);
+        Ok(0)
+    }
+}
+
+#[tauri::command]
+pub fn clear_imported_calendar(
+    app: AppHandle,
+    source_filter: Option<String>,
+    db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
+) -> Result<usize, String> {
+    let deleted = db.clear_imported_reminders(source_filter.as_deref())?;
+    if let Ok(updated) = db.get_reminders() {
+        let _ = app.emit("reminders-updated", &updated);
+    }
+    Ok(deleted)
 }
 
 // Hardware & System Monitor
@@ -453,10 +650,12 @@ pub fn get_shelf_items(
 
 #[tauri::command]
 pub fn add_shelf_item(
+    app: AppHandle,
     file_path: String,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<crate::services::db::ShelfItem, String> {
-    db.add_shelf_item(&file_path)
+    let cfg = load_config(&app);
+    db.add_shelf_item_with_mode(&file_path, &cfg.shelf_storage_mode)
 }
 
 #[tauri::command]
@@ -529,5 +728,33 @@ pub fn clear_local_data(
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<(), String> {
     db.clear_local_data()
+}
+
+#[tauri::command]
+pub fn activate_app_source(
+    app_id: String,
+    app_name: String,
+    title_hint: Option<String>,
+) -> Result<bool, String> {
+    crate::services::window::activate_app_window(&app_id, &app_name, title_hint.as_deref())
+}
+
+#[tauri::command]
+pub fn reveal_diagnostic_log() -> Result<String, String> {
+    let log_path = crate::services::logger::get_default_log_path();
+    if let Some(parent) = log_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if !log_path.exists() {
+        crate::services::logger::log_event("INFO", "diagnostics", "Diagnostic log exported/revealed by user");
+    }
+    let path_str = log_path.to_string_lossy().to_string();
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer.exe")
+            .arg(format!("/select,{}", path_str))
+            .spawn();
+    }
+    Ok(path_str)
 }
 

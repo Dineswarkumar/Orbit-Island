@@ -1,6 +1,6 @@
 [package]
 name = "orbit"
-version = "1.0.0"
+version = "2.0.0"
 description = "ORBIT Dynamic Island"
 authors = ["User"]
 edition = "2024"
@@ -36,6 +36,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
     "Win32_UI_Shell",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 windows = { version = "0.62", features = [
     "ApplicationModel",
@@ -45,7 +46,15 @@ windows = { version = "0.62", features = [
     "Foundation_Collections",
     "UI_Notifications",
     "UI_Notifications_Management",
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Variant",
+    "Win32_UI_Accessibility",
 ] }
+windows-core = "0.62"
 base64 = "0.22"
 tokio = { version = "1", features = ["sync", "time", "rt"] }
 rusqlite = { version = "0.33", features = ["bundled"] }

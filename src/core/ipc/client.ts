@@ -7,6 +7,12 @@ import { ReminderItem } from "../types/reminders";
 import { HardwareMetrics, MemoryCleanResult } from "../types/hardware";
 import { ShelfItem } from "../types/shelf";
 
+// Latest rendered compact pill width (logical px). Updated by the island UI; consumed by setIslandState.
+let compactWidthHint: number | null = null;
+export function setCompactWidthHint(width: number | null): void {
+  compactWidthHint = width;
+}
+
 export const ipc = {
   getConfig: async (): Promise<AppConfig> => {
     const raw = await invoke<unknown>("get_config");
@@ -35,8 +41,30 @@ export const ipc = {
     return invoke<MemoryReport>("get_memory_metrics");
   },
 
-  setIslandState: async (state: "compact" | "compact_alert" | "notification" | "expanded"): Promise<void> => {
-    return invoke<void>("set_island_state", { state });
+  setIslandState: async (
+    state:
+      | "compact"
+      | "compact_alert"
+      | "compact_dual"
+      | "notification"
+      | "notification_hover"
+      | "expanded"
+      | "suppressed"
+  ): Promise<void> => {
+    // Compact-family states carry the live pill width so the native hit region hugs the capsule.
+    const isCompactFamily =
+      state === "compact" || state === "compact_alert" || state === "compact_dual";
+    return invoke<void>("set_island_state", {
+      state,
+      width: isCompactFamily ? compactWidthHint : null,
+    });
+  },
+
+  updateIslandRegion: async (
+    state: "compact" | "compact_alert" | "compact_dual",
+    width: number
+  ): Promise<void> => {
+    return invoke<void>("update_island_region", { state, width });
   },
 
   showContextMenu: async (): Promise<boolean> => {
@@ -87,6 +115,10 @@ export const ipc = {
     return invoke<PrivacyState>("get_privacy_state");
   },
 
+  triggerPrivacyTest: async (): Promise<void> => {
+    return invoke<void>("trigger_privacy_test");
+  },
+
   // Reminders & Productivity Hub (SQLite persistence)
   getReminders: async (): Promise<ReminderItem[]> => {
     return invoke<ReminderItem[]>("get_reminders");
@@ -112,6 +144,20 @@ export const ipc = {
 
   deleteReminder: async (id: string): Promise<void> => {
     return invoke<void>("delete_reminder", { id });
+  },
+
+  pickAndImportCalendar: async (
+    sourceTag: "academic" | "office" | "ics" | string = "ics"
+  ): Promise<number> => {
+    return invoke<number>("pick_and_import_calendar", { sourceTag });
+  },
+
+  clearImportedCalendar: async (
+    sourceFilter?: string | null
+  ): Promise<number> => {
+    return invoke<number>("clear_imported_calendar", {
+      sourceFilter: sourceFilter ?? null,
+    });
   },
 
   // Hardware & System Monitor
@@ -154,5 +200,21 @@ export const ipc = {
 
   clearLocalData: async (): Promise<void> => {
     return invoke<void>("clear_local_data");
+  },
+
+  activateAppSource: async (
+    appId: string,
+    appName: string,
+    titleHint?: string | null
+  ): Promise<boolean> => {
+    return invoke<boolean>("activate_app_source", {
+      appId,
+      appName,
+      titleHint: titleHint ?? null,
+    });
+  },
+
+  revealDiagnosticLog: async (): Promise<string> => {
+    return invoke<string>("reveal_diagnostic_log");
   },
 };
