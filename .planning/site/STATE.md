@@ -9,7 +9,7 @@
 | Card | Status | Commit | Notes |
 |---|---|---|---|
 | S0.1 Scaffold | ☑ | `chore(site): scaffold landing site vite app` | Standalone Vite + React + Tailwind project; install and placeholder build pass |
-| S0.2 Mock IPC | ☐ | | Typed mocks and live `CompactCapsule` |
+| S0.2 Mock IPC | ☑ | `feat(site): mock tauri ipc and render live CompactCapsule` | All 39 IPC methods typed; demo fixtures and live `CompactCapsule`; site build passes |
 | S0.3 Theme CSS | ☐ | | App theme variables with site overrides |
 | S1.1 Lenis+GSAP | ☐ | | |
 | S1.2 Stage | ☐ | | |
