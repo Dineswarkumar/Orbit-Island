@@ -7,6 +7,10 @@ import {
   Scene02DualTask,
   Scene03IncomingCall,
   Scene04ExpandedMedia,
+  Scene05MultiTask,
+  Scene06Calendar,
+  Scene07Security,
+  Scene08Hardware,
 } from "./IslandScenes";
 
 type IslandStageProps = {
@@ -97,6 +101,45 @@ export function IslandStage({ children }: IslandStageProps) {
           }
         }
 
+        if (index + 1 === 4) {
+          // Scene 05 (s05): 2x2 Bento grid cards stagger in
+          const bentoCards = sceneLayers[index + 1].querySelectorAll(".orbit-card-3d");
+          if (bentoCards.length > 0) {
+            timeline.fromTo(
+              bentoCards,
+              { y: 12, autoAlpha: 0, scale: 0.96 },
+              { y: 0, autoAlpha: 1, scale: 1, duration: 0.35, stagger: 0.06, ease: "orbitSpring" },
+              `${label}+=0.55`,
+            );
+          }
+        }
+
+        if (index + 1 === 5) {
+          // Scene 06 (s06): Calendar date hero and month matrix pop in
+          const calCards = sceneLayers[index + 1].querySelectorAll(".orbit-card-3d");
+          if (calCards.length > 0) {
+            timeline.fromTo(
+              calCards,
+              { y: 10, autoAlpha: 0 },
+              { y: 0, autoAlpha: 1, duration: 0.38, stagger: 0.05, ease: "orbitSpring" },
+              `${label}+=0.55`,
+            );
+          }
+        }
+
+        if (index + 1 === 7) {
+          // Scene 08 (s08): 2x3 Hardware telemetry cards stagger in
+          const hwCards = sceneLayers[index + 1].querySelectorAll(".orbit-card-3d");
+          if (hwCards.length > 0) {
+            timeline.fromTo(
+              hwCards,
+              { y: 10, autoAlpha: 0 },
+              { y: 0, autoAlpha: 1, duration: 0.32, stagger: 0.04, ease: "power2.out" },
+              `${label}+=0.55`,
+            );
+          }
+        }
+
         timeline.to(copyPanels[index], { autoAlpha: 0, duration: 0.3 }, `${label}+=0.35`);
         timeline.set(copyPanels[index + 1], { autoAlpha: 1 }, `${label}+=0.6`);
         timeline.fromTo(
@@ -169,12 +212,15 @@ export function IslandStage({ children }: IslandStageProps) {
                     <Scene03IncomingCall />
                   ) : index === 3 ? (
                     <Scene04ExpandedMedia />
-                  ) : (
-                    <div className="island-scene-placeholder">
-                      <span className="island-scene-placeholder-orbit">ORBIT</span>
-                      <span>{section.tag.split(" / ")[1]}</span>
-                    </div>
-                  )}
+                  ) : index === 4 ? (
+                    <Scene05MultiTask />
+                  ) : index === 5 ? (
+                    <Scene06Calendar />
+                  ) : index === 6 ? (
+                    <Scene07Security />
+                  ) : index === 7 ? (
+                    <Scene08Hardware />
+                  ) : null}
                 </div>
               ))}
             </div>

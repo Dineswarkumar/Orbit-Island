@@ -131,15 +131,6 @@ export const privacyFixture: PrivacyState = {
 const now = Date.now();
 export const reminderFixtures: ReminderItem[] = [
   {
-    id: "exam-physics",
-    title: "Physics final exam",
-    dueTimestampMs: now + 2 * 24 * 60 * 60 * 1000,
-    isCompleted: false,
-    source: "academic",
-    category: "exam",
-    createdAt: now - 86_400_000,
-  },
-  {
     id: "deadline-prototype",
     title: "Submit island prototype",
     dueTimestampMs: now + 4 * 60 * 60 * 1000,
@@ -149,12 +140,39 @@ export const reminderFixtures: ReminderItem[] = [
     createdAt: now - 43_200_000,
   },
   {
+    id: "exam-physics",
+    title: "Physics final exam",
+    dueTimestampMs: now + 2 * 24 * 60 * 60 * 1000,
+    isCompleted: false,
+    source: "academic",
+    category: "exam",
+    createdAt: now - 86_400_000,
+  },
+  {
+    id: "meeting-sync",
+    title: "Team design sync",
+    dueTimestampMs: now + 4 * 24 * 60 * 60 * 1000,
+    isCompleted: false,
+    source: "office",
+    category: "meeting",
+    createdAt: now - 20_000_000,
+  },
+  {
+    id: "class-dsp",
+    title: "Advanced DSP lecture",
+    dueTimestampMs: now + 5 * 24 * 60 * 60 * 1000,
+    isCompleted: false,
+    source: "academic",
+    category: "class",
+    createdAt: now - 30_000_000,
+  },
+  {
     id: "fest-open-day",
     title: "Spring campus fest",
     dueTimestampMs: now + 7 * 24 * 60 * 60 * 1000,
     isCompleted: false,
     source: "academic",
-    category: "fest",
+    category: "event",
     createdAt: now - 172_800_000,
   },
 ];

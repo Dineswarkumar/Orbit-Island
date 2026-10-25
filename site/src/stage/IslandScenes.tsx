@@ -2,12 +2,18 @@ import { useEffect, useState } from "react";
 import { THEMES } from "@app/core/theme";
 import { CompactCapsule } from "@app/components/island/CompactCapsule";
 import { HomeSection } from "@app/components/island/HomeSection";
+import { MultiTaskSection } from "@app/components/island/MultiTaskSection";
+import { CalendarSection } from "@app/components/island/CalendarSection";
+import { HardwareSection } from "@app/components/island/HardwareSection";
 import type { AudioSpectrumState } from "@app/core/types/media";
 import {
   appConfigFixture,
   audioSpectrumFixture,
+  hardwareMetricsFixture,
   mediaSessionFixture,
   notificationFixtures,
+  reminderFixtures,
+  shelfFixtures,
 } from "../mocks/fixtures";
 
 export function useSyntheticSpectrum(active = true): AudioSpectrumState {
@@ -242,6 +248,172 @@ export function Scene04ExpandedMedia() {
         timerRemainingSecs={0}
         callDurationSecs={null}
         shelfItems={[]}
+      />
+    </div>
+  );
+}
+
+/**
+ * Scene 05 (s05): MultiTaskSection (316x168 2x2 Bento grid) with active media,
+ * call duration 134 secs (02:14), focus timer 1499 secs (24:59), and reminderFixtures / shelfFixtures.
+ */
+export function Scene05MultiTask() {
+  const formatSeconds = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const rem = Math.floor(secs % 60);
+    return `${mins}:${String(rem).padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="relative w-full h-full overflow-hidden rounded-[26px] p-2">
+      <MultiTaskSection
+        activeThemeMeta={activeThemeMeta}
+        isMediaActive={true}
+        mediaSession={mediaSessionFixture}
+        onMediaCommand={() => undefined}
+        onOpenMediaHome={() => undefined}
+        privacyState={{
+          cameraActive: false,
+          cameraApp: null,
+          microphoneActive: true,
+          microphoneApp: "Microsoft Teams",
+          isReliable: true,
+        }}
+        callDurationSecs={134}
+        timerRemainingSecs={1499}
+        isTimerPaused={false}
+        timerLabel="Focus"
+        onStartTimer={() => undefined}
+        onPauseTimer={() => undefined}
+        onResumeTimer={() => undefined}
+        onStopTimer={() => undefined}
+        shelfItems={shelfFixtures}
+        onOpenShelf={() => undefined}
+        todayNextEvent={reminderFixtures[0]}
+        onOpenCalendarSection={() => undefined}
+        formatSeconds={formatSeconds}
+      />
+    </div>
+  );
+}
+
+/**
+ * Scene 06 (s06): CalendarSection (316x168) populated with reminderFixtures
+ * (exam in rose, deadline in rose, fest/meeting) and today selected.
+ */
+export function Scene06Calendar() {
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date>(() => new Date());
+  const [newTitle, setNewTitle] = useState("");
+
+  return (
+    <div className="relative w-full h-full overflow-hidden rounded-[26px] p-2">
+      <CalendarSection
+        activeThemeMeta={activeThemeMeta}
+        calendarMonth={calendarMonth}
+        setCalendarMonth={setCalendarMonth}
+        selectedCalendarDate={selectedCalendarDate}
+        setSelectedCalendarDate={setSelectedCalendarDate}
+        reminders={reminderFixtures}
+        newReminderTitle={newTitle}
+        setNewReminderTitle={setNewTitle}
+        onAddReminder={() => undefined}
+        onToggleReminder={() => undefined}
+        onDeleteReminder={() => undefined}
+        onImportCalendar={() => undefined}
+      />
+    </div>
+  );
+}
+
+/**
+ * Scene 07 (s07): CompactCapsule with active camera + microphone privacy indicator
+ * alongside a crisp sensor telemetry card (Media Foundation Sensor Monitor + WASAPI Capture -> ORBIT | Zero Hardware Lock).
+ */
+export function Scene07Security() {
+  return (
+    <div className="relative w-full h-full flex flex-col justify-between p-2.5 select-none">
+      {/* Top 38px: Live CompactCapsule with Active Camera + Microphone Privacy Indicators */}
+      <div className="relative w-full h-[38px] rounded-full overflow-hidden border border-white/10 bg-white/[0.03]">
+        <CompactCapsule
+          isExpanded={false}
+          prefersReducedMotion={false}
+          config={appConfigFixture}
+          activeThemeMeta={activeThemeMeta}
+          transientNotif={null}
+          isNotifEntering={false}
+          isNotifHovered={false}
+          setIsNotifHovered={() => undefined}
+          onViewNotification={() => undefined}
+          onDismissNotification={() => undefined}
+          isMediaActive={false}
+          mediaSession={null}
+          timeDisplay={{ timeStr: "10:42", ampm: "AM" }}
+          privacyLight={<DualPrivacyLight />}
+          hardwareMetrics={null}
+          audioSpectrum={null}
+          onOpenHome={() => undefined}
+        />
+      </div>
+
+      {/* Crisp Sensor Telemetry Architecture Card */}
+      <div className="rounded-xl orbit-card-3d px-2.5 py-1.5 flex flex-col justify-between bg-black/40 border border-emerald-500/25 h-[58px]">
+        <div className="flex items-center justify-between text-[9px] font-bold tracking-wider uppercase text-emerald-400">
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Sensor Telemetry Guard
+          </span>
+          <span className="flex items-center gap-1 text-[8.5px] font-semibold text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded border border-emerald-500/30">
+            🔒 Zero Hardware Lock
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-1 text-[8.5px] font-medium text-white/80">
+          <div className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded border border-white/10 truncate">
+            <span className="text-emerald-400 text-[10px]">●</span>
+            <span className="truncate">Media Foundation</span>
+          </div>
+          <span className="text-white/40 text-[9px] shrink-0">→</span>
+          <div className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded border border-white/10 truncate">
+            <span className="text-amber-400 text-[10px]">●</span>
+            <span className="truncate">WASAPI Sessions</span>
+          </div>
+          <span className="text-white/40 text-[9px] shrink-0">→</span>
+          <span className="font-bold text-cyan-300 bg-cyan-500/20 px-1.5 py-0.5 rounded border border-cyan-400/35 shrink-0">
+            ORBIT
+          </span>
+        </div>
+        <div className="text-[8px] text-white/50 flex items-center justify-between leading-none">
+          <span>Passive Windows sensor audit stream</span>
+          <span className="text-emerald-400 font-semibold">Camera never opened</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Scene 08 (s08): HardwareSection (316x168) with hardwareMetricsFixture
+ * (CPU, GPU, RAM with Boost/Trim button, Disk C:, Net Up/Down).
+ */
+export function Scene08Hardware() {
+  const formatNetworkSpeed = (bps: number): string => {
+    if (bps >= 1024 * 1024) {
+      return `${(bps / (1024 * 1024)).toFixed(1)} MB/s`;
+    }
+    return `${Math.max(1, Math.round(bps / 1024))} KB/s`;
+  };
+
+  const handleFreeMemory = async () => {
+    return { freedMb: 412 };
+  };
+
+  return (
+    <div className="relative w-full h-full overflow-hidden rounded-[26px] p-2">
+      <HardwareSection
+        activeThemeMeta={activeThemeMeta}
+        hardwareMetrics={hardwareMetricsFixture}
+        formatNetworkSpeed={formatNetworkSpeed}
+        onFreeMemory={handleFreeMemory}
       />
     </div>
   );
