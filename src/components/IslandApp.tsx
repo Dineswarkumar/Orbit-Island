@@ -852,7 +852,12 @@ export const IslandApp: React.FC = () => {
 
   // Onboarding Guided Tour state (Sub-Phase 8.1)
   const [showOnboarding, setShowOnboarding] = useState<boolean>(
-    () => !config.onboardingCompleted || localStorage.getItem("orbit_onboarding_seen") !== "true"
+    () => {
+      try {
+        if (localStorage.getItem("orbit_onboarding_seen") === "true") return false;
+      } catch (_) {}
+      return false;
+    }
   );
   const showOnboardingRef = useRef<boolean>(showOnboarding);
   showOnboardingRef.current = showOnboarding;
@@ -868,6 +873,34 @@ export const IslandApp: React.FC = () => {
       }
     }
   }, [showOnboarding]);
+
+  // Sync onboarding state once config is loaded from disk
+  useEffect(() => {
+    try {
+      const seenLocally = localStorage.getItem("orbit_onboarding_seen") === "true";
+      if (config.onboardingCompleted || seenLocally) {
+        if (showOnboarding) {
+          setShowOnboarding(false);
+          showOnboardingRef.current = false;
+        }
+        if (!seenLocally && config.onboardingCompleted) {
+          localStorage.setItem("orbit_onboarding_seen", "true");
+        }
+      } else if (!config.onboardingCompleted && !seenLocally) {
+        setShowOnboarding(true);
+        showOnboardingRef.current = true;
+      }
+    } catch (_) {}
+  }, [config.onboardingCompleted]);
+
+  // Reset calendar month and selected date to today whenever the island compacts
+  useEffect(() => {
+    if (!isExpanded) {
+      const now = new Date();
+      setCalendarMonth(now);
+      setSelectedCalendarDate(now);
+    }
+  }, [isExpanded]);
 
   const handleCompleteOnboarding = async (openSettings = false) => {
     try {
