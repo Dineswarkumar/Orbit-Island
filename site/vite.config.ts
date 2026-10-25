@@ -11,7 +11,11 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /^(\.\.\/)+core\/ipc\/client$/,
+        find: /^(\.\.\/)+(core\/)?ipc\/client$/,
+        replacement: `${siteRoot}src/mocks/ipc.ts`,
+      },
+      {
+        find: /^@app\/core\/ipc\/client$/,
         replacement: `${siteRoot}src/mocks/ipc.ts`,
       },
       {

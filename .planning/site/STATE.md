@@ -20,7 +20,8 @@
 | S0.3 Theme CSS | ☑ | `feat(site): share island theme tokens with landing site` | Imports app theme variables and restores a scrollable, selectable web page background |
 | S1.1 Lenis+GSAP | ☑ | `feat(site): wire lenis smooth scroll to gsap ticker` | Registers ScrollTrigger/CustomEase once, adds the app's spring curves, and disables Lenis for reduced motion |
 | S1.2 Stage | ☑ | `feat(site): add pinned island stage with label-driven morph timeline` | 950vh scroller, sticky viewport stage, eight label-driven shell/content states, responsive scale, and exact Phase S2 copy |
-| S2.1–S2.8 Scenes | ☐ | | replicas used: none |
+| S2.1–S2.4 Scenes 01–04 | ☑ | `feat(site): add scenes 01-04 with live island components` | Real live components: S01 idle capsule with breathing glow, S02 dual-tasking mic+cam+spectrum, S03 incoming call 3D drop, S04 expanded media player; replicas used: none |
+| S2.5–S2.8 Scenes 05–08 | ☐ | | |
 | S3.1 Model | ☐ | | screen mesh name: ___ · model source/license: ___ |
 | S3.2 Dive-in | ☐ | | |
 | S3.3 Outro | ☐ | | |

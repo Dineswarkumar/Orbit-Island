@@ -135,6 +135,7 @@ body {
   width: 316px;
   height: 168px;
   overflow: hidden;
+  perspective: 900px;
   transform: scale(var(--island-scale, 1.6));
   transform-origin: center;
   border: 1px solid var(--island-border, rgba(255, 255, 255, 0.12));
@@ -149,6 +150,27 @@ body {
   display: grid;
   place-items: center;
   overflow: hidden;
+  transform-style: preserve-3d;
+}
+
+.island-breathing-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 20px rgba(0, 210, 255, 0.16), inset 0 0 10px rgba(0, 210, 255, 0.06);
+  animation: island-breathing-pulse 3s ease-in-out infinite;
+}
+
+@keyframes island-breathing-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    box-shadow: 0 0 16px rgba(0, 210, 255, 0.12), inset 0 0 8px rgba(0, 210, 255, 0.05);
+  }
+  50% {
+    opacity: 0.9;
+    box-shadow: 0 0 32px rgba(0, 210, 255, 0.32), inset 0 0 16px rgba(0, 210, 255, 0.14);
+  }
 }
 
 .island-scene-placeholder {

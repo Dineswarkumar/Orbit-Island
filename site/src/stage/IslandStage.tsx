@@ -2,9 +2,15 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import gsap from "gsap";
 import { sections } from "../content/sections";
 import { initSmoothScroll, registerScrollPlugins } from "../lib/scroll";
+import {
+  Scene01Idle,
+  Scene02DualTask,
+  Scene03IncomingCall,
+  Scene04ExpandedMedia,
+} from "./IslandScenes";
 
 type IslandStageProps = {
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 const shellStates = sections.map(({ width, height, radius }) => ({
@@ -60,12 +66,37 @@ export function IslandStage({ children }: IslandStageProps) {
         const nextLabel = `s${sections[index + 1].id}`;
         timeline.to(shell, { ...shellStates[index + 1], duration: 1 }, label);
         timeline.to(sceneLayers[index], { autoAlpha: 0, duration: 0.4 }, `${label}+=0.4`);
-        timeline.fromTo(
-          sceneLayers[index + 1],
-          { autoAlpha: 0 },
-          { autoAlpha: 1, duration: 0.4 },
-          `${label}+=0.6`,
-        );
+
+        if (index + 1 === 2) {
+          // Scene 03 (s03): 3D rotateX(12deg) -> 0deg perspective tween on entry
+          timeline.fromTo(
+            sceneLayers[index + 1],
+            { autoAlpha: 0, rotateX: 12, transformPerspective: 900 },
+            { autoAlpha: 1, rotateX: 0, duration: 0.45, ease: "orbitSpring" },
+            `${label}+=0.55`,
+          );
+        } else {
+          timeline.fromTo(
+            sceneLayers[index + 1],
+            { autoAlpha: 0, rotateX: 0 },
+            { autoAlpha: 1, duration: 0.4 },
+            `${label}+=0.6`,
+          );
+        }
+
+        if (index + 1 === 3) {
+          // Scene 04 (s04): Cover art parallax tween on entry
+          const coverArt = sceneLayers[index + 1].querySelector(".orbit-card-3d");
+          if (coverArt) {
+            timeline.fromTo(
+              coverArt,
+              { y: 8, scale: 0.94 },
+              { y: 0, scale: 1, duration: 0.45, ease: "power2.out" },
+              `${label}+=0.55`,
+            );
+          }
+        }
+
         timeline.to(copyPanels[index], { autoAlpha: 0, duration: 0.3 }, `${label}+=0.35`);
         timeline.set(copyPanels[index + 1], { autoAlpha: 1 }, `${label}+=0.6`);
         timeline.fromTo(
@@ -131,7 +162,13 @@ export function IslandStage({ children }: IslandStageProps) {
                   key={section.id}
                 >
                   {index === 0 ? (
-                    children
+                    children ?? <Scene01Idle />
+                  ) : index === 1 ? (
+                    <Scene02DualTask />
+                  ) : index === 2 ? (
+                    <Scene03IncomingCall />
+                  ) : index === 3 ? (
+                    <Scene04ExpandedMedia />
                   ) : (
                     <div className="island-scene-placeholder">
                       <span className="island-scene-placeholder-orbit">ORBIT</span>

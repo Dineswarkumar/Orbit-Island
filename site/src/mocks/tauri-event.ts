@@ -17,3 +17,7 @@ export async function listen<T>(
 export async function emit<T>(_eventName: string, _payload?: T): Promise<void> {
   return undefined;
 }
+
+export async function invoke<T>(_cmd: string, _args?: unknown): Promise<T> {
+  return undefined as unknown as T;
+}

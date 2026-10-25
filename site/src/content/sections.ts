@@ -33,7 +33,8 @@ export const sections = [
     id: "04",
     tag: "04 / ACOUSTIC ENGINE",
     headline: "Audio You Can See. Controls You Can Feel.",
-    description: "Driven by live WASAPI output levels, reactive EQ bars pulse…",
+    description:
+      "Powered by real-time WASAPI loopback FFT analysis, 20 frequency bands pulse to your music while pulling live track metadata from Spotify, Chrome, and Edge.",
     width: 316,
     height: 168,
     radius: 26,
