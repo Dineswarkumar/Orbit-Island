@@ -503,7 +503,7 @@ mod win {
         Ok(())
     }
 
-    pub fn sample_audio_spectrum(
+    pub fn sample_audio_spectrum_meter(
         prev_peak: &mut f32,
         smooth_low: &mut f32,
         phase: &mut f32,
@@ -611,7 +611,7 @@ mod win {
         Err("Media sessions unsupported on this platform".to_string())
     }
 
-    pub fn sample_audio_spectrum(
+    pub fn sample_audio_spectrum_meter(
         _prev_peak: &mut f32,
         _smooth_low: &mut f32,
         _phase: &mut f32,
@@ -621,7 +621,7 @@ mod win {
 }
 
 pub use win::{
-    get_available_media_sources, get_current_media_session, sample_audio_spectrum, seek_media,
+    get_available_media_sources, get_current_media_session, sample_audio_spectrum_meter, seek_media,
     send_media_command,
 };
 

@@ -525,6 +525,9 @@ pub fn run() {
             std::thread::Builder::new()
                 .name("orbit-audio-spectrum".into())
                 .spawn(move || {
+                    use std::collections::VecDeque;
+                    use std::time::Instant;
+
                     let _com = match services::media::ComGuard::new() {
                         Ok(g) => g,
                         Err(err) => {
@@ -536,19 +539,95 @@ pub fn run() {
                     let mut smooth_low = 0.0f32;
                     let mut phase = 0.0f32;
                     let mut was_active = false;
+                    let mut loopback: Option<(
+                        services::loopback::LoopbackCapture,
+                        services::spectrum_dsp::SpectrumAnalyzer,
+                    )> = None;
+                    let mut ring = VecDeque::with_capacity(4096);
+                    let mut retry_loopback_at = Instant::now();
+                    let mut fft_mode = false;
+                    let mut mode_known = false;
 
                     loop {
-                        let spectrum = services::media::sample_audio_spectrum(
-                            &mut prev_peak,
-                            &mut smooth_low,
-                            &mut phase,
-                        );
+                        if loopback.is_none() && Instant::now() >= retry_loopback_at {
+                            match services::loopback::LoopbackCapture::new() {
+                                Ok(capture) => {
+                                    let analyzer = services::spectrum_dsp::SpectrumAnalyzer::new(
+                                        capture.sample_rate(),
+                                    );
+                                    loopback = Some((capture, analyzer));
+                                    ring.clear();
+                                    if !mode_known || !fft_mode {
+                                        log::info!("spectrum mode: fft-loopback");
+                                        fft_mode = true;
+                                    }
+                                    mode_known = true;
+                                }
+                                Err(err) => {
+                                    if !mode_known || fft_mode {
+                                        log::info!("spectrum mode: meter-fallback ({err})");
+                                    }
+                                    fft_mode = false;
+                                    mode_known = true;
+                                    retry_loopback_at = Instant::now()
+                                        + std::time::Duration::from_secs(5);
+                                }
+                            }
+                        }
+
+                        let spectrum = if let Some((capture, analyzer)) = loopback.as_mut() {
+                            match capture.read_into(&mut ring) {
+                                Ok(()) => {
+                                    let samples = ring.make_contiguous();
+                                    let start = samples.len().saturating_sub(2048);
+                                    let recent = &samples[start..];
+                                    let rms = if recent.is_empty() {
+                                        0.0
+                                    } else {
+                                        (recent.iter().map(|sample| sample * sample).sum::<f32>()
+                                            / recent.len() as f32)
+                                            .sqrt()
+                                    };
+                                    let (wave_bars, compact_bars) = analyzer.analyze(samples);
+                                    if rms < 1e-4 {
+                                        services::media::AudioSpectrumState::default()
+                                    } else {
+                                        services::media::AudioSpectrumState {
+                                            peak: wave_bars.iter().copied().fold(0.0, f32::max),
+                                            compact_bars,
+                                            wave_bars,
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    log::warn!("WASAPI loopback capture stopped: {err}");
+                                    loopback = None;
+                                    ring.clear();
+                                    retry_loopback_at = Instant::now()
+                                        + std::time::Duration::from_secs(1);
+                                    log::info!("spectrum mode: meter-fallback");
+                                    fft_mode = false;
+                                    mode_known = true;
+                                    services::media::sample_audio_spectrum_meter(
+                                        &mut prev_peak,
+                                        &mut smooth_low,
+                                        &mut phase,
+                                    )
+                                }
+                            }
+                        } else {
+                            services::media::sample_audio_spectrum_meter(
+                                &mut prev_peak,
+                                &mut smooth_low,
+                                &mut phase,
+                            )
+                        };
                         let is_active = spectrum.peak > 0.004;
                         if is_active || was_active {
                             was_active = is_active;
                             let _ = app_handle_spectrum.emit("media-audio-spectrum", &spectrum);
                         }
-                        let delay = if is_active { 95 } else { 220 };
+                        let delay = if is_active { 33 } else { 220 };
                         std::thread::sleep(std::time::Duration::from_millis(delay));
                     }
                 })
