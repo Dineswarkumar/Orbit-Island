@@ -12,7 +12,7 @@
 | S0.2 Mock IPC | ☑ | `feat(site): mock tauri ipc and render live CompactCapsule` | All 39 IPC methods typed; demo fixtures and live `CompactCapsule`; site build passes |
 | S0.3 Theme CSS | ☑ | `feat(site): share island theme tokens with landing site` | Imports app theme variables and restores a scrollable, selectable web page background |
 | S1.1 Lenis+GSAP | ☑ | `feat(site): wire lenis smooth scroll to gsap ticker` | Registers ScrollTrigger/CustomEase once, adds the app's spring curves, and disables Lenis for reduced motion |
-| S1.2 Stage | ☐ | | |
+| S1.2 Stage | ☑ | `feat(site): add pinned island stage with label-driven morph timeline` | 950vh scroller, sticky viewport stage, eight label-driven shell/content states, responsive scale, and exact Phase S2 copy |
 | S2.1–S2.8 Scenes | ☐ | | replicas used: none |
 | S3.1 Model | ☐ | | screen mesh name: ___ · model source/license: ___ |
 | S3.2 Dive-in | ☐ | | |

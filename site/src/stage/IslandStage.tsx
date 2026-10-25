@@ -1,0 +1,150 @@
+import { useLayoutEffect, useRef, type ReactNode } from "react";
+import gsap from "gsap";
+import { sections } from "../content/sections";
+import { initSmoothScroll, registerScrollPlugins } from "../lib/scroll";
+
+type IslandStageProps = {
+  children: ReactNode;
+};
+
+const shellStates = sections.map(({ width, height, radius }) => ({
+  width,
+  height,
+  borderRadius: radius,
+}));
+
+export function IslandStage({ children }: IslandStageProps) {
+  const scrollerRef = useRef<HTMLElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    registerScrollPlugins();
+    const stopSmoothScroll = initSmoothScroll();
+    const scroller = scrollerRef.current;
+    const shell = shellRef.current;
+    if (!scroller || !shell) return stopSmoothScroll;
+    let removeScaleListener: () => void = () => {};
+
+    const context = gsap.context(() => {
+      const sceneLayers = gsap.utils.toArray<HTMLElement>("[data-scene-layer]");
+      const copyPanels = gsap.utils.toArray<HTMLElement>("[data-copy-panel]");
+      const scaleShell = () => {
+        const preferred = window.innerWidth / 560;
+        shell.style.setProperty("--island-scale", String(Math.min(2.6, Math.max(1.6, preferred))));
+      };
+      scaleShell();
+      window.addEventListener("resize", scaleShell);
+      removeScaleListener = () => window.removeEventListener("resize", scaleShell);
+
+      gsap.set(sceneLayers, { autoAlpha: 0 });
+      gsap.set(copyPanels, { autoAlpha: 0 });
+      gsap.set([sceneLayers[0], copyPanels[0]], { autoAlpha: 1 });
+      gsap.set(shell, shellStates[0]);
+
+      const timeline = gsap.timeline({
+        defaults: { ease: "orbitSettle" },
+        scrollTrigger: {
+          trigger: scroller,
+          start: "top top",
+          end: "bottom bottom",
+          scrub: 0.6,
+          snap: { snapTo: "labels", duration: 0.5, ease: "power2.inOut" },
+        },
+      });
+
+      sections.forEach((section, index) => {
+        const label = `s${section.id}`;
+        timeline.addLabel(label, index);
+        if (index === sections.length - 1) return;
+
+        const nextLabel = `s${sections[index + 1].id}`;
+        timeline.to(shell, { ...shellStates[index + 1], duration: 1 }, label);
+        timeline.to(sceneLayers[index], { autoAlpha: 0, duration: 0.4 }, `${label}+=0.4`);
+        timeline.fromTo(
+          sceneLayers[index + 1],
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.4 },
+          `${label}+=0.6`,
+        );
+        timeline.to(copyPanels[index], { autoAlpha: 0, duration: 0.3 }, `${label}+=0.35`);
+        timeline.set(copyPanels[index + 1], { autoAlpha: 1 }, `${label}+=0.6`);
+        timeline.fromTo(
+          copyPanels[index + 1].querySelector("[data-copy-tag]"),
+          { autoAlpha: 0, x: -18 },
+          { autoAlpha: 1, x: 0, duration: 0.3, ease: "orbitSpring" },
+          `${label}+=0.6`,
+        );
+        timeline.fromTo(
+          copyPanels[index + 1].querySelector("[data-copy-headline]"),
+          { yPercent: 115 },
+          { yPercent: 0, duration: 0.48, ease: "orbitSpring" },
+          `${label}+=0.6`,
+        );
+        timeline.fromTo(
+          copyPanels[index + 1].querySelector("[data-copy-description]"),
+          { autoAlpha: 0, y: 10 },
+          { autoAlpha: 1, y: 0, duration: 0.35, ease: "power1.out" },
+          `${label}+=0.74`,
+        );
+
+        // Keep the next label at the scene boundary even when its content tweens overlap.
+        timeline.addLabel(nextLabel, index + 1);
+      });
+
+      return () => window.removeEventListener("resize", scaleShell);
+    }, scroller);
+
+    return () => {
+      removeScaleListener();
+      context.revert();
+      stopSmoothScroll();
+    };
+  }, []);
+
+  return (
+    <main className="island-scroll-container" ref={scrollerRef}>
+      <section className="island-stage" aria-label="ORBIT features">
+        <div className="island-stage-inner">
+          <div className="island-copy-stack" aria-live="polite">
+            {sections.map((section, index) => (
+              <article className="island-copy-panel" data-copy-panel key={section.id}>
+                <p className="island-copy-tag" data-copy-tag>
+                  <span>{section.tag}</span>
+                </p>
+                <div className="island-copy-headline-mask">
+                  <h1 className="island-copy-headline" data-copy-headline>{section.headline}</h1>
+                </div>
+                <p className="island-copy-description" data-copy-description>{section.description}</p>
+                <span className="island-copy-index">{section.id} / 08</span>
+                {index === 0 && <span className="sr-only">Scroll to explore ORBIT features.</span>}
+              </article>
+            ))}
+          </div>
+
+          <div className="island-stage-visual">
+            <div className="island-shell-frame" ref={shellRef}>
+              {sections.map((section, index) => (
+                <div
+                  aria-hidden="true"
+                  className="island-scene-layer theme-obsidian transparency-glass orbit-font-inter"
+                  data-scene-layer
+                  key={section.id}
+                >
+                  {index === 0 ? (
+                    children
+                  ) : (
+                    <div className="island-scene-placeholder">
+                      <span className="island-scene-placeholder-orbit">ORBIT</span>
+                      <span>{section.tag.split(" / ")[1]}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="island-stage-hint">SCROLL TO EXPLORE <span aria-hidden="true">↓</span></p>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
