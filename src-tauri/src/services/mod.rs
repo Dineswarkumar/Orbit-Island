@@ -1,6 +1,7 @@
 pub mod config;
 pub mod db;
 pub mod hardware;
+pub mod loopback;
 pub mod logger;
 pub mod media;
 pub mod notifications;
