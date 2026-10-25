@@ -5,5 +5,6 @@ pub mod logger;
 pub mod media;
 pub mod notifications;
 pub mod privacy;
+pub mod spectrum_dsp;
 pub mod telemetry;
 pub mod window;
