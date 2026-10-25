@@ -1,3 +1,5 @@
+@import "../../../src/styles/globals.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,11 +7,25 @@
 html,
 body,
 #root {
+  width: 100%;
   min-height: 100%;
   margin: 0;
 }
 
+html,
 body {
-  background: #090d16;
+  height: auto;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+body {
+  background: oklch(14% 0.02 265) !important;
   color: #f8fafc;
+  overflow-x: hidden;
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
 }
