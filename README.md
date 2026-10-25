@@ -171,7 +171,7 @@ A full monthly calendar overview powered by an embedded SQLite database:
 
 ### 4. Frequency-Reactive Waveform Equalizer
 - Direct integration with Windows System Media Transport Controls (SMTC) to display track titles, artists, and album artwork from Spotify, Chrome, Brave, Edge, and YouTube Music.
-- Real-time WASAPI audio spectrum analysis driving 3-bar compact and 5-bar expanded frequency equalizers that react to audio peaks and collapse flat when silent.
+- Real-time WASAPI loopback FFT spectrum: 20 log-spaced bands from 40 Hz–16 kHz, mapped to four compact bars and 20 expanded bars, with meter fallback when loopback capture is unavailable.
 
 ---
 
