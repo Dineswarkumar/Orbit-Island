@@ -1,14 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { THEMES } from "@app/core/theme";
 import { CompactCapsule } from "@app/components/island/CompactCapsule";
 import { HomeSection } from "@app/components/island/HomeSection";
 import { MultiTaskSection } from "@app/components/island/MultiTaskSection";
 import { CalendarSection } from "@app/components/island/CalendarSection";
 import { HardwareSection } from "@app/components/island/HardwareSection";
-import type { AudioSpectrumState } from "@app/core/types/media";
+import { useAudioSpectrum } from "../audio/analyser";
 import {
   appConfigFixture,
-  audioSpectrumFixture,
   hardwareMetricsFixture,
   mediaSessionFixture,
   notificationFixtures,
@@ -16,57 +15,7 @@ import {
   shelfFixtures,
 } from "../mocks/fixtures";
 
-export function useSyntheticSpectrum(active = true): AudioSpectrumState {
-  const [spectrum, setSpectrum] = useState<AudioSpectrumState>(audioSpectrumFixture);
-
-  useEffect(() => {
-    if (!active || typeof window === "undefined") return;
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-
-    let rafId: number;
-    let lastTime = performance.now();
-
-    const update = (now: number) => {
-      // Cadence ≈ 30 fps (active 33 ms per PLAN.md)
-      if (now - lastTime >= 33) {
-        lastTime = now;
-        const t = now / 1000;
-
-        const c0 = 0.45 + 0.38 * Math.sin(t * 5.2);
-        const c1 = 0.55 + 0.35 * Math.sin(t * 6.8 + 1.2);
-        const c2 = 0.65 + 0.30 * Math.sin(t * 4.4 + 2.1);
-        const c3 = 0.48 + 0.38 * Math.sin(t * 7.5 + 0.8);
-
-        const waveBars = Array.from({ length: 20 }, (_, idx) => {
-          const f = 3.2 + idx * 0.35;
-          const p = idx * 0.38;
-          const v = 0.38 + 0.35 * Math.sin(t * f + p) + 0.16 * Math.cos(t * 1.8 + idx);
-          return Math.min(1, Math.max(0.06, v));
-        });
-
-        setSpectrum({
-          peak: 0.65 + 0.25 * Math.sin(t * 1.5),
-          compactBars: [
-            Math.min(1, Math.max(0.12, c0)),
-            Math.min(1, Math.max(0.12, c1)),
-            Math.min(1, Math.max(0.12, c2)),
-            Math.min(1, Math.max(0.12, c3)),
-          ],
-          waveBars,
-        });
-      }
-      rafId = requestAnimationFrame(update);
-    };
-
-    rafId = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(rafId);
-  }, [active]);
-
-  return spectrum;
-}
+export { useAudioSpectrum as useSyntheticSpectrum };
 
 export function DualPrivacyLight() {
   return (
@@ -140,7 +89,7 @@ export function Scene01Idle() {
  * (mediaSession playing + privacy active with mic+cam + audioSpectrum bars).
  */
 export function Scene02DualTask() {
-  const spectrum = useSyntheticSpectrum();
+  const spectrum = useAudioSpectrum();
 
   return (
     <div className="relative w-full h-full flex items-center justify-center">
@@ -202,7 +151,7 @@ export function Scene03IncomingCall() {
  * showing mediaSessionFixture and audioSpectrumFixture.
  */
 export function Scene04ExpandedMedia() {
-  const spectrum = useSyntheticSpectrum();
+  const spectrum = useAudioSpectrum();
 
   const formatSeconds = (secs: number) => {
     const mins = Math.floor(secs / 60);

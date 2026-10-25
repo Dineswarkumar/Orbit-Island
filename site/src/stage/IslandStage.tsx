@@ -3,6 +3,11 @@ import gsap from "gsap";
 import { sections } from "../content/sections";
 import { initSmoothScroll, registerScrollPlugins } from "../lib/scroll";
 import {
+  useAudioPlaying,
+  toggleDemoAudio,
+  pauseDemoAudio,
+} from "../audio/analyser";
+import {
   Scene01Idle,
   Scene02DualTask,
   Scene03IncomingCall,
@@ -26,6 +31,7 @@ const shellStates = sections.map(({ width, height, radius }) => ({
 export function IslandStage({ children }: IslandStageProps) {
   const scrollerRef = useRef<HTMLElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
+  const isPlayingAudio = useAudioPlaying();
 
   useLayoutEffect(() => {
     registerScrollPlugins();
@@ -38,6 +44,7 @@ export function IslandStage({ children }: IslandStageProps) {
     const context = gsap.context(() => {
       const sceneLayers = gsap.utils.toArray<HTMLElement>("[data-scene-layer]");
       const copyPanels = gsap.utils.toArray<HTMLElement>("[data-copy-panel]");
+      const stageAudioControl = scroller.querySelector<HTMLElement>("[data-audio-stage-control]");
       const scaleShell = () => {
         const preferred = window.innerWidth / 560;
         shell.style.setProperty("--island-scale", String(Math.min(2.6, Math.max(1.6, preferred))));
@@ -50,6 +57,9 @@ export function IslandStage({ children }: IslandStageProps) {
       gsap.set(copyPanels, { autoAlpha: 0 });
       gsap.set([sceneLayers[0], copyPanels[0]], { autoAlpha: 1 });
       gsap.set(shell, shellStates[0]);
+      if (stageAudioControl) {
+        gsap.set(stageAudioControl, { autoAlpha: 0, y: 12, pointerEvents: "none" });
+      }
 
       const timeline = gsap.timeline({
         defaults: { ease: "orbitSettle" },
@@ -59,6 +69,17 @@ export function IslandStage({ children }: IslandStageProps) {
           end: "bottom bottom",
           scrub: 0.6,
           snap: { snapTo: "labels", duration: 0.5, ease: "power2.inOut" },
+          onLeave: () => {
+            pauseDemoAudio();
+          },
+          onLeaveBack: () => {
+            pauseDemoAudio();
+          },
+          onUpdate: (self) => {
+            if (self.progress < 0.1 || self.progress > 0.6) {
+              pauseDemoAudio();
+            }
+          },
         },
       });
 
@@ -97,6 +118,24 @@ export function IslandStage({ children }: IslandStageProps) {
               { y: 8, scale: 0.94 },
               { y: 0, scale: 1, duration: 0.45, ease: "power2.out" },
               `${label}+=0.55`,
+            );
+          }
+        }
+
+        if (stageAudioControl) {
+          if (index + 1 === 3) {
+            // Entering Scene 04
+            timeline.to(
+              stageAudioControl,
+              { autoAlpha: 1, y: 0, pointerEvents: "auto", duration: 0.35, ease: "orbitSpring" },
+              `${label}+=0.6`,
+            );
+          } else if (index === 3) {
+            // Leaving Scene 04
+            timeline.to(
+              stageAudioControl,
+              { autoAlpha: 0, y: 12, pointerEvents: "none", duration: 0.3, ease: "power2.in" },
+              `${label}+=0.3`,
             );
           }
         }
@@ -169,6 +208,7 @@ export function IslandStage({ children }: IslandStageProps) {
     }, scroller);
 
     return () => {
+      pauseDemoAudio();
       removeScaleListener();
       context.revert();
       stopSmoothScroll();
@@ -189,6 +229,22 @@ export function IslandStage({ children }: IslandStageProps) {
                   <h1 className="island-copy-headline" data-copy-headline>{section.headline}</h1>
                 </div>
                 <p className="island-copy-description" data-copy-description>{section.description}</p>
+                {section.id === "04" && (
+                  <div className="island-audio-action">
+                    <button
+                      type="button"
+                      onClick={() => toggleDemoAudio()}
+                      className={`island-audio-pill ${isPlayingAudio ? "is-playing" : ""}`}
+                      aria-label={isPlayingAudio ? "Mute Demo Audio" : "Play Demo Audio"}
+                    >
+                      <span className={`island-audio-pill-dot ${isPlayingAudio ? "animate-pulse" : ""}`} />
+                      <span>{isPlayingAudio ? "⏸ Mute Demo Audio" : "▶ Play Demo Audio"}</span>
+                      <span className="island-audio-pill-badge">
+                        {isPlayingAudio ? "REAL FFT (WEB AUDIO)" : "PREVIEW"}
+                      </span>
+                    </button>
+                  </div>
+                )}
                 <span className="island-copy-index">{section.id} / 08</span>
                 {index === 0 && <span className="sr-only">Scroll to explore ORBIT features.</span>}
               </article>
@@ -223,6 +279,20 @@ export function IslandStage({ children }: IslandStageProps) {
                   ) : null}
                 </div>
               ))}
+            </div>
+            <div className="island-stage-audio-control" data-audio-stage-control>
+              <button
+                type="button"
+                onClick={() => toggleDemoAudio()}
+                className={`island-audio-pill ${isPlayingAudio ? "is-playing" : ""}`}
+                aria-label={isPlayingAudio ? "Mute Demo Audio" : "Play Demo Audio"}
+              >
+                <span className={`island-audio-pill-dot ${isPlayingAudio ? "animate-pulse" : ""}`} />
+                <span>{isPlayingAudio ? "⏸ Mute Demo Audio" : "▶ Play Demo Audio"}</span>
+                <span className="island-audio-pill-badge">
+                  {isPlayingAudio ? "REAL FFT" : "PREVIEW"}
+                </span>
+              </button>
             </div>
             <p className="island-stage-hint">SCROLL TO EXPLORE <span aria-hidden="true">↓</span></p>
           </div>

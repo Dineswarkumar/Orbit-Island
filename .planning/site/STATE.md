@@ -24,7 +24,7 @@
 | S3.1 Model | ☐ | | screen mesh name: ___ · model source/license: ___ |
 | S3.2 Dive-in | ☐ | | |
 | S3.3 Outro | ☐ | | |
-| S4 Music | ☐ | | |
+| S4 Music | ☑ | `feat(site): add audio-reactive spectrum engine for scenes 02 and 04` | Deterministic 60fps synthetic spectrum by default; opt-in Web Audio synthesis + demo-track support piped into AnalyserNode with exact spectrum_dsp.rs log band mapping & attack/release smoothing; ScrollTrigger auto-pause |
 | S5.1–S5.5 Polish | ☐ | | Lighthouse mobile: ___ |
 | S6 Deploy | ☐ | | URL: ___ |
 
