@@ -54,13 +54,20 @@ GEMINI.md
 CLAUDE.md
 skills-lock.json
 
-# Explicitly track documentation, planning, assets, and screenshots
+# Media and recordings
+*.mp4
+*.mkv
+*.mov
+
+# Explicitly track documentation, assets, and screenshots
 !ORBIT-PRD.md
 !ORBIT-PRD.docx
-!.planning/
-!.planning/**
+.planning/
 !assets/
 !assets/**
 !docs/
 !docs/**
+docs/*.mp4
+docs/*.mkv
+docs/*.mov
 !docs/screenshots/*.png
