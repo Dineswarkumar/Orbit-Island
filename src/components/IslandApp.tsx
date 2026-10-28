@@ -181,6 +181,8 @@ export const IslandApp: React.FC = () => {
   );
   const notifQueueRef = useRef<NotificationItem[]>([]);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificationRemainingMsRef = useRef(0);
+  const notificationDeadlineMsRef = useRef<number | null>(null);
   const seenNotifIdsRef = useRef<Set<number>>(new Set());
 
   // Media session state
@@ -190,6 +192,7 @@ export const IslandApp: React.FC = () => {
   const [audioSpectrum, setAudioSpectrum] = useState<AudioSpectrumState | null>(
     null
   );
+  const lastSpectrumRenderMsRef = useRef(0);
   const [pinnedSource, setPinnedSource] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragPos, setDragPos] = useState(0);
@@ -231,6 +234,7 @@ export const IslandApp: React.FC = () => {
   // Call duration tracking (Sub-Phase 9.3)
   const callStartMsRef = useRef<number | null>(null);
   const [callDurationSecs, setCallDurationSecs] = useState<number | null>(null);
+  const prevCallActivityRef = useRef<boolean | null>(null);
   const pointerInsideRef = useRef(false);
   const privacyTestUntilRef = useRef(0);
   const nativeStateRef = useRef<
@@ -241,12 +245,14 @@ export const IslandApp: React.FC = () => {
   const [utilityAlert, setUtilityAlert] = useState<SystemUtilityAlert | null>(null);
   const utilityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevUtilityRef = useRef<{
-    isCharging: boolean;
+    acPowerConnected: boolean | null;
     wifiConnected: boolean;
     bluetoothEnabled: boolean;
     hotspotActive: boolean;
   } | null>(null);
   const prevDownloadRef = useRef<string | null>(null);
+  const utilityAlertQueueRef = useRef<SystemUtilityAlert[]>([]);
+  const dismissUtilityAlertRef = useRef<() => void>(() => {});
 
   const playTimerCompleteChime = () => {
     try {
@@ -270,9 +276,34 @@ export const IslandApp: React.FC = () => {
         osc.start(now + idx * 0.16);
         osc.stop(now + idx * 0.16 + 0.6);
       });
+      window.setTimeout(() => {
+        if (ctx.state !== "closed") void ctx.close().catch(() => {});
+      }, 1000);
     } catch {
       // Ignore audio errors
     }
+  };
+
+  const utilityAlertRef = useRef<SystemUtilityAlert | null>(null);
+  utilityAlertRef.current = utilityAlert;
+
+  const displayUtilityAlert = (alert: SystemUtilityAlert) => {
+    const isTimerDone = alert.kind === "timer_done";
+    utilityAlertRef.current = alert;
+    setUtilityAlert(alert);
+    if (isTimerDone) playTimerCompleteChime();
+    if (!isExpandedRef.current && !transientNotifRef.current) {
+      const stateForAlert = isTimerDone ? "notification" : "compact_alert";
+      nativeStateRef.current = isTimerDone ? "notification" : "compact";
+      ipc.setIslandState(stateForAlert).catch(() => {});
+    } else if (isTimerDone && isExpandedRef.current) {
+      ipc.setIslandState("expanded").catch(() => {});
+    }
+    if (utilityTimerRef.current) clearTimeout(utilityTimerRef.current);
+    utilityTimerRef.current = setTimeout(
+      () => dismissUtilityAlertRef.current(),
+      isTimerDone ? 6000 : 2000
+    );
   };
 
   const dismissUtilityAlert = () => {
@@ -280,15 +311,16 @@ export const IslandApp: React.FC = () => {
       clearTimeout(utilityTimerRef.current);
       utilityTimerRef.current = null;
     }
+    const nextAlert = utilityAlertQueueRef.current.shift();
+    if (nextAlert) {
+      displayUtilityAlert(nextAlert);
+      return;
+    }
     utilityAlertRef.current = null;
     setUtilityAlert(null);
     if (!isExpandedRef.current && !transientNotifRef.current) {
       setTimeout(() => {
-        if (
-          !isExpandedRef.current &&
-          !transientNotifRef.current &&
-          !utilityAlertRef.current
-        ) {
+        if (!isExpandedRef.current && !transientNotifRef.current && !utilityAlertRef.current) {
           const targetState = isDualCompactRef.current ? "compact_dual" : "compact";
           nativeStateRef.current = targetState;
           ipc.setIslandState(targetState).catch(() => {});
@@ -296,37 +328,23 @@ export const IslandApp: React.FC = () => {
       }, 280);
     }
   };
+  dismissUtilityAlertRef.current = dismissUtilityAlert;
 
   const triggerUtilityAlert = (alert: SystemUtilityAlert) => {
     const isTimerDone = alert.kind === "timer_done";
     if (!isTimerDone && isFullscreenSuppressedRef.current) return;
-    utilityAlertRef.current = alert;
-    setUtilityAlert(alert);
-    if (isTimerDone) {
-      playTimerCompleteChime();
+    const current = utilityAlertRef.current;
+    if (alert.kind === "timer_done" && current && current.kind !== "timer_done") {
+      utilityAlertQueueRef.current.unshift(current);
+      displayUtilityAlert(alert);
+    } else if (current) {
+      utilityAlertQueueRef.current.push(alert);
+    } else {
+      displayUtilityAlert(alert);
     }
-    if (!isExpandedRef.current && !transientNotifRef.current) {
-      const stateForAlert = isTimerDone ? "notification" : "compact_alert";
-      nativeStateRef.current = stateForAlert === "notification" ? "notification" : "compact";
-      ipc.setIslandState(stateForAlert).catch(() => {});
-    } else if (isTimerDone && isExpandedRef.current) {
-      // Re-assert topmost even when already expanded and alwaysOnTop is OFF
-      ipc.setIslandState("expanded").catch(() => {});
-    }
-    if (utilityTimerRef.current) {
-      clearTimeout(utilityTimerRef.current);
-    }
-    utilityTimerRef.current = setTimeout(
-      () => {
-        dismissUtilityAlert();
-      },
-      isTimerDone ? 6000 : 2000
-    );
   };
   const triggerUtilityAlertRef = useRef(triggerUtilityAlert);
   triggerUtilityAlertRef.current = triggerUtilityAlert;
-  const utilityAlertRef = useRef<SystemUtilityAlert | null>(null);
-  utilityAlertRef.current = utilityAlert;
 
   // Media active calculation
   const isMediaActive = Boolean(
@@ -952,9 +970,11 @@ export const IslandApp: React.FC = () => {
       clearTimeout(previewTimerRef.current);
       previewTimerRef.current = null;
     }
+    notificationDeadlineMsRef.current = null;
 
     if (isFullscreenSuppressedRef.current) {
       notifQueueRef.current = [];
+      notificationRemainingMsRef.current = 0;
       setTransientNotif(null);
       return;
     }
@@ -983,9 +1003,11 @@ export const IslandApp: React.FC = () => {
       }
       if (!staysHovered) {
         const dur = (configRef.current.notificationPreviewDurationSec || 4) * 1000;
-        previewTimerRef.current = setTimeout(() => {
-          playNextNotificationRef.current();
-        }, dur);
+        scheduleNotificationExpiry(dur);
+      } else {
+        notificationRemainingMsRef.current =
+          (configRef.current.notificationPreviewDurationSec || 4) * 1000;
+        notificationDeadlineMsRef.current = null;
       }
     } else {
       transientNotifRef.current = null;
@@ -993,6 +1015,8 @@ export const IslandApp: React.FC = () => {
       isNotifHoveredRef.current = false;
       setIsNotifHovered(false);
       setIsNotifEntering(false);
+      notificationRemainingMsRef.current = 0;
+      notificationDeadlineMsRef.current = null;
       if (!isExpandedRef.current) {
         pointerInsideRef.current = false;
         const target = isDualCompactRef.current ? "compact_dual" : "compact";
@@ -1016,6 +1040,33 @@ export const IslandApp: React.FC = () => {
   const playNextNotificationRef = useRef(playNextNotification);
   playNextNotificationRef.current = playNextNotification;
 
+  const scheduleNotificationExpiry = (remainingMs: number) => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    const delay = Math.max(0, remainingMs);
+    notificationRemainingMsRef.current = delay;
+    notificationDeadlineMsRef.current = Date.now() + delay;
+    previewTimerRef.current = setTimeout(() => {
+      previewTimerRef.current = null;
+      notificationDeadlineMsRef.current = null;
+      notificationRemainingMsRef.current = 0;
+      playNextNotificationRef.current();
+    }, delay);
+  };
+
+  const pauseNotificationExpiry = () => {
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+      previewTimerRef.current = null;
+    }
+    if (notificationDeadlineMsRef.current !== null) {
+      notificationRemainingMsRef.current = Math.max(
+        0,
+        notificationDeadlineMsRef.current - Date.now()
+      );
+    }
+    notificationDeadlineMsRef.current = null;
+  };
+
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     setPrefersReducedMotion(mediaQuery.matches);
@@ -1030,7 +1081,7 @@ export const IslandApp: React.FC = () => {
     if (mediaSession?.playback_status === "playing" && mediaSession?.timeline) {
       const interval = setInterval(() => {
         setLocalTick(Date.now());
-      }, 250);
+      }, 1000);
       return () => clearInterval(interval);
     }
   }, [mediaSession?.playback_status, mediaSession?.timeline]);
@@ -1095,6 +1146,7 @@ export const IslandApp: React.FC = () => {
       .getPrivacyState()
       .then((priv) => {
         setPrivacyState(priv);
+        prevCallActivityRef.current = priv.cameraActive || priv.microphoneActive;
       })
       .catch((err) =>
         console.error("Failed to load initial privacy state:", err)
@@ -1117,6 +1169,8 @@ export const IslandApp: React.FC = () => {
             clearTimeout(previewTimerRef.current);
             previewTimerRef.current = null;
           }
+          notificationDeadlineMsRef.current = null;
+          notificationRemainingMsRef.current = 0;
           setTransientNotif(null);
           setIsExpanded(false);
           nativeStateRef.current = "compact";
@@ -1132,31 +1186,33 @@ export const IslandApp: React.FC = () => {
 
         if (!prevUtilityRef.current) {
           prevUtilityRef.current = {
-            isCharging: m.isCharging,
+            acPowerConnected: m.acPowerConnected,
             wifiConnected: m.wifiConnected,
             bluetoothEnabled: m.bluetoothEnabled,
             hotspotActive: m.hotspotActive,
           };
+          prevDownloadRef.current = m.lastCompletedDownload;
         } else {
           const prev = prevUtilityRef.current;
-          let alertToTrigger: SystemUtilityAlert | null = null;
+          const alertsToTrigger: SystemUtilityAlert[] = [];
 
-          if (m.isCharging !== prev.isCharging) {
-            alertToTrigger = m.isCharging
+          if (prev.acPowerConnected !== null && m.acPowerConnected !== null && m.acPowerConnected !== prev.acPowerConnected) {
+            alertsToTrigger.push(m.acPowerConnected
               ? {
                   kind: "charger_on",
-                  label: "Charging",
-                  detail: `${m.batteryPercentage ?? 100}%`,
+                  label: "Power Connected",
+                  detail: m.batteryPercentage == null ? "AC power · no battery" : `${m.batteryPercentage}% battery`,
                   color: "#22c55e",
                 }
               : {
                   kind: "charger_off",
-                  label: "On Battery",
-                  detail: `${m.batteryPercentage ?? 100}%`,
+                  label: "Power Disconnected",
+                  detail: m.batteryPercentage == null ? "No battery detected" : `${m.batteryPercentage}% battery`,
                   color: "#f59e0b",
-                };
-          } else if (m.wifiConnected !== prev.wifiConnected) {
-            alertToTrigger = m.wifiConnected
+                });
+          }
+          if (m.wifiConnected !== prev.wifiConnected) {
+            alertsToTrigger.push(m.wifiConnected
               ? {
                   kind: "wifi_on",
                   label: "Wi-Fi",
@@ -1168,9 +1224,10 @@ export const IslandApp: React.FC = () => {
                   label: "Wi-Fi",
                   detail: "Disconnected",
                   color: "#94a3b8",
-                };
-          } else if (m.bluetoothEnabled !== prev.bluetoothEnabled) {
-            alertToTrigger = m.bluetoothEnabled
+                });
+          }
+          if (m.bluetoothEnabled !== prev.bluetoothEnabled) {
+            alertsToTrigger.push(m.bluetoothEnabled
               ? {
                   kind: "bt_on",
                   label: "Bluetooth",
@@ -1182,9 +1239,10 @@ export const IslandApp: React.FC = () => {
                   label: "Bluetooth",
                   detail: "Off",
                   color: "#94a3b8",
-                };
-          } else if (m.hotspotActive !== prev.hotspotActive) {
-            alertToTrigger = m.hotspotActive
+                });
+          }
+          if (m.hotspotActive !== prev.hotspotActive) {
+            alertsToTrigger.push(m.hotspotActive
               ? {
                   kind: "hotspot_on",
                   label: "Hotspot",
@@ -1196,34 +1254,31 @@ export const IslandApp: React.FC = () => {
                   label: "Hotspot",
                   detail: "Off",
                   color: "#94a3b8",
-                };
+                });
           }
 
           if (
-            !alertToTrigger &&
             config.networkActivityMode === "full" &&
             m.lastCompletedDownload &&
             m.lastCompletedDownload !== prevDownloadRef.current
           ) {
-            prevDownloadRef.current = m.lastCompletedDownload;
-            alertToTrigger = {
+            alertsToTrigger.push({
               kind: "download_done",
               label: "Download Done",
               detail: m.lastCompletedDownload,
               color: "#10b981",
-            };
+            });
           }
+          prevDownloadRef.current = m.lastCompletedDownload;
 
           prevUtilityRef.current = {
-            isCharging: m.isCharging,
+            acPowerConnected: m.acPowerConnected,
             wifiConnected: m.wifiConnected,
             bluetoothEnabled: m.bluetoothEnabled,
             hotspotActive: m.hotspotActive,
           };
 
-          if (alertToTrigger) {
-            triggerUtilityAlertRef.current(alertToTrigger);
-          }
+          alertsToTrigger.forEach((alert) => triggerUtilityAlertRef.current(alert));
         }
       }
     );
@@ -1328,11 +1383,35 @@ export const IslandApp: React.FC = () => {
         if (p.cameraApp?.includes("(Test)") || p.microphoneApp?.includes("(Test)")) {
           // Hold off the periodic hardware poll so it can't overwrite the simulated state mid-cycle
           privacyTestUntilRef.current = Date.now() + 5000;
-        } else if (Date.now() < privacyTestUntilRef.current) {
+          setPrivacyState(p);
+          return;
+        }
+        if (Date.now() < privacyTestUntilRef.current) {
           // Respect active simulated test until timer elapses
           return;
         }
+        const callActivityActive = p.cameraActive || p.microphoneActive;
+        const previousCallActivity = prevCallActivityRef.current;
+        if (previousCallActivity !== null && previousCallActivity !== callActivityActive) {
+          const app = p.microphoneApp || p.cameraApp;
+          triggerUtilityAlertRef.current({
+            kind: "call_activity",
+            label: callActivityActive ? "Call Started" : "Call Ended",
+            detail: callActivityActive ? app || "Microphone or camera active" : "Microphone and camera idle",
+            color: callActivityActive ? "#34d399" : "#94a3b8",
+          });
+        }
+        prevCallActivityRef.current = callActivityActive;
         setPrivacyState(p);
+      }
+    );
+
+    const unlistenPrivacyTestFinished = listen<PrivacyState>(
+      "privacy-test-finished",
+      (event) => {
+        privacyTestUntilRef.current = 0;
+        prevCallActivityRef.current = event.payload.cameraActive || event.payload.microphoneActive;
+        setPrivacyState(event.payload);
       }
     );
 
@@ -1399,6 +1478,9 @@ export const IslandApp: React.FC = () => {
     const unlistenSpectrum = listen<AudioSpectrumState>(
       "media-audio-spectrum",
       (event) => {
+        const now = performance.now();
+        if (now - lastSpectrumRenderMsRef.current < 100) return;
+        lastSpectrumRenderMsRef.current = now;
         setAudioSpectrum(event.payload);
       }
     );
@@ -1467,6 +1549,7 @@ export const IslandApp: React.FC = () => {
       unlistenShown.then((unlisten) => unlisten());
       unlistenMedia.then((unlisten) => unlisten());
       unlistenNotifs.then((unlisten) => unlisten());
+      unlistenPrivacyTestFinished.then((unlisten) => unlisten());
       unlistenHardware.then((unlisten) => unlisten());
       unlistenDrop.then((unlisten) => unlisten());
       unlistenTimer.then((unlisten) => unlisten());
@@ -1478,6 +1561,8 @@ export const IslandApp: React.FC = () => {
       if (autoExpandTimerRef.current) clearTimeout(autoExpandTimerRef.current);
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+      notificationDeadlineMsRef.current = null;
+      notificationRemainingMsRef.current = 0;
       if (notifEntranceTimerRef.current)
         clearTimeout(notifEntranceTimerRef.current);
       if (utilityTimerRef.current) clearTimeout(utilityTimerRef.current);
@@ -1609,10 +1694,7 @@ export const IslandApp: React.FC = () => {
         nativeStateRef.current = "notification_hover";
         ipc.setIslandState("notification_hover").catch(() => {});
       }
-      if (previewTimerRef.current) {
-        clearTimeout(previewTimerRef.current);
-        previewTimerRef.current = null;
-      }
+      pauseNotificationExpiry();
       return;
     }
 
@@ -1696,11 +1778,7 @@ export const IslandApp: React.FC = () => {
             ipc.setIslandState("notification").catch(() => {});
           }
         }, 250);
-        if (!previewTimerRef.current) {
-          previewTimerRef.current = setTimeout(() => {
-            playNextNotificationRef.current();
-          }, 2200);
-        }
+        scheduleNotificationExpiry(notificationRemainingMsRef.current);
       }, 220);
       return;
     }
@@ -2071,6 +2149,8 @@ export const IslandApp: React.FC = () => {
       clearTimeout(previewTimerRef.current);
       previewTimerRef.current = null;
     }
+    notificationDeadlineMsRef.current = null;
+    notificationRemainingMsRef.current = 0;
     if (notifHoverGraceTimerRef.current) {
       clearTimeout(notifHoverGraceTimerRef.current);
       notifHoverGraceTimerRef.current = null;
@@ -2123,6 +2203,8 @@ export const IslandApp: React.FC = () => {
         clearTimeout(previewTimerRef.current);
         previewTimerRef.current = null;
       }
+      notificationDeadlineMsRef.current = null;
+      notificationRemainingMsRef.current = 0;
       setTransientNotif(null);
       setSelectedNotifId(null);
       setShowHomeNotifications(false);
@@ -2412,6 +2494,7 @@ export const IslandApp: React.FC = () => {
           transientNotif={transientNotif}
           isNotifEntering={isNotifEntering}
           isNotifHovered={isNotifHovered}
+          notificationRemainingMs={notificationRemainingMsRef.current}
           setIsNotifHovered={setIsNotifHovered}
           onViewNotification={handleViewNotification}
           onDismissNotification={handleDismissNotification}

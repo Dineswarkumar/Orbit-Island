@@ -24,6 +24,7 @@ export interface SystemUtilityAlert {
     | "bt_off"
     | "hotspot_on"
     | "hotspot_off"
+    | "call_activity"
     | "timer_done"
     | "download_done"
     | "stealth_on"
@@ -42,6 +43,7 @@ interface CompactCapsuleProps {
   transientNotif: NotificationItem | null;
   isNotifEntering: boolean;
   isNotifHovered: boolean;
+  notificationRemainingMs?: number;
   setIsNotifHovered: (hovered: boolean) => void;
   onViewNotification: (notif: NotificationItem) => void;
   onDismissNotification: (id: number) => void;
@@ -89,6 +91,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
   transientNotif,
   isNotifEntering,
   isNotifHovered,
+  notificationRemainingMs = 0,
   setIsNotifHovered,
   onViewNotification,
   onDismissNotification,
@@ -617,6 +620,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                         opacity: 0.85,
                         animationPlayState: "running",
                         "--notif-duration": `${
+                          notificationRemainingMs ||
                           (config.notificationPreviewDurationSec || 4) * 1000
                         }ms`,
                       } as React.CSSProperties
@@ -821,6 +825,11 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                     <circle cx="12" cy="12" r="2" />
                     <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49" />
                     <path d="M19.07 4.93a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
+                  </svg>
+                )}
+                {utilityAlert.kind === "call_activity" && (
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 3.09 5.18 2 2 0 0 1 5.08 3h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L9 10.71a16 16 0 0 0 4.29 4.29l1.25-1.25a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z" />
                   </svg>
                 )}
                 {utilityAlert.kind === "download_done" && (

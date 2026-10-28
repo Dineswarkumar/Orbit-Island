@@ -19,6 +19,7 @@ export const AppConfigSchema = z.object({
   density: z.enum(["compact", "balanced", "detailed"]).default("balanced"),
   timeFormat: z.enum(["12h", "24h"]).default("12h"),
   alwaysOnTop: z.boolean().default(true),
+  showSystemTrayIcon: z.boolean().default(true),
   launchAtStartup: z.boolean().default(false),
   showHardwareMonitor: z.boolean().default(true),
   transparencyMode: z.enum(["glass", "frosted", "smoked", "solid"]).default("glass"),

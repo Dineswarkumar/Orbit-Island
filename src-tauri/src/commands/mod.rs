@@ -205,6 +205,12 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, Strin
         return Err(error);
     }
 
+    if let Some(tray) = app.try_state::<crate::TrayState>() {
+        if let Err(error) = tray.0.set_visible(config.show_system_tray_icon) {
+            log::error!("Failed to apply system tray visibility setting: {error}");
+        }
+    }
+
     if let Some(vis) = app.try_state::<std::sync::Arc<crate::IslandVisibilityState>>() {
         vis.shortcuts_enabled
             .store(config.shortcuts_enabled, std::sync::atomic::Ordering::SeqCst);
@@ -504,7 +510,7 @@ pub fn trigger_privacy_test(app: AppHandle) -> Result<(), String> {
 
         // Step 4: Revert to actual hardware telemetry
         let real_state = inspect_privacy_indicators();
-        let _ = app_handle.emit("privacy-state-changed", real_state);
+        let _ = app_handle.emit("privacy-test-finished", real_state);
     });
     Ok(())
 }

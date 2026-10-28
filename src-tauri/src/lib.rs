@@ -154,6 +154,21 @@ pub fn run() {
                         }
                     }
                 }
+                "hide_tray_icon" => {
+                    let mut cfg = load_config(app);
+                    cfg.show_system_tray_icon = false;
+                    match services::config::save_config(app, &cfg) {
+                        Ok(()) => {
+                            if let Some(tray) = app.try_state::<TrayState>() {
+                                if let Err(error) = tray.0.set_visible(false) {
+                                    log::error!("Failed to hide system tray icon: {error}");
+                                }
+                            }
+                            let _ = app.emit("config-changed", &cfg);
+                        }
+                        Err(error) => log::error!("Failed to save system tray visibility setting: {error}"),
+                    }
+                }
                 "quit" => {
                     app.exit(0);
                 }
@@ -227,8 +242,15 @@ pub fn run() {
                 MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
             let toggle_item =
                 MenuItem::with_id(app, "toggle", "Toggle Island", true, None::<&str>)?;
+            let hide_tray_item = MenuItem::with_id(
+                app,
+                "hide_tray_icon",
+                "Hide System Tray Icon",
+                true,
+                None::<&str>,
+            )?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit ORBIT", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&settings_item, &toggle_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&settings_item, &toggle_item, &hide_tray_item, &quit_item])?;
 
             let tray = TrayIconBuilder::with_id("orbit-tray")
                 .icon(app.default_window_icon().cloned().unwrap())
@@ -253,6 +275,10 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            if let Err(error) = tray.set_visible(initial_config.show_system_tray_icon) {
+                log::warn!("Failed to apply system tray visibility setting: {error}");
+            }
 
             // Retain tray icon handle in app state to guarantee lifetime
             app.manage(TrayState(std::sync::Arc::new(tray)));

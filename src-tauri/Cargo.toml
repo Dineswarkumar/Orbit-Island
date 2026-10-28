@@ -1,6 +1,6 @@
 [package]
 name = "orbit"
-version = "2.0.0"
+version = "2.1.2"
 description = "ORBIT Dynamic Island"
 authors = ["User"]
 edition = "2024"
@@ -65,4 +65,7 @@ rustfft = "6"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+strip = true
 

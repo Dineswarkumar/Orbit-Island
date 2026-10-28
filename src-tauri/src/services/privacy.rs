@@ -25,7 +25,6 @@ impl Default for PrivacyState {
 #[cfg(target_os = "windows")]
 static MF_CAMERA_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 #[cfg(target_os = "windows")]
-static MF_LAST_ACTIVE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 #[cfg(target_os = "windows")]
 static MF_CAMERA_APP: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 #[cfg(target_os = "windows")]
@@ -282,11 +281,6 @@ impl IMFSensorActivitiesReportCallback_Impl for OrbitSensorActivityCallback_Impl
 
             MF_CAMERA_ACTIVE.store(any_streaming, std::sync::atomic::Ordering::SeqCst);
             if any_streaming {
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                MF_LAST_ACTIVE_MS.store(now_ms, std::sync::atomic::Ordering::SeqCst);
                 let app_str = if active_apps.is_empty() {
                     "Camera".to_string()
                 } else {
@@ -299,7 +293,6 @@ impl IMFSensorActivitiesReportCallback_Impl for OrbitSensorActivityCallback_Impl
                     *lock = active_pids;
                 }
             } else {
-                MF_LAST_ACTIVE_MS.store(0, std::sync::atomic::Ordering::SeqCst);
                 if let Ok(mut lock) = MF_CAMERA_APP.lock() {
                     *lock = None;
                 }

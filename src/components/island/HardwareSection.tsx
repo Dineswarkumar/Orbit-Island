@@ -23,6 +23,8 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
   const diskPercent = hw?.diskPercentage ?? 0;
   const diskFreeGb = ((hw?.diskFreeBytes ?? 0) / 1073741824).toFixed(0);
   const batteryPct = hw?.batteryPercentage;
+  const batteryCharging = hw?.batteryCharging ?? null;
+  const acPowerConnected = hw?.acPowerConnected ?? null;
 
   const [isCleaning, setIsCleaning] = useState(false);
   const [freedResult, setFreedResult] = useState<number | null>(null);
@@ -49,126 +51,51 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
   };
 
   const gpuUsage = hw?.gpuUsage ?? 0;
-  const batteryPctVal =
-    batteryPct !== null && batteryPct !== undefined ? batteryPct : 100;
-  const isCharging = Boolean(hw?.isCharging);
+  const batteryPctVal = batteryPct ?? 0;
+  const isPowerConnected = acPowerConnected === true || batteryCharging === true;
 
   // Charging color & threshold rules:
-  // - While charging: always Green (#22c55e) + charging indicator
-  // - On battery > 80%: Green (#22c55e)
-  // - On battery 40% - 80%: Amber (#f59e0b)
-  // - On battery < 40%: Red (#ef4444)
-  const batteryColor = isCharging
+  // - Connected: splash sign with glow effect green (#22c55e)
+  // - On battery:
+  //   - above 80: green (#22c55e)
+  //   - less 80 (30 to 79): orange (#f59e0b)
+  //   - less 30: red (#ef4444)
+  const batteryColor = isPowerConnected
     ? "#22c55e"
-    : batteryPctVal > 80
+    : batteryPct == null
+    ? "#94a3b8"
+    : batteryPctVal >= 80
     ? "#22c55e"
-    : batteryPctVal >= 40
+    : batteryPctVal >= 30
     ? "#f59e0b"
     : "#ef4444";
 
-  const batteryGlow = isCharging
-    ? "rgba(34, 197, 94, 0.4)"
-    : batteryPctVal > 80
-    ? "rgba(34, 197, 94, 0.35)"
-    : batteryPctVal >= 40
-    ? "rgba(245, 158, 11, 0.35)"
-    : "rgba(239, 68, 68, 0.35)";
+  const batteryGlow = isPowerConnected
+    ? "rgba(34, 197, 94, 0.75)"
+    : batteryPct == null
+    ? "rgba(148, 163, 184, 0.25)"
+    : batteryPctVal >= 80
+    ? "rgba(34, 197, 94, 0.45)"
+    : batteryPctVal >= 30
+    ? "rgba(245, 158, 11, 0.4)"
+    : "rgba(239, 68, 68, 0.5)";
 
-  const batteryInnerWidth = Math.max(
-    1.5,
-    Math.min(12.5, (batteryPctVal / 100) * 12.5)
-  );
+  const batteryState = batteryPct == null
+    ? (isPowerConnected ? "Connected" : "No battery")
+    : batteryCharging === true
+    ? "Charging"
+    : isPowerConnected
+    ? "Connected"
+    : "Discharging";
 
   return (
     <div className="flex flex-col h-full select-none pb-0.5 pl-0.5 space-y-1">
-      {/* Compact Header Strip: System GPU label + Compact Battery & Charging Pill */}
       <div className="flex items-center justify-between px-1.5 py-0.5 rounded-lg bg-white/[0.04] border border-white/[0.07] shrink-0">
-        <div className="flex items-center space-x-1.5 min-w-0 pr-2">
-          <span className="text-[8.5px] font-bold uppercase tracking-wider text-white/45 shrink-0">
-            SYS
-          </span>
-          <span
-            className="text-[9.5px] font-semibold text-white/75 truncate"
-            title={hw?.gpuName || "Graphics"}
-          >
-            {hw?.gpuName || "Graphics"}
-          </span>
-        </div>
-
-        {/* Compact Battery Status Pill (No separate large grid card needed) */}
-        <div
-          className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-black/35 border shrink-0"
-          style={{
-            borderColor: isCharging
-              ? "rgba(34, 197, 94, 0.45)"
-              : "rgba(255, 255, 255, 0.1)",
-            boxShadow: isCharging ? `0 0 8px ${batteryGlow}` : undefined,
-          }}
-          title={
-            isCharging
-              ? `Charging (${batteryPctVal}%)`
-              : `Battery (${batteryPctVal}%)`
-          }
-        >
-          <svg
-            className="w-4 h-4 shrink-0"
-            style={{
-              color: batteryColor,
-              filter: `drop-shadow(0 0 3px ${batteryGlow})`,
-            }}
-            viewBox="0 0 24 24"
-            fill="none"
-          >
-            <rect
-              x="2"
-              y="7"
-              width="17"
-              height="10"
-              rx="2.5"
-              stroke={batteryColor}
-              strokeWidth="1.9"
-            />
-            <path
-              d="M20.5 10v4"
-              stroke={batteryColor}
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <rect
-              x="4"
-              y="9"
-              width={batteryInnerWidth}
-              height="6"
-              rx="1.2"
-              fill={batteryColor}
-            />
-            {isCharging && (
-              <path
-                d="M11.5 7.5l-2.2 4h3.2l-1.8 4.5"
-                stroke="#ffffff"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            )}
-          </svg>
-          <span
-            className="text-[10px] font-bold tabular-nums leading-none"
-            style={{ color: batteryColor }}
-          >
-            {batteryPct !== null && batteryPct !== undefined
-              ? `${batteryPct}%`
-              : "AC"}
-          </span>
-          {isCharging && (
-            <span className="text-[8.5px] font-bold uppercase tracking-tight text-emerald-400 leading-none">
-              ⚡ Charging
-            </span>
-          )}
-        </div>
+        <span className="text-[9px] font-bold uppercase tracking-wider text-white/70 shrink-0">SYSTEM</span>
+        <span className="text-[10px] font-semibold text-white/90 truncate pl-2" title={hw?.gpuName || "Graphics"}>
+          {hw?.gpuName || "Graphics"}
+        </span>
       </div>
-
       {/* 2x3 3D Hardware Telemetry Cards (CPU, GPU, RAM, DISK, NET UP, NET DOWN) */}
       <div className="grid grid-cols-2 grid-rows-3 gap-1.5 flex-1 min-h-0">
         {/* Row 1, Col 1: CPU (Sapphire Blue) */}
@@ -190,7 +117,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           </svg>
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-baseline justify-between">
-              <span className="text-[8.5px] font-bold uppercase tracking-wider text-white/50 leading-none">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-white/75 leading-none">
                 CPU
               </span>
               <span className="text-[11px] font-bold text-white tabular-nums leading-none">
@@ -236,7 +163,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           </svg>
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-baseline justify-between">
-              <span className="text-[8.5px] font-bold uppercase tracking-wider text-white/50 leading-none">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-white/75 leading-none">
                 GPU
               </span>
               <span className="text-[11px] font-bold text-white tabular-nums leading-none">
@@ -275,7 +202,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-baseline justify-between">
               <div className="flex items-center space-x-1">
-                <span className="text-[8.5px] font-bold uppercase tracking-wider text-white/50 leading-none">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-white/75 leading-none">
                   RAM
                 </span>
                 {onFreeMemory && (
@@ -334,7 +261,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           </svg>
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-baseline justify-between">
-              <span className="text-[8.5px] font-bold uppercase tracking-wider text-white/50 leading-none">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-white/75 leading-none">
                 DISK C:
               </span>
               <span className="text-[10.5px] font-bold text-white tabular-nums leading-none">
@@ -354,68 +281,114 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           </div>
         </div>
 
-        {/* Row 3, Col 1: NET UP (Emerald) */}
-        <div className="px-2.5 py-1 rounded-xl orbit-card-3d flex items-center space-x-2">
-          <svg
-            className="w-3.5 h-3.5 shrink-0"
-            style={{
-              color: "#34d399",
-              filter: "drop-shadow(0 0 4px rgba(16, 185, 129, 0.35))",
-            }}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 19V5m-6 6l6-6 6 6"
-            />
-          </svg>
-          <div className="flex items-center justify-between flex-1 min-w-0">
-            <span className="text-[8.5px] font-bold uppercase tracking-wider text-white/50 leading-none">
-              NET UP
+        {/* Row 3, Col 1: Combined upload (left) and download (right) speeds */}
+        <div className="px-2.5 py-1 rounded-xl orbit-card-3d flex items-center justify-between min-w-0">
+          <div className="flex items-center min-w-0 gap-1">
+            <span aria-hidden="true" className="text-[14px] leading-none font-black text-emerald-400 shrink-0">↑</span>
+            <span className="text-[11px] font-extrabold tabular-nums whitespace-nowrap text-emerald-300 truncate tracking-tight">
+              {formatNetworkSpeed(hw?.networkUploadSpeedBps ?? 0)}
             </span>
-            <span
-              className="text-[10.5px] font-bold tabular-nums truncate leading-none"
-              style={{ color: "#34d399" }}
-            >
-              ↑ {formatNetworkSpeed(hw?.networkUploadSpeedBps ?? 0)}
+          </div>
+          <div className="flex items-center min-w-0 gap-1 pl-1">
+            <span aria-hidden="true" className="text-[14px] leading-none font-black text-cyan-400 shrink-0">↓</span>
+            <span className="text-[11px] font-extrabold tabular-nums whitespace-nowrap text-cyan-300 truncate tracking-tight">
+              {formatNetworkSpeed(hw?.networkDownloadSpeedBps ?? 0)}
             </span>
           </div>
         </div>
 
-        {/* Row 3, Col 2: NET DOWN (Sky Cyan) */}
-        <div className="px-2.5 py-1 rounded-xl orbit-card-3d flex items-center space-x-2">
-          <svg
-            className="w-3.5 h-3.5 shrink-0"
-            style={{
-              color: "#22d3ee",
-              filter: "drop-shadow(0 0 4px rgba(6, 182, 212, 0.35))",
-            }}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 5v14m-6-6l6 6 6-6"
-            />
-          </svg>
-          <div className="flex items-center justify-between flex-1 min-w-0">
-            <span className="text-[8.5px] font-bold uppercase tracking-wider text-white/50 leading-none">
-              NET DOWN
-            </span>
-            <span
-              className="text-[10.5px] font-bold tabular-nums truncate leading-none"
-              style={{ color: "#22d3ee" }}
+        {/* Row 3, Col 2: Battery status (Left: Symbol with splash/glow, Middle: Statement, Right: Percentage) */}
+        <div
+          className="px-2 py-1 rounded-xl orbit-card-3d flex items-center justify-between min-w-0"
+          title={batteryPct == null ? batteryState : `${batteryState} · ${batteryPct}%`}
+          style={
+            isPowerConnected
+              ? {
+                  borderColor: "rgba(34, 197, 94, 0.55)",
+                  boxShadow: `0 0 10px ${batteryGlow}`,
+                }
+              : undefined
+          }
+        >
+          {/* Left: Battery Icon with splash/lightning bolt & green glow effect */}
+          <div className="relative flex items-center justify-center shrink-0">
+            <svg
+              className="w-6 h-6 shrink-0"
+              style={{
+                color: batteryColor,
+                filter: isPowerConnected ? `drop-shadow(0 0 5px ${batteryGlow})` : undefined,
+              }}
+              viewBox="0 0 26 18"
+              fill="none"
+              aria-label="Battery"
             >
-              ↓ {formatNetworkSpeed(hw?.networkDownloadSpeedBps ?? 0)}
-            </span>
+              <rect
+                x="1.5"
+                y="2.5"
+                width="20"
+                height="13"
+                rx="2.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              />
+              <path
+                d="M23.5 6.5v5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              {batteryPct != null && (
+                <rect
+                  x="3.5"
+                  y="4.5"
+                  width={Math.max(1.5, Math.min(16, (batteryPctVal / 100) * 16))}
+                  height="9"
+                  rx="1.2"
+                  fill="currentColor"
+                  opacity={isPowerConnected ? 0.35 : 0.85}
+                />
+              )}
+              {isPowerConnected && (
+                <path
+                  d="M12.5 3.5l-2.5 5.5h3.5l-2 5"
+                  stroke="#ffffff"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{
+                    filter: "drop-shadow(0 0 3px #22c55e) drop-shadow(0 0 6px rgba(34, 197, 94, 0.9))",
+                  }}
+                />
+              )}
+            </svg>
+            {isPowerConnected && (
+              <span
+                className="absolute -inset-0.5 rounded-full animate-pulse pointer-events-none"
+                style={{
+                  boxShadow: "0 0 8px rgba(34, 197, 94, 0.45)",
+                }}
+              />
+            )}
           </div>
+
+          {/* Middle: Statement (Connected / Discharging / Charging) */}
+          <span
+            className="text-[10px] font-bold tracking-tight leading-none text-center truncate px-1 flex-1"
+            style={{ color: isPowerConnected ? "#4ade80" : batteryColor }}
+          >
+            {batteryState}
+          </span>
+
+          {/* Right: Percentage */}
+          <span
+            className="text-[12px] font-black tabular-nums leading-none shrink-0 tracking-tight"
+            style={{
+              color: batteryColor,
+              textShadow: isPowerConnected ? "0 0 8px rgba(34, 197, 94, 0.5)" : undefined,
+            }}
+          >
+            {batteryPct != null ? `${batteryPct}%` : "AC"}
+          </span>
         </div>
       </div>
     </div>

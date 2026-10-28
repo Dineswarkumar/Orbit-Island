@@ -8,7 +8,8 @@ export interface HardwareMetrics {
   diskTotalBytes: number;
   diskPercentage: number;
   batteryPercentage: number | null;
-  isCharging: boolean;
+  batteryCharging: boolean | null;
+  acPowerConnected: boolean | null;
   wifiConnected: boolean;
   bluetoothEnabled: boolean;
   hotspotActive: boolean;

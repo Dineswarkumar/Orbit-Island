@@ -16,7 +16,8 @@ pub struct HardwareMetrics {
     pub disk_total_bytes: u64,
     pub disk_percentage: f32,
     pub battery_percentage: Option<u8>,
-    pub is_charging: bool,
+    pub battery_charging: Option<bool>,
+    pub ac_power_connected: Option<bool>,
     pub wifi_connected: bool,
     pub bluetooth_enabled: bool,
     pub hotspot_active: bool,
@@ -41,7 +42,8 @@ impl Default for HardwareMetrics {
             disk_total_bytes: 0,
             disk_percentage: 0.0,
             battery_percentage: None,
-            is_charging: false,
+            battery_charging: None,
+            ac_power_connected: None,
             wifi_connected: false,
             bluetooth_enabled: false,
             hotspot_active: false,
@@ -122,6 +124,8 @@ impl HardwareManager {
                 let mut prev_time = Instant::now();
                 let mut gpu_tracker = PdhGpuTracker::new();
                 let mut downloads_tracker = DownloadsTracker::new();
+                let cpu_cores = get_cpu_cores();
+                let gpu_name = get_gpu_name();
 
                 while is_running.load(Ordering::Relaxed) {
                     std::thread::sleep(Duration::from_millis(1000));
@@ -144,10 +148,8 @@ impl HardwareManager {
 
                     let (ram_used, ram_total, ram_pct) = get_ram_metrics();
                     let (disk_free, disk_total, disk_pct) = get_disk_metrics();
-                    let (battery_pct, is_charging) = get_power_status();
+                    let (battery_pct, ac_power_connected, battery_charging) = get_power_status();
                     let (wifi_connected, bluetooth_enabled, hotspot_active) = get_connectivity_status();
-                    let cpu_cores = get_cpu_cores();
-                    let gpu_name = get_gpu_name();
                     let gpu_usage = gpu_tracker.sample();
                     let screen_recording_active = is_screen_recording_active();
                     let (active_download_count, last_completed_download) = downloads_tracker.sample();
@@ -162,13 +164,14 @@ impl HardwareManager {
                         disk_total_bytes: disk_total,
                         disk_percentage: disk_pct,
                         battery_percentage: battery_pct,
-                        is_charging,
+                        battery_charging,
+                        ac_power_connected,
                         wifi_connected,
                         bluetooth_enabled,
                         hotspot_active,
                         network_upload_speed_bps: upload_bps,
                         network_download_speed_bps: download_bps,
-                        gpu_name,
+                        gpu_name: gpu_name.clone(),
                         gpu_usage,
                         screen_recording_active,
                         active_download_count,
@@ -194,7 +197,7 @@ pub fn collect_metrics_once(
     let cpu_cores = get_cpu_cores();
     let (ram_used, ram_total, ram_pct) = get_ram_metrics();
     let (disk_free, disk_total, disk_pct) = get_disk_metrics();
-    let (battery_pct, is_charging) = get_power_status();
+    let (battery_pct, ac_power_connected, battery_charging) = get_power_status();
     let (wifi_connected, bluetooth_enabled, hotspot_active) = get_connectivity_status();
     let gpu_name = get_gpu_name();
 
@@ -208,7 +211,8 @@ pub fn collect_metrics_once(
         disk_total_bytes: disk_total,
         disk_percentage: disk_pct,
         battery_percentage: battery_pct,
-        is_charging,
+        battery_charging,
+        ac_power_connected,
         wifi_connected,
         bluetooth_enabled,
         hotspot_active,
@@ -384,7 +388,7 @@ fn get_disk_metrics() -> (u64, u64, f32) {
 }
 
 #[cfg(target_os = "windows")]
-fn get_power_status() -> (Option<u8>, bool) {
+fn get_power_status() -> (Option<u8>, Option<bool>, Option<bool>) {
     use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
     let mut status = unsafe { std::mem::zeroed::<SYSTEM_POWER_STATUS>() };
     if unsafe { GetSystemPowerStatus(&mut status) } != 0 {
@@ -393,16 +397,25 @@ fn get_power_status() -> (Option<u8>, bool) {
         } else {
             None // Desktop or no battery detected
         };
-        let is_charging = status.ACLineStatus == 1;
-        (pct, is_charging)
+        let ac_power_connected = match status.ACLineStatus {
+            0 => Some(false),
+            1 => Some(true),
+            _ => None,
+        };
+        let battery_charging = if pct.is_some() && status.BatteryFlag != 255 {
+            Some(status.BatteryFlag & 8 != 0)
+        } else {
+            None
+        };
+        (pct, ac_power_connected, battery_charging)
     } else {
-        (None, false)
+        (None, None, None)
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn get_power_status() -> (Option<u8>, bool) {
-    (None, false)
+fn get_power_status() -> (Option<u8>, Option<bool>, Option<bool>) {
+    (None, None, None)
 }
 
 #[cfg(target_os = "windows")]

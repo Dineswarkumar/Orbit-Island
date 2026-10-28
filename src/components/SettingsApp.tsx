@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { listen, emit } from "@tauri-apps/api/event";
+import orbitIcon from "../../src-tauri/icons/128x128.png";
 import {
-  Settings as SettingsIcon,
   Save,
   RefreshCw,
   X,
@@ -10,8 +10,6 @@ import {
   Bell,
   Shield,
   Sparkles,
-  Sun,
-  Moon,
   Type,
   HelpCircle,
   RotateCcw,
@@ -95,21 +93,25 @@ export const SettingsApp: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
     "idle"
   );
-  const [uiMode, setUiMode] = useState<"dark" | "light">(() => {
+  const [settingsAppearance, setSettingsAppearance] = useState<"system" | "light" | "dark" | "orbit">(() => {
     try {
-      return (
-        (localStorage.getItem("orbit_settings_ui_mode") as "dark" | "light") ||
-        "dark"
-      );
+      const saved = localStorage.getItem("orbit_settings_appearance");
+      if (saved === "system" || saved === "light" || saved === "dark" || saved === "orbit") return saved;
+      const legacy = localStorage.getItem("orbit_settings_ui_mode");
+      return legacy === "light" ? "light" : "system";
     } catch {
-      return "dark";
+      return "system";
     }
   });
+  const [systemIsLight, setSystemIsLight] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: light)").matches === true
+  );
 
   const [telemetry, setTelemetry] = useState<MemoryReport | null>(null);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
   const [privacyState, setPrivacyState] = useState<PrivacyState | null>(null);
   const [isTestingPrivacy, setIsTestingPrivacy] = useState(false);
+  const privacyTestUntilRef = React.useRef(0);
   const [notifAccessStatus, setNotifAccessStatus] =
     useState<string>("unspecified");
   const [isRequestingNotif, setIsRequestingNotif] = useState(false);
@@ -125,13 +127,18 @@ export const SettingsApp: React.FC = () => {
     null
   );
 
-  const isLight = uiMode === "light";
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const query = window.matchMedia("(prefers-color-scheme: light)");
+    const onChange = (event: MediaQueryListEvent) => setSystemIsLight(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
 
-  const toggleUiMode = () => {
-    const next = isLight ? "dark" : "light";
-    setUiMode(next);
+  const selectSettingsAppearance = (appearance: "system" | "light" | "dark" | "orbit") => {
+    setSettingsAppearance(appearance);
     try {
-      localStorage.setItem("orbit_settings_ui_mode", next);
+      localStorage.setItem("orbit_settings_appearance", appearance);
     } catch {}
   };
 
@@ -167,6 +174,19 @@ export const SettingsApp: React.FC = () => {
     const unlistenPrivacy = listen<PrivacyState>(
       "privacy-state-changed",
       (event) => {
+        if (event.payload.cameraApp?.includes("(Test)") || event.payload.microphoneApp?.includes("(Test)")) {
+          privacyTestUntilRef.current = Date.now() + 5000;
+        } else if (Date.now() < privacyTestUntilRef.current) {
+          return;
+        }
+        setPrivacyState(event.payload);
+      }
+    );
+
+    const unlistenPrivacyTestFinished = listen<PrivacyState>(
+      "privacy-test-finished",
+      (event) => {
+        privacyTestUntilRef.current = 0;
         setPrivacyState(event.payload);
       }
     );
@@ -179,6 +199,7 @@ export const SettingsApp: React.FC = () => {
     return () => {
       unlistenConfig.then((unlisten) => unlisten());
       unlistenPrivacy.then((unlisten) => unlisten());
+      unlistenPrivacyTestFinished.then((unlisten) => unlisten());
     };
   }, [loadConfig]);
 
@@ -289,6 +310,7 @@ export const SettingsApp: React.FC = () => {
       density: "balanced",
       timeFormat: "12h",
       alwaysOnTop: true,
+      showSystemTrayIcon: true,
       launchAtStartup: false,
       showHardwareMonitor: true,
       transparencyMode: "glass",
@@ -378,6 +400,7 @@ export const SettingsApp: React.FC = () => {
         density: "balanced",
         timeFormat: "12h",
         alwaysOnTop: true,
+        showSystemTrayIcon: true,
         launchAtStartup: false,
         showHardwareMonitor: true,
         transparencyMode: "glass",
@@ -449,23 +472,48 @@ export const SettingsApp: React.FC = () => {
     }
   };
 
-  // Base theme classes
-  const canvasBg = isLight ? "bg-slate-100 text-slate-900" : "bg-[#090d16] text-slate-100";
-  const headerBg = isLight ? "bg-white/95 border-slate-200" : "bg-slate-950/95 border-slate-800";
-  const cardBg = isLight
+  // Settings can follow Windows, use a neutral light/dark palette, or mirror ORBIT's theme.
+  const orbitThemeId = config.theme === "system" ? (systemIsLight ? "light" : "black") : config.theme;
+  const isOrbitTheme = settingsAppearance === "orbit";
+  const isLight = settingsAppearance === "light" ||
+    (settingsAppearance === "system" && systemIsLight) ||
+    (isOrbitTheme && orbitThemeId === "light");
+  const settingsThemeMeta = getThemeMeta(
+    isOrbitTheme ? orbitThemeId : isLight ? "light" : "black"
+  );
+  const settingsThemeStyle = {
+    backgroundColor: isOrbitTheme ? `rgb(${settingsThemeMeta.surfaceBase})` : isLight ? "#f1f5f9" : "#090d16",
+    color: isOrbitTheme ? settingsThemeMeta.text : isLight ? "#0f172a" : "#f1f5f9",
+    "--settings-theme-canvas": `rgb(${settingsThemeMeta.surfaceBase})`,
+    "--settings-theme-header-bg": isOrbitTheme ? `rgba(${settingsThemeMeta.surfaceBase}, 0.98)` : undefined,
+    "--settings-theme-card-bg": settingsThemeMeta.surfaceElevated,
+    "--settings-theme-input-bg": `rgba(${settingsThemeMeta.surfaceBase}, 0.88)`,
+    "--settings-theme-border": settingsThemeMeta.surfaceCardBorder,
+    "--settings-theme-text": settingsThemeMeta.text,
+    "--settings-theme-muted": settingsThemeMeta.muted,
+    "--settings-theme-accent": settingsThemeMeta.accent,
+  } as React.CSSProperties;
+  const canvasBg = isOrbitTheme ? "settings-orbit-canvas" : isLight ? "bg-slate-100 text-slate-900" : "bg-[#090d16] text-slate-100";
+  const headerBg = isOrbitTheme ? "settings-orbit-header" : isLight ? "bg-white/95 border-slate-200" : "bg-slate-950/95 border-slate-800";
+  const cardBg = isOrbitTheme
+    ? "settings-orbit-card"
+    : isLight
     ? "bg-white border-slate-200/90 shadow-sm"
     : "bg-slate-900/75 border-slate-800/90 shadow-md";
-  const cardHeaderColor = isLight ? "text-slate-600" : "text-slate-400";
-  const labelColor = isLight ? "text-slate-700" : "text-slate-300";
-  const subtextColor = isLight ? "text-slate-500" : "text-slate-400";
-  const inputBg = isLight
+  const cardHeaderColor = isOrbitTheme ? "settings-orbit-muted" : isLight ? "text-slate-600" : "text-slate-400";
+  const labelColor = isOrbitTheme ? "settings-orbit-text" : isLight ? "text-slate-700" : "text-slate-300";
+  const subtextColor = isOrbitTheme ? "settings-orbit-muted" : isLight ? "text-slate-500" : "text-slate-400";
+  const inputBg = isOrbitTheme
+    ? "settings-orbit-input"
+    : isLight
     ? "bg-slate-50 border-slate-300 text-slate-900 focus:border-cyan-600"
     : "bg-slate-900/90 border-slate-700/80 text-slate-100 focus:border-cyan-400";
-  const optionCls = isLight ? "bg-white text-slate-900" : "bg-slate-900 text-slate-100";
+  const optionCls = isOrbitTheme ? "settings-orbit-input" : isLight ? "bg-white text-slate-900" : "bg-slate-900 text-slate-100";
 
   return (
     <div
-      className={`h-full w-full flex flex-col font-sans select-none overflow-hidden transition-colors duration-200 ${canvasBg}`}
+      style={settingsThemeStyle}
+      className={`h-full w-full flex flex-col font-sans select-none overflow-hidden transition-colors duration-200 ${canvasBg} ${isOrbitTheme ? `settings-orbit-theme theme-${orbitThemeId}` : ""}`}
     >
       {/* Pinned Header */}
       <div
@@ -479,13 +527,11 @@ export const SettingsApp: React.FC = () => {
                 : "bg-cyan-600/20 border border-cyan-500/30 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.25)]"
             }`}
           >
-            <SettingsIcon className="w-5 h-5" />
+            <img src={orbitIcon} alt="" className="w-8 h-8 rounded-lg object-cover" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h1 className="text-base font-bold tracking-tight">
-                ORBIT Settings
-              </h1>
+              <h1 className="text-base font-bold tracking-tight">ORBIT Settings</h1>
               <span
                 className={`text-[10.5px] font-mono font-bold px-2 py-0.5 rounded-full border ${
                   isLight
@@ -503,29 +549,22 @@ export const SettingsApp: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2">
-          {/* Light / Dark Mode Toggle */}
-          <button
-            type="button"
-            onClick={toggleUiMode}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
-              isLight
-                ? "bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-200"
-                : "bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800"
-            }`}
-            title={isLight ? "Switch to Dark Mode" : "Switch to Light Mode"}
-          >
-            {isLight ? (
-              <>
-                <Moon className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Dark Mode</span>
-              </>
-            ) : (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span>Light Mode</span>
-              </>
-            )}
-          </button>
+          <label className="flex items-center space-x-2">
+            <span className={`text-[10px] font-semibold ${subtextColor}`}>Appearance</span>
+            <select
+              aria-label="Settings appearance"
+              value={settingsAppearance}
+              onChange={(event) => selectSettingsAppearance(event.target.value as typeof settingsAppearance)}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                isOrbitTheme ? "settings-orbit-input" : isLight ? "bg-white border-slate-300 text-slate-800" : "bg-slate-900 border-slate-700 text-slate-100"
+              }`}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+              <option value="orbit">ORBIT theme</option>
+            </select>
+          </label>
 
           {/* Close Window Button */}
           <button
@@ -572,10 +611,12 @@ export const SettingsApp: React.FC = () => {
               {THEMES.map((t) => {
                 const isSelected = formData.theme === t.id;
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={t.id}
                     onClick={() => selectTheme(t.id)}
-                    className={`relative p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between select-none ${
+                    aria-pressed={isSelected}
+                    className={`relative p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between select-none text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 ${
                       isSelected
                         ? "ring-2 ring-cyan-500 bg-cyan-500/10 border-cyan-500/40 shadow-lg scale-[1.01]"
                         : isLight
@@ -660,7 +701,7 @@ export const SettingsApp: React.FC = () => {
                         {isSelected ? "Active" : "Select"}
                       </span>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -915,6 +956,29 @@ export const SettingsApp: React.FC = () => {
                     checked={formData.alwaysOnTop}
                     onChange={(e) =>
                       setFormData({ ...formData, alwaysOnTop: e.target.checked })
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-600"></div>
+                </label>
+              </div>
+
+              {/* System tray icon */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className={`text-xs font-semibold ${labelColor}`}>
+                    Show System Tray Icon
+                  </span>
+                  <p className={`text-[11px] ${subtextColor}`}>
+                    Keep ORBIT in the Windows notification area. You can turn it back on here.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.showSystemTrayIcon}
+                    onChange={(e) =>
+                      setFormData({ ...formData, showSystemTrayIcon: e.target.checked })
                     }
                     className="sr-only peer"
                   />
@@ -1447,7 +1511,9 @@ export const SettingsApp: React.FC = () => {
                 {/* Real-time Hardware Privacy Telemetry Status */}
                 <div className={`text-[11px] flex items-center space-x-1.5 font-medium ${subtextColor}`}>
                   <span>Live Sensor Status:</span>
-                  {privacyState?.cameraActive && privacyState?.microphoneActive ? (
+                  {privacyState === null ? (
+                    <span className="text-slate-500 italic">Checking camera and microphone status…</span>
+                  ) : privacyState.cameraActive && privacyState.microphoneActive ? (
                     <span className="inline-flex items-center space-x-1 text-cyan-400 font-semibold">
                       <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
                       <span>Camera & Microphone Active ({privacyState.cameraApp || "In Use"})</span>
