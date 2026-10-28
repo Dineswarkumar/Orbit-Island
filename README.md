@@ -8,7 +8,7 @@
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.90%2B-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Version](https://img.shields.io/badge/Version-2.0.0-emerald)](#)
+[![Version](https://img.shields.io/badge/Version-2.1.2-emerald)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
@@ -23,15 +23,21 @@ ORBIT Island brings Apple's glanceable, tactile Dynamic Island UX to Windows 11.
 
 Download the official standalone Windows installer from the [Releases page](https://github.com/Dineswarkumar/Orbit-Island/releases):
 
-- **Installer**: [`ORBIT_2.0.0_x64-setup.exe`](https://github.com/Dineswarkumar/Orbit-Island/releases/download/v2.0.0/ORBIT_2.0.0_x64-setup.exe) (~3.1 MB)
+- **Installer**: [`ORBIT_2.1.2_x64-setup.exe`](https://github.com/Dineswarkumar/Orbit-Island/releases/download/v2.1.2/ORBIT_2.1.2_x64-setup.exe) (~3.4 MB)
+- **Standalone Binary**: `orbit.exe` (~13.0 MB)
 - **Architecture**: Windows 11 x64 (Native binary with embedded WebView2 runtime)
-- **Installation**: Run `ORBIT_2.0.0_x64-setup.exe` and follow the setup wizard. ORBIT launches automatically at the top of your primary display.
+- **Installation**: Run `ORBIT_2.1.2_x64-setup.exe` and follow the setup wizard. ORBIT launches automatically at the top of your primary display.
 
 ---
 
-## Visual Tour & Experience (Version 2.0)
+## Visual Tour & Experience (Version 2.1.2)
 
 <div align="center">
+
+### 3D Hardware Telemetry & Typography Settings (v2.1.2)
+| Real-Time Hardware Telemetry (Balanced Arrows & Radiant Battery) | 3D Settings Engine & Typography Presets |
+| :---: | :---: |
+| <img src="docs/screenshots/hardware-monitor-v2.1.2.png" width="460" alt="ORBIT v2.1.2 Hardware Monitor" /> | <img src="docs/screenshots/settings-v2.1.2.png" width="460" alt="ORBIT v2.1.2 Settings Engine" /> |
 
 ### Expanded Experience & Media Island
 | Home Stage (Expanded Clock & Controls) | Audio Stream & Frequency Equalizer |
@@ -179,8 +185,13 @@ A full monthly calendar overview powered by an embedded SQLite database:
 - **CPU**: Real-time multi-core processor utilization.
 - **GPU**: Direct Windows Performance Data Helper (PDH) GPU engine load tracking.
 - **RAM**: Memory usage percentage with physical GB tracking and a one-click **Free RAM** cleaner calling Win32 `EmptyWorkingSet`.
-- **Storage & Network**: Disk space monitoring and real-time up/down bandwidth speed indicators.
-- **Battery**: Dynamic fill gauge with charging state animations and color-coded thresholds.
+- **Storage**: C: drive capacity and usage percentage with remaining free gigabytes.
+- **Horizontal Network Cards**: Real-time bandwidth throughput distributed horizontally with dedicated emerald upload arrow (`↑`) on the left and cyan download arrow (`↓`) on the right.
+- **Radiant 3-Column Battery Pill**:
+  - **Left**: Battery SVG shell with dynamic level fill and an illuminated lightning splash bolt (`⚡`) with pulsing green radial glow when connected to power.
+  - **Middle**: Status statement (`Connected`, `Charging`, or `Discharging`).
+  - **Right**: Right-aligned bold tabular percentage (e.g. `75%` or `AC`).
+  - **Color-Coded Thresholds**: $\ge 80\%$ Green (`#22c55e`), $30\% - 79\%$ Amber/Orange (`#f59e0b`), $< 30\%$ Alert Red (`#ef4444`).
 
 ---
 
@@ -212,7 +223,9 @@ ORBIT Island is deeply indebted to pioneering work in glanceable interaction des
      - **Wondelai** ([`wondelai/skills`](https://github.com/wondelai)): iOS HIG design rules adapted for desktop Tauri + React + Tailwind architectures.
 3. **Linear & Raycast Studio**:
    - High-density dark mode design, tactile command responsiveness, monospace tabular numerals, and glowing border highlights (`0 0 12px var(--island-border)`).
-4. **Windows 11 Fluent Design & Core Audio APIs**:
+4. **Windhawk & Windows Customization Philosophy**:
+   - Inspired by **Windhawk** ([`windhawk.net`](https://windhawk.net/) by Ramen Software), embracing modular, non-destructive Windows desktop customization that respects system performance, low memory footprint, and native Win32 window management hooks without intrusive system patching.
+5. **Windows 11 Fluent Design & Core Audio APIs**:
    - Deep integration with native Win32 GDI non-rectangular regions, Windows Media Foundation Sensor Monitor, and WASAPI audio session endpoints.
 
 ---
@@ -253,7 +266,7 @@ ORBIT Island is deeply indebted to pioneering work in glanceable interaction des
    npm run tauri build
    ```
    The installer will be generated at:
-   `src-tauri/target/release/bundle/nsis/ORBIT_2.0.0_x64-setup.exe`
+   `src-tauri/target/release/bundle/nsis/ORBIT_2.1.2_x64-setup.exe`
 
 ---
 
