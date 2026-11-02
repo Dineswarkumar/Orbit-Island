@@ -120,10 +120,8 @@ export function estimateCompactWidth({
     switch (effectiveMode) {
       case "weather":
         if (
-          (config.showWeather ||
-            config.compactRightSlot === "weather" ||
-            config.compactRightSlot === "smart") &&
-          weatherInfo
+          config.compactRightSlot === "weather" ||
+          ((config.showWeather || config.compactRightSlot === "smart") && weatherInfo)
         ) {
           contentWidth += 38;
         }
@@ -157,7 +155,7 @@ export function estimateCompactWidth({
 }
 
 export const IslandApp: React.FC = () => {
-  const { config, loadConfig } = useConfigStore();
+  const { config, isLoaded, loadConfig } = useConfigStore();
 
   const islandRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -371,7 +369,7 @@ export const IslandApp: React.FC = () => {
       homeSubView !== "call") ||
     (!isExpanded && !transientNotif && !utilityAlert && isMediaActive && Boolean(mediaSession));
 
-  // Weather state (stale-while-revalidate cache + instant fallback so right slot never flickers blank)
+  // Weather state (stale-while-revalidate cache from backend; no fake hardcoded defaults)
   const [weatherInfo, setWeatherInfo] = useState<WeatherGlance | null>(() => {
     try {
       const cached = localStorage.getItem("orbit_weather_cache");
@@ -382,12 +380,7 @@ export const IslandApp: React.FC = () => {
         }
       }
     } catch {}
-    return {
-      tempC: 24,
-      tempF: 75,
-      conditionCode: "partly_cloudy",
-      label: "Partly Cloudy",
-    };
+    return null;
   });
 
   const shouldFetchWeather =
@@ -399,65 +392,30 @@ export const IslandApp: React.FC = () => {
     if (!shouldFetchWeather) return;
 
     let isMounted = true;
-    let activeController: AbortController | null = null;
 
     const fetchWeather = async () => {
-      if (activeController) {
-        activeController.abort();
-      }
-      const controller = new AbortController();
-      activeController = controller;
-      const timeoutId = setTimeout(() => controller.abort(), 6500);
-
       try {
-        const res = await fetch("https://wttr.in/?format=j1", {
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error("HTTP error " + res.status);
-        const data = await res.json();
-        const current = data?.current_condition?.[0];
-        if (!current) throw new Error("No current condition");
-
-        const tempC = parseInt(current.temp_C, 10) || 24;
-        const tempF = parseInt(current.temp_F, 10) || Math.round((tempC * 9) / 5 + 32);
-        const code = parseInt(current.weatherCode, 10) || 113;
-
-        let conditionCode: WeatherGlance["conditionCode"] = "clear";
-        if ([200, 386, 389, 392, 395].includes(code)) {
-          conditionCode = "storm";
-        } else if ([176, 293, 296, 299, 302, 305, 308, 311, 353, 356, 359].includes(code)) {
-          conditionCode = "rain";
-        } else if ([179, 182, 227, 230, 323, 326, 329, 332, 335, 338, 368, 371].includes(code)) {
-          conditionCode = "snow";
-        } else if ([116, 119, 122, 143, 248].includes(code)) {
-          conditionCode = code === 116 ? "partly_cloudy" : "cloudy";
-        }
-
-        const label = current.weatherDesc?.[0]?.value || "Clear";
-        const glance: WeatherGlance = { tempC, tempF, conditionCode, label };
-
-        if (isMounted) {
+        const glance = await invoke<WeatherGlance>("get_weather");
+        if (isMounted && glance) {
           setWeatherInfo(glance);
-          localStorage.setItem(
-            "orbit_weather_cache",
-            JSON.stringify({ data: glance, timestamp: Date.now() })
-          );
+          try {
+            localStorage.setItem(
+              "orbit_weather_cache",
+              JSON.stringify({ data: glance, timestamp: Date.now() })
+            );
+          } catch {}
         }
-      } catch {
-        // Keep existing cached/fallback weatherInfo so right slot never disappears
-      } finally {
-        clearTimeout(timeoutId);
+      } catch (err) {
+        // Backend command failed or network offline. Keep existing cached data if any, or null.
+        console.warn("Weather fetch failed (offline or network error):", err);
       }
     };
 
     fetchWeather();
-    const interval = setInterval(fetchWeather, 1800000);
+    const interval = setInterval(fetchWeather, 600000);
 
     return () => {
       isMounted = false;
-      if (activeController) {
-        activeController.abort();
-      }
       clearInterval(interval);
     };
   }, [shouldFetchWeather]);
@@ -899,6 +857,7 @@ export const IslandApp: React.FC = () => {
 
   // Automatically expand the island whenever the Onboarding Guide is active so first-time users see it immediately
   useEffect(() => {
+    if (!isLoaded) return;
     if (showOnboarding) {
       setIsClosing(false);
       setIsExpanded(true);
@@ -907,10 +866,11 @@ export const IslandApp: React.FC = () => {
         ipc.setIslandState("expanded").catch(() => {});
       }
     }
-  }, [showOnboarding]);
+  }, [showOnboarding, isLoaded]);
 
   // Sync onboarding state once config is loaded from disk
   useEffect(() => {
+    if (!isLoaded) return;
     try {
       const seenLocally = localStorage.getItem("orbit_onboarding_seen") === "true";
       if (config.onboardingCompleted || seenLocally) {
@@ -926,7 +886,7 @@ export const IslandApp: React.FC = () => {
         showOnboardingRef.current = true;
       }
     } catch (_) {}
-  }, [config.onboardingCompleted]);
+  }, [isLoaded, config.onboardingCompleted]);
 
   // Reset calendar month and selected date to today whenever the island compacts
   useEffect(() => {

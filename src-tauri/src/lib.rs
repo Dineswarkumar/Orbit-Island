@@ -6,7 +6,7 @@ use commands::{
     clear_local_data, clear_shelf, close_settings_window, delete_reminder, dismiss_notification,
     free_up_memory, get_config, get_hardware_metrics, get_live_backdrop, get_media_sources, get_media_state,
     get_memory_metrics, get_notification_access_status, get_notification_state, get_privacy_state,
-    get_reminders, get_shelf_items, hide_island_window, media_seek, media_send_command,
+    get_reminders, get_shelf_items, get_weather, hide_island_window, media_seek, media_send_command,
     open_settings_window, open_shelf_file, pick_and_import_calendar, pick_shelf_file,
     pin_media_source, remove_shelf_item, request_notification_access, reveal_diagnostic_log,
     save_config, set_island_state, show_context_menu, show_shelf_file_in_folder, toggle_reminder,
@@ -763,7 +763,8 @@ pub fn run() {
             clear_local_data,
             activate_app_source,
             reveal_diagnostic_log,
-            get_live_backdrop
+            get_live_backdrop,
+            get_weather
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

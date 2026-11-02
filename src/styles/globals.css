@@ -10,6 +10,8 @@
 
 :root {
   color-scheme: dark;
+  --orbit-success-ink: #4ade80;
+  --orbit-info-ink: #38bdf8;
 }
 
 html,
@@ -242,6 +244,7 @@ body {
 .transparency-solid,
 .orbit-reduced-effects {
   --orbit-success-ink: #4ade80;
+  --orbit-info-ink: #38bdf8;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   background-color: var(--island-panel, rgba(15, 23, 42, 0.96)) !important;
@@ -369,6 +372,7 @@ body {
   --island-badge-bg: rgba(255, 255, 255, 0.12);
   --island-border: rgba(255, 255, 255, 0.28);
   --orbit-success-ink: #4ade80;
+  --orbit-info-ink: #38bdf8;
   color: #f5f7fb;
 }
 
@@ -380,6 +384,7 @@ body {
   --island-badge-bg: rgba(255, 255, 255, 0.55);
   --island-border: rgba(255, 255, 255, 0.70);
   --orbit-success-ink: #166534;
+  --orbit-info-ink: #0369a1;
   color: #0b172a;
 }
 

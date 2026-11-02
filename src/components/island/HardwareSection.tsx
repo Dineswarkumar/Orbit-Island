@@ -285,14 +285,14 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
         {/* Row 3, Col 1: Combined upload (left) and download (right) speeds */}
         <div className="px-2.5 py-1 rounded-xl orbit-card-3d flex items-center justify-between min-w-0">
           <div className="flex items-center min-w-0 gap-1">
-            <span aria-hidden="true" className="text-[14px] leading-none font-black text-emerald-400 shrink-0">↑</span>
-            <span className="text-[11px] font-extrabold tabular-nums whitespace-nowrap text-emerald-300 truncate tracking-tight">
+            <span aria-hidden="true" className="text-[14px] leading-none font-black shrink-0" style={{ color: "var(--orbit-success-ink)" }}>↑</span>
+            <span className="text-[11px] font-extrabold tabular-nums whitespace-nowrap truncate tracking-tight" style={{ color: "var(--orbit-success-ink)" }}>
               {formatNetworkSpeed(hw?.networkUploadSpeedBps ?? 0)}
             </span>
           </div>
           <div className="flex items-center min-w-0 gap-1 pl-1">
-            <span aria-hidden="true" className="text-[14px] leading-none font-black text-cyan-400 shrink-0">↓</span>
-            <span className="text-[11px] font-extrabold tabular-nums whitespace-nowrap text-cyan-300 truncate tracking-tight">
+            <span aria-hidden="true" className="text-[14px] leading-none font-black shrink-0" style={{ color: "var(--orbit-info-ink)" }}>↓</span>
+            <span className="text-[11px] font-extrabold tabular-nums whitespace-nowrap truncate tracking-tight" style={{ color: "var(--orbit-info-ink)" }}>
               {formatNetworkSpeed(hw?.networkDownloadSpeedBps ?? 0)}
             </span>
           </div>

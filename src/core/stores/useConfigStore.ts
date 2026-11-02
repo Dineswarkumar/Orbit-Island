@@ -4,6 +4,7 @@ import { ipc } from "../ipc/client";
 
 interface ConfigStore {
   config: AppConfig;
+  isLoaded: boolean;
   isLoading: boolean;
   isSaving: boolean;
   error: string | null;
@@ -13,6 +14,7 @@ interface ConfigStore {
 
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   config: AppConfigSchema.parse({}),
+  isLoaded: false,
   isLoading: false,
   isSaving: false,
   error: null,
@@ -21,7 +23,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const config = await ipc.getConfig();
-      set({ config, isLoading: false });
+      set({ config, isLoaded: true, isLoading: false });
     } catch (err) {
       set({ error: String(err), isLoading: false });
     }

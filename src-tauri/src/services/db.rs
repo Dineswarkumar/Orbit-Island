@@ -67,11 +67,18 @@ impl DatabaseManager {
                 display_name TEXT NOT NULL,
                 file_size INTEGER NOT NULL,
                 extension TEXT NOT NULL,
-                added_at INTEGER NOT NULL
+                added_at INTEGER NOT NULL,
+                is_managed_copy INTEGER NOT NULL DEFAULT 0
             );
             ",
         )
         .map_err(|e| format!("Failed to initialize SQLite schema: {e}"))?;
+
+        // Migration: ensure is_managed_copy column exists for pre-existing databases
+        let _ = conn.execute(
+            "ALTER TABLE file_shelf ADD COLUMN is_managed_copy INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -310,18 +317,17 @@ impl DatabaseManager {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
-                "SELECT id, file_path, display_name, file_size, extension, added_at
+                "SELECT id, file_path, display_name, file_size, extension, added_at, is_managed_copy
                  FROM file_shelf
                  ORDER BY added_at DESC",
             )
             .map_err(|e| e.to_string())?;
 
-        let storage_prefix = self.shelf_storage_dir.to_string_lossy().to_string();
         let rows = stmt
             .query_map([], |row| {
                 let fp: String = row.get(1)?;
                 let exists = Path::new(&fp).exists();
-                let is_managed_copy = fp.starts_with(&storage_prefix) || fp.contains("shelf_storage");
+                let is_managed_copy: bool = row.get::<_, i32>(6).unwrap_or(0) != 0;
                 Ok(ShelfItem {
                     id: row.get(0)?,
                     file_path: fp,
@@ -371,17 +377,15 @@ impl DatabaseManager {
         let conn = self.conn.lock().unwrap();
 
         // Check if already in shelf (duplicate check by normalized path)
-        let storage_prefix = self.shelf_storage_dir.to_string_lossy().to_string();
         let existing: Option<ShelfItem> = conn
             .query_row(
-                "SELECT id, file_path, display_name, file_size, extension, added_at
+                "SELECT id, file_path, display_name, file_size, extension, added_at, is_managed_copy
                  FROM file_shelf WHERE file_path = ?1",
                 params![norm_path],
                 |row| {
                     let fp: String = row.get(1)?;
                     let exists = Path::new(&fp).exists();
-                    let is_managed_copy =
-                        fp.starts_with(&storage_prefix) || fp.contains("shelf_storage");
+                    let is_managed_copy = row.get::<_, i32>(6).unwrap_or(0) != 0;
                     Ok(ShelfItem {
                         id: row.get(0)?,
                         file_path: fp,
@@ -454,8 +458,8 @@ impl DatabaseManager {
         };
 
         conn.execute(
-            "INSERT INTO file_shelf (id, file_path, display_name, file_size, extension, added_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO file_shelf (id, file_path, display_name, file_size, extension, added_at, is_managed_copy)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 item.id,
                 item.file_path,
@@ -463,6 +467,7 @@ impl DatabaseManager {
                 item.file_size as i64,
                 item.extension,
                 item.added_at as i64,
+                if item.is_managed_copy { 1 } else { 0 },
             ],
         )
         .map_err(|e| format!("Failed to insert shelf item: {e}"))?;
@@ -474,21 +479,28 @@ impl DatabaseManager {
         // Removing reference from shelf NEVER deletes original user files outside shelf_storage.
         // If the item is a managed copy inside shelf_storage, clean up that managed copy.
         let conn = self.conn.lock().unwrap();
-        let existing_path: Option<String> = conn
+        let existing: Option<(String, bool)> = conn
             .query_row(
-                "SELECT file_path FROM file_shelf WHERE id = ?1",
+                "SELECT file_path, is_managed_copy FROM file_shelf WHERE id = ?1",
                 params![id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get::<_, i32>(1).unwrap_or(0) != 0)),
             )
             .ok();
 
         conn.execute("DELETE FROM file_shelf WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to remove shelf item: {e}"))?;
 
-        if let Some(fp) = existing_path {
-            let storage_prefix = self.shelf_storage_dir.to_string_lossy().to_string();
-            if fp.starts_with(&storage_prefix) || fp.contains("shelf_storage") {
-                let _ = fs::remove_file(&fp);
+        if let Some((fp, is_managed_copy)) = existing {
+            if is_managed_copy {
+                let target_path = Path::new(&fp);
+                if let (Ok(target_canon), Ok(storage_canon)) = (
+                    dunce::canonicalize(target_path),
+                    dunce::canonicalize(&self.shelf_storage_dir),
+                ) {
+                    if target_canon.starts_with(&storage_canon) && target_canon != storage_canon {
+                        let _ = fs::remove_file(&target_canon);
+                    }
+                }
             }
         }
         Ok(())
@@ -1166,6 +1178,57 @@ mod tests {
         assert!(managed_path.exists());
         db.remove_shelf_item(&fetched_copy.id).unwrap();
         assert!(!managed_path.exists());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_removing_external_shelf_reference_with_shelf_storage_in_path_leaves_file_intact() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbit_test_external_shelf_storage_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let db_path = temp_dir.join("shelf_test.db");
+        let db = DatabaseManager::new(db_path).expect("Failed to create test db");
+
+        // External folder containing substring "shelf_storage"
+        let external_dir = temp_dir.join("my_shelf_storage_user_docs");
+        fs::create_dir_all(&external_dir).unwrap();
+        let external_file = external_dir.join("critical_report.txt");
+        let file_content = "important user file content that must not be deleted";
+        fs::write(&external_file, file_content).unwrap();
+
+        // Add as reference item
+        let shelf_item = db
+            .add_shelf_item_with_mode(&external_file.to_string_lossy(), "reference")
+            .expect("Failed to add reference item");
+        assert!(!shelf_item.is_managed_copy);
+        assert!(shelf_item.exists);
+
+        // Verify it is in database
+        let items_before = db.get_shelf_items().unwrap();
+        assert_eq!(items_before.len(), 1);
+        assert_eq!(items_before[0].id, shelf_item.id);
+        assert!(!items_before[0].is_managed_copy);
+
+        // Remove from shelf
+        db.remove_shelf_item(&shelf_item.id)
+            .expect("Failed to remove shelf item");
+
+        // Verify removed from database
+        let items_after = db.get_shelf_items().unwrap();
+        assert_eq!(items_after.len(), 0);
+
+        // Verify critical user file on disk is STILL INTACT and unchanged!
+        assert!(
+            external_file.exists(),
+            "External user file was deleted by remove_shelf_item!"
+        );
+        let preserved_content = fs::read_to_string(&external_file).unwrap();
+        assert_eq!(preserved_content, file_content);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
