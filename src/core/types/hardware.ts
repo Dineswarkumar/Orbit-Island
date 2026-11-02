@@ -20,6 +20,8 @@ export interface HardwareMetrics {
   screenRecordingActive: boolean;
   activeDownloadCount: number;
   lastCompletedDownload: string | null;
+  batterySaverActive?: boolean;
+  osTransparencyEnabled?: boolean;
 }
 
 export interface MemoryCleanResult {

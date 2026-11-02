@@ -60,25 +60,24 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
   //   - above 80: green (#22c55e)
   //   - less 80 (30 to 79): orange (#f59e0b)
   //   - less 30: red (#ef4444)
-  const batteryColor = isPowerConnected
-    ? "#22c55e"
+  const isBatteryGreen = isPowerConnected || (batteryPct != null && batteryPctVal >= 80);
+  const batteryColor = isBatteryGreen
+    ? "var(--orbit-success-ink, #22c55e)"
     : batteryPct == null
-    ? "#94a3b8"
-    : batteryPctVal >= 80
-    ? "#22c55e"
+    ? "var(--island-muted, #94a3b8)"
     : batteryPctVal >= 30
     ? "#f59e0b"
     : "#ef4444";
 
   const batteryGlow = isPowerConnected
-    ? "rgba(34, 197, 94, 0.75)"
+    ? "rgba(34, 197, 94, 0.55)"
     : batteryPct == null
     ? "rgba(148, 163, 184, 0.25)"
     : batteryPctVal >= 80
-    ? "rgba(34, 197, 94, 0.45)"
+    ? "rgba(34, 197, 94, 0.35)"
     : batteryPctVal >= 30
-    ? "rgba(245, 158, 11, 0.4)"
-    : "rgba(239, 68, 68, 0.5)";
+    ? "rgba(245, 158, 11, 0.35)"
+    : "rgba(239, 68, 68, 0.45)";
 
   const batteryState = batteryPct == null
     ? (isPowerConnected ? "Connected" : "No battery")
@@ -90,9 +89,11 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
 
   return (
     <div className="flex flex-col h-full select-none pb-0.5 pl-0.5 space-y-1">
-      <div className="flex items-center justify-between px-1.5 py-0.5 rounded-lg bg-white/[0.04] border border-white/[0.07] shrink-0">
-        <span className="text-[9px] font-bold uppercase tracking-wider text-white/70 shrink-0">SYSTEM</span>
-        <span className="text-[10px] font-semibold text-white/90 truncate pl-2" title={hw?.gpuName || "Graphics"}>
+      <div className="flex items-center justify-between px-2 py-0.5 rounded-lg orbit-system-header-glass shrink-0">
+        <span className="text-[9px] font-bold uppercase tracking-wider shrink-0" style={{ color: "var(--island-muted)" }}>
+          SYSTEM
+        </span>
+        <span className="text-[10px] font-semibold truncate pl-2" style={{ color: "var(--island-text)" }} title={hw?.gpuName || "Graphics"}>
           {hw?.gpuName || "Graphics"}
         </span>
       </div>
@@ -117,10 +118,10 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           </svg>
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-baseline justify-between">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-white/75 leading-none">
+              <span className="text-[9px] font-bold uppercase tracking-wider leading-none" style={{ color: "var(--island-muted)" }}>
                 CPU
               </span>
-              <span className="text-[11px] font-bold text-white tabular-nums leading-none">
+              <span className="text-[11px] font-bold tabular-nums leading-none" style={{ color: "var(--island-text)" }}>
                 {cpuUsage.toFixed(1)}%
               </span>
             </div>
@@ -163,10 +164,10 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           </svg>
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-baseline justify-between">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-white/75 leading-none">
+              <span className="text-[9px] font-bold uppercase tracking-wider leading-none" style={{ color: "var(--island-muted)" }}>
                 GPU
               </span>
-              <span className="text-[11px] font-bold text-white tabular-nums leading-none">
+              <span className="text-[11px] font-bold tabular-nums leading-none" style={{ color: "var(--island-text)" }}>
                 {gpuUsage.toFixed(1)}%
               </span>
             </div>
@@ -202,7 +203,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-baseline justify-between">
               <div className="flex items-center space-x-1">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-white/75 leading-none">
+                <span className="text-[9px] font-bold uppercase tracking-wider leading-none" style={{ color: "var(--island-muted)" }}>
                   RAM
                 </span>
                 {onFreeMemory && (
@@ -213,7 +214,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
                     title="MSI-Center Quick Memory Cleaner"
                     className="px-1 py-0.5 text-[7.5px] font-bold tracking-tight rounded orbit-card-3d hover:brightness-125 transition-all active:scale-95 leading-none cursor-pointer"
                     style={{
-                      color: freedResult !== null ? "#22c55e" : "#c4b5fd",
+                      color: freedResult !== null ? "#16a34a" : "#c4b5fd",
                       border: "1px solid rgba(167, 139, 250, 0.45)",
                     }}
                   >
@@ -225,7 +226,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
                   </button>
                 )}
               </div>
-              <span className="text-[10.5px] font-bold text-white tabular-nums leading-none">
+              <span className="text-[10.5px] font-bold tabular-nums leading-none" style={{ color: "var(--island-text)" }}>
                 {ramUsedGb}/{ramTotalGb}G
               </span>
             </div>
@@ -261,10 +262,10 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
           </svg>
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-baseline justify-between">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-white/75 leading-none">
+              <span className="text-[9px] font-bold uppercase tracking-wider leading-none" style={{ color: "var(--island-muted)" }}>
                 DISK C:
               </span>
-              <span className="text-[10.5px] font-bold text-white tabular-nums leading-none">
+              <span className="text-[10.5px] font-bold tabular-nums leading-none" style={{ color: "var(--island-text)" }}>
                 {diskPercent.toFixed(0)}% ({diskFreeGb}G)
               </span>
             </div>
@@ -316,7 +317,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
               className="w-6 h-6 shrink-0"
               style={{
                 color: batteryColor,
-                filter: isPowerConnected ? `drop-shadow(0 0 5px ${batteryGlow})` : undefined,
+                filter: isPowerConnected ? `drop-shadow(0 0 4px ${batteryGlow})` : undefined,
               }}
               viewBox="0 0 26 18"
               fill="none"
@@ -356,16 +357,16 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   style={{
-                    filter: "drop-shadow(0 0 3px #22c55e) drop-shadow(0 0 6px rgba(34, 197, 94, 0.9))",
+                    filter: "drop-shadow(0 0 2px #22c55e) drop-shadow(0 0 5px rgba(34, 197, 94, 0.75))",
                   }}
                 />
               )}
             </svg>
             {isPowerConnected && (
               <span
-                className="absolute -inset-0.5 rounded-full animate-pulse pointer-events-none"
+                className="absolute -inset-0.5 rounded-full pointer-events-none"
                 style={{
-                  boxShadow: "0 0 8px rgba(34, 197, 94, 0.45)",
+                  boxShadow: "0 0 6px rgba(34, 197, 94, 0.35)",
                 }}
               />
             )}
@@ -373,18 +374,18 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
 
           {/* Middle: Statement (Connected / Discharging / Charging) */}
           <span
-            className="text-[10px] font-bold tracking-tight leading-none text-center truncate px-1 flex-1"
-            style={{ color: isPowerConnected ? "#4ade80" : batteryColor }}
+            className="text-[10px] font-bold tracking-tight leading-normal py-0.5 text-center truncate px-1 flex-1"
+            style={{ color: batteryColor }}
           >
             {batteryState}
           </span>
 
           {/* Right: Percentage */}
           <span
-            className="text-[12px] font-black tabular-nums leading-none shrink-0 tracking-tight"
+            className="text-[12px] font-black tabular-nums leading-normal py-0.5 shrink-0 tracking-tight"
             style={{
               color: batteryColor,
-              textShadow: isPowerConnected ? "0 0 8px rgba(34, 197, 94, 0.5)" : undefined,
+              textShadow: isPowerConnected ? "0 0 6px rgba(34, 197, 94, 0.35)" : undefined,
             }}
           >
             {batteryPct != null ? `${batteryPct}%` : "AC"}

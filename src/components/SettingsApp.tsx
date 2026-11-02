@@ -34,6 +34,7 @@ import { AppConfig } from "../core/types/config";
 import { PrivacyState } from "../core/types/notifications";
 import { THEMES, getThemeMeta } from "../core/theme";
 import packageJson from "../../package.json";
+import { GlassLayers } from "./island/GlassLayers";
 
 const FONT_PRESETS: {
   id: AppConfig["fontFamily"];
@@ -736,10 +737,10 @@ export const SettingsApp: React.FC = () => {
                   }
                   className={`w-full rounded-xl px-3 py-2 text-xs border focus:outline-none cursor-pointer ${inputBg}`}
                 >
-                  <option value="glass" className={optionCls}>Glossy 3D Lens (Specular)</option>
-                  <option value="frosted" className={optionCls}>Frosted Acrylic (Satin)</option>
-                  <option value="smoked" className={optionCls}>Smoked Obsidian (Deep)</option>
-                  <option value="solid" className={optionCls}>Anodized Carbon (Opaque)</option>
+                  <option value="glass" className={optionCls}>Liquid Glass (Optical Rim & Lens)</option>
+                  <option value="frosted" className={optionCls}>Clear Glass (Untinted Crystal)</option>
+                  <option value="smoked" className={optionCls}>Theme-Tinted Glass (Adaptive Tint)</option>
+                  <option value="solid" className={optionCls}>Solid / Reduced Effects (Opaque Fallback)</option>
                 </select>
               </div>
 
@@ -789,20 +790,29 @@ export const SettingsApp: React.FC = () => {
                     Surface Opacity Preset
                   </label>
                   <span className="text-[11px] font-mono text-cyan-500 font-bold">
-                    {formData.surfaceOpacity ?? 80}%
+                    {formData.surfaceOpacity ?? 80}% · {
+                      (formData.surfaceOpacity ?? 80) === 20 ? "Crystal Clear" :
+                      (formData.surfaceOpacity ?? 80) === 50 ? "Balanced Glass" :
+                      (formData.surfaceOpacity ?? 80) === 80 ? "Frosted Depth" : "High Density"
+                    }
                   </span>
                 </div>
-                <div className="grid grid-cols-4 gap-1.5 p-1 rounded-xl border bg-black/10">
-                  {([20, 50, 80, 100] as const).map((preset) => {
-                    const isSelected = (formData.surfaceOpacity ?? 80) === preset;
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-xl border bg-black/10">
+                  {[
+                    { value: 20 as const, label: "20%", desc: "Crystal Clear" },
+                    { value: 50 as const, label: "50%", desc: "Balanced Glass" },
+                    { value: 80 as const, label: "80%", desc: "Frosted Depth" },
+                    { value: 100 as const, label: "100%", desc: "High Density" },
+                  ].map((preset) => {
+                    const isSelected = (formData.surfaceOpacity ?? 80) === preset.value;
                     return (
                       <button
-                        key={preset}
+                        key={preset.value}
                         type="button"
                         onClick={() =>
-                          setFormData({ ...formData, surfaceOpacity: preset })
+                          setFormData({ ...formData, surfaceOpacity: preset.value })
                         }
-                        className={`py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        className={`py-1.5 px-2 text-center rounded-lg transition-all cursor-pointer ${
                           isSelected
                             ? "bg-cyan-500 text-slate-950 shadow-sm"
                             : isLight
@@ -810,7 +820,14 @@ export const SettingsApp: React.FC = () => {
                             : "text-slate-400 hover:text-slate-200 hover:bg-white/10"
                         }`}
                       >
-                        {preset}%
+                        <div className="text-xs font-bold">{preset.label}</div>
+                        <div
+                          className={`text-[9px] font-medium truncate ${
+                            isSelected ? "text-slate-950/80" : "opacity-60"
+                          }`}
+                        >
+                          {preset.desc}
+                        </div>
                       </button>
                     );
                   })}
@@ -822,6 +839,8 @@ export const SettingsApp: React.FC = () => {
                 {(() => {
                   const previewMeta = getThemeMeta(formData.theme);
                   const opacity = (formData.surfaceOpacity ?? 80) / 100;
+                  const modeClass = `transparency-${formData.transparencyMode}`;
+                  const themeClass = `theme-${previewMeta.id}`;
                   return (
                     <div
                       className={`rounded-2xl p-3.5 border space-y-2.5 ${
@@ -840,44 +859,84 @@ export const SettingsApp: React.FC = () => {
                           <span>{previewMeta.label}</span>
                         </span>
                         <span className="font-mono text-[10px] opacity-60">
-                          {formData.transparencyMode.toUpperCase()} ·{" "}
-                          {formData.surfaceOpacity ?? 80}%
+                          {formData.transparencyMode.toUpperCase()} · {formData.surfaceOpacity ?? 80}%
                         </span>
                       </div>
 
-                      <div
-                        className="rounded-2xl px-5 py-3 border flex items-center justify-between relative overflow-hidden transition-all duration-300"
-                        style={{
-                          backgroundColor: `rgba(${previewMeta.surfaceBase}, ${opacity})`,
-                          borderColor: previewMeta.borderGlow,
-                          color: previewMeta.text,
-                          boxShadow: `0 10px 24px -4px rgba(0,0,0,0.8), inset 0 1.5px 1px ${previewMeta.rimHighlight}`,
-                        }}
-                      >
-                        <div
-                          className="absolute inset-0 pointer-events-none"
-                          style={{
-                            background: `radial-gradient(ellipse 55% 70% at 30% 50%, ${previewMeta.coreGlow} 0%, transparent 75%)`,
-                          }}
-                        />
-                        <div className="relative z-10 flex items-baseline space-x-2">
-                          <span className="text-xl font-bold tracking-tight tabular-nums">
-                            12:28
-                          </span>
-                          <span
-                            className="text-xs font-bold uppercase tracking-wider"
-                            style={{ color: previewMeta.accent }}
-                          >
-                            AM
+                      {/* Split Light & Dark Desktop Simulation Backdrop */}
+                      <div className="relative rounded-2xl overflow-hidden p-4 border border-white/10 shadow-inner flex items-center justify-center min-h-[116px]">
+                        {/* Light Half (Day Desktop) */}
+                        <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-br from-sky-100 via-white to-slate-200 flex items-start justify-start p-2">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-600 bg-white/80 backdrop-blur-xs px-1.5 py-0.5 rounded shadow-xs">
+                            Light Desktop
                           </span>
                         </div>
-                        <div className="relative z-10 flex items-center space-x-2">
-                          <span
-                            className="text-[11px] truncate max-w-[200px] font-medium"
-                            style={{ color: previewMeta.muted }}
-                          >
-                            {previewMeta.description}
+                        {/* Dark Half (Night Desktop) */}
+                        <div className="absolute inset-y-0 right-0 w-1/2 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex items-start justify-end p-2 border-l border-white/20">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-300 bg-slate-900/80 backdrop-blur-xs px-1.5 py-0.5 rounded shadow-xs">
+                            Dark Desktop
                           </span>
+                        </div>
+
+                        {/* Centered Dynamic Island Glass Capsule bridging both backdrops */}
+                        <div className="orbit-stage-3d relative z-10 w-full max-w-[340px]">
+                          <div
+                            className={`orbit-shell-3d ${modeClass} ${themeClass} ${
+                              formData.transparencyMode === "solid"
+                                ? ""
+                                : previewMeta.id === "light"
+                                ? "glass-tone-light"
+                                : "glass-tone-dark"
+                            } rounded-[24px] px-4 py-2.5 border flex items-center justify-between transition-all duration-300 relative overflow-hidden`}
+                            style={
+                              {
+                                "--surface-alpha": opacity,
+                                "--theme-accent": previewMeta.accent,
+                                "--theme-accent-secondary": previewMeta.accentSecondary,
+                              } as React.CSSProperties
+                            }
+                          >
+                            {/* Full liquid-glass stack; the preview window is opaque, so it can blur natively */}
+                            {formData.transparencyMode !== "solid" && (
+                              <GlassLayers
+                                mode={formData.transparencyMode as "glass" | "frosted" | "smoked"}
+                                tone={previewMeta.id === "light" ? "light" : "dark"}
+                                width={340}
+                                height={46}
+                                backdropUrl={null}
+                                offsetX={0}
+                                offsetY={0}
+                                nativeBackdrop
+                              />
+                            )}
+
+                            <div className="relative z-10 flex items-baseline space-x-2">
+                              <span className="orbit-clock-3d text-lg font-bold tracking-tight tabular-nums">
+                                10:08
+                              </span>
+                              <span
+                                className="text-xs font-bold uppercase tracking-wider"
+                                style={{ color: previewMeta.accent }}
+                              >
+                                AM
+                              </span>
+                            </div>
+
+                            <div className="relative z-10 flex items-center space-x-2">
+                              <div className="orbit-pill-badge-3d px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center space-x-1">
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full"
+                                  style={{ backgroundColor: previewMeta.accent }}
+                                />
+                                <span>Preview</span>
+                              </div>
+                              <span className="text-[11px] font-medium truncate max-w-[110px] opacity-80">
+                                {formData.transparencyMode === "solid"
+                                  ? "Solid Opaque"
+                                  : `${formData.surfaceOpacity ?? 80}% Glass`}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

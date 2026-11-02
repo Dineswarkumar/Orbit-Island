@@ -7,6 +7,11 @@ import { ReminderItem } from "../types/reminders";
 import { HardwareMetrics, MemoryCleanResult } from "../types/hardware";
 import { ShelfItem } from "../types/shelf";
 
+export interface LiveBackdropSnapshot {
+  dataUrl: string;
+  avgLuminance: number;
+}
+
 // Latest rendered compact pill width (logical px). Updated by the island UI; consumed by setIslandState.
 let compactWidthHint: number | null = null;
 export function setCompactWidthHint(width: number | null): void {
@@ -216,5 +221,9 @@ export const ipc = {
 
   revealDiagnosticLog: async (): Promise<string> => {
     return invoke<string>("reveal_diagnostic_log");
+  },
+
+  getLiveBackdrop: async (): Promise<LiveBackdropSnapshot | null> => {
+    return invoke<LiveBackdropSnapshot | null>("get_live_backdrop");
   },
 };

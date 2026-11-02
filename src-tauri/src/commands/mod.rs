@@ -764,3 +764,17 @@ pub fn reveal_diagnostic_log() -> Result<String, String> {
     Ok(path_str)
 }
 
+#[tauri::command]
+pub async fn get_live_backdrop(
+    app: AppHandle,
+) -> Result<Option<crate::services::window::LiveBackdropSnapshot>, String> {
+    let target_win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Island main window not found".to_string())?;
+    // The sampler waits a few milliseconds for DWM, so it must never run on the UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::window::capture_live_backdrop(&target_win)
+    })
+    .await
+    .map_err(|e| format!("Live backdrop task failed: {e}"))?
+}

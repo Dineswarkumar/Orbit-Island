@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { ipc, setCompactWidthHint } from "../core/ipc/client";
 import { useConfigStore } from "../core/stores/useConfigStore";
 import { AppConfig } from "../core/types/config";
@@ -19,6 +20,7 @@ import { HomeSection } from "./island/HomeSection";
 import { CalendarSection } from "./island/CalendarSection";
 import { HardwareSection } from "./island/HardwareSection";
 import { MultiTaskSection } from "./island/MultiTaskSection";
+import { GlassLayers, GlassTone, nextGlassTone } from "./island/GlassLayers";
 
 const formatSeconds = (totalSecs: number) => {
   if (isNaN(totalSecs) || totalSecs < 0) return "0:00";
@@ -164,6 +166,8 @@ export const IslandApp: React.FC = () => {
   const [activeSection, setActiveSection] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [liveBackdropUrl, setLiveBackdropUrl] = useState<string | null>(null);
+  const [glassTone, setGlassTone] = useState<GlassTone>("dark");
 
   // Notification and Privacy state
   const [notificationSnapshot, setNotificationSnapshot] =
@@ -174,6 +178,8 @@ export const IslandApp: React.FC = () => {
   );
   const [isNotifHovered, setIsNotifHovered] = useState(false);
   const [showHomeNotifications, setShowHomeNotifications] = useState(false);
+  const [showTimerOverlay, setShowTimerOverlay] = useState(false);
+  const [homeSubView, setHomeSubView] = useState<"auto" | "media" | "call" | "clock">("auto");
   const [selectedNotifId, setSelectedNotifId] = useState<number | null>(null);
   const [isNotifEntering, setIsNotifEntering] = useState(false);
   const notifEntranceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -353,6 +359,17 @@ export const IslandApp: React.FC = () => {
         (mediaSession.playback_status === "paused" &&
           mediaSession.track.title.trim().length > 0))
   );
+
+  const isMediaBackdropActive =
+    (isExpanded &&
+      activeSection === 0 &&
+      isMediaActive &&
+      Boolean(mediaSession) &&
+      !showTimerOverlay &&
+      homeSubView !== "clock" &&
+      !showHomeNotifications &&
+      homeSubView !== "call") ||
+    (!isExpanded && !transientNotif && !utilityAlert && isMediaActive && Boolean(mediaSession));
 
   // Weather state (stale-while-revalidate cache + instant fallback so right slot never flickers blank)
   const [weatherInfo, setWeatherInfo] = useState<WeatherGlance | null>(() => {
@@ -2400,6 +2417,80 @@ export const IslandApp: React.FC = () => {
       : "translate3d(0, 7px, 0) scale3d(1, 1, 1)"
     : "translate3d(0, 0, 0) scale3d(1, 1, 1)";
 
+  const isReducedEffects =
+    hardwareMetrics?.batterySaverActive === true ||
+    hardwareMetrics?.osTransparencyEnabled === false;
+  const effectiveTransparencyMode = isReducedEffects
+    ? "solid"
+    : config.transparencyMode || "glass";
+  const surfaceAlpha =
+    effectiveTransparencyMode === "solid"
+      ? Math.max(0.88, (config.surfaceOpacity ?? 80) / 100)
+      : (config.surfaceOpacity ?? 80) / 100;
+
+  // Live Optical Desktop Backdrop (fetches screen capture from Rust backend)
+  useEffect(() => {
+    if (effectiveTransparencyMode === "solid" || isReducedEffects || isMediaBackdropActive) {
+      return;
+    }
+
+    let isMounted = true;
+    const fetchBackdrop = async () => {
+      try {
+        const res = await invoke<{ dataUrl: string; avgLuminance: number } | null>("get_live_backdrop");
+        if (isMounted && res?.dataUrl) {
+          setLiveBackdropUrl((prev) => (prev !== res.dataUrl ? res.dataUrl : prev));
+          setGlassTone((prev) => nextGlassTone(prev, res.avgLuminance));
+        }
+      } catch {
+        // Silently handle if command unavailable
+      }
+    };
+
+    fetchBackdrop();
+    // Each sample briefly flags the island as capture-excluded, so keep the cadence calm.
+    const intervalTime = isExpanded || transientNotif ? 700 : 1800;
+    const timer = setInterval(fetchBackdrop, intervalTime);
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, [
+    effectiveTransparencyMode,
+    isReducedEffects,
+    isMediaBackdropActive,
+    isExpanded,
+    transientNotif,
+    config.position,
+  ]);
+
+  const currentShellWidth = isExpanded
+    ? 356
+    : transientNotif
+    ? isNotifHovered
+      ? 368
+      : 316
+    : utilityAlert?.kind === "timer_done"
+    ? 316
+    : compactPillWidth;
+
+  const currentShellHeight = isExpanded
+    ? 168
+    : transientNotif
+    ? isNotifHovered
+      ? 112
+      : 56
+    : utilityAlert?.kind === "timer_done"
+    ? 56
+    : 40;
+
+  const isGlassMode =
+    effectiveTransparencyMode !== "solid" && !isReducedEffects && !isMediaBackdropActive;
+  const activeGlassTone: GlassTone = isMediaBackdropActive ? "dark" : glassTone;
+
+  const currentYOffset = (!isExpanded && transientNotif && config.notificationsEnabled && !isNotifEntering) ? 10 : 3;
+  const currentXOffset = (400 - currentShellWidth) / 2;
+
   return (
     <div
       onContextMenu={handleContextMenu}
@@ -2428,24 +2519,8 @@ export const IslandApp: React.FC = () => {
           }
         }}
         style={{
-          width: isExpanded
-            ? "356px"
-            : transientNotif
-            ? isNotifHovered
-              ? "368px"
-              : "316px"
-            : utilityAlert?.kind === "timer_done"
-            ? "316px"
-            : `${compactPillWidth}px`,
-          height: isExpanded
-            ? "168px"
-            : transientNotif
-            ? isNotifHovered
-              ? "112px"
-              : "56px"
-            : utilityAlert?.kind === "timer_done"
-            ? "56px"
-            : "40px",
+          width: `${currentShellWidth}px`,
+          height: `${currentShellHeight}px`,
           borderRadius: isExpanded
             ? "26px"
             : transientNotif
@@ -2458,19 +2533,25 @@ export const IslandApp: React.FC = () => {
           borderColor:
             utilityAlert?.kind === "timer_done"
               ? "rgba(251, 191, 36, 0.72)"
+              : isMediaBackdropActive
+              ? "rgba(96, 165, 250, 0.75)"
               : "var(--island-border)",
           boxShadow:
             utilityAlert?.kind === "timer_done"
               ? "0 0 28px rgba(245, 158, 11, 0.55), inset 0 0 14px rgba(251, 191, 36, 0.25)"
+              : isMediaBackdropActive
+              ? "0 8px 32px rgba(0, 0, 0, 0.75), 0 0 28px rgba(59, 130, 246, 0.45), inset 0 0 22px rgba(59, 130, 246, 0.35)"
               : undefined,
-          backgroundColor: isExpanded
+          backgroundColor: isMediaBackdropActive
+            ? "#080b18"
+            : isExpanded
             ? "var(--island-panel)"
             : "var(--island-pill)",
           opacity: isClosing || isMeetingSuppressed ? 0 : 1,
           pointerEvents: isMeetingSuppressed ? "none" : undefined,
           transform: shellTransform,
           // @ts-expect-error CSS custom property
-          "--surface-alpha": 0.94 + ((config.surfaceOpacity ?? 80) / 100) * 0.06,
+          "--surface-alpha": surfaceAlpha,
           transition: prefersReducedMotion
             ? "none"
             : isClosing
@@ -2479,12 +2560,57 @@ export const IslandApp: React.FC = () => {
             ? "width 330ms cubic-bezier(0.22, 1.26, 0.36, 1), height 360ms cubic-bezier(0.18, 1.16, 0.32, 1) 20ms, border-radius 300ms ease, border-color 260ms ease, background-color 260ms ease, transform 140ms ease-out, opacity 220ms ease-out"
             : "height 280ms cubic-bezier(0.22, 1.15, 0.36, 1), width 300ms cubic-bezier(0.22, 1.15, 0.36, 1), border-radius 260ms ease, border-color 240ms ease, background-color 240ms ease, box-shadow 300ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-out",
         }}
-        className={`orbit-shell-3d transparency-${
-          config.transparencyMode || "glass"
-        } relative overflow-hidden select-none border ${
+        className={`orbit-shell-3d transparency-${effectiveTransparencyMode} ${
+          isReducedEffects ? "orbit-reduced-effects" : ""
+        } ${isGlassMode || isMediaBackdropActive ? `glass-tone-${activeGlassTone}` : ""} ${
+          isMediaBackdropActive ? "orbit-media-active" : ""
+        } ${isGlassMode && !liveBackdropUrl ? "orbit-glass-nocapture" : ""} relative overflow-hidden select-none border ${
           isExpanded ? "cursor-default" : "cursor-pointer"
         }`}
       >
+        {/* Liquid glass: live refracted desktop + tone-aware scrim, sheen and specular rim */}
+        {isGlassMode && (
+          <GlassLayers
+            mode={effectiveTransparencyMode as "glass" | "frosted" | "smoked"}
+            tone={activeGlassTone}
+            width={currentShellWidth}
+            height={currentShellHeight}
+            backdropUrl={liveBackdropUrl}
+            offsetX={currentXOffset}
+            offsetY={currentYOffset}
+          />
+        )}
+
+        {/* Media Backdrop with Album Cover Art Blur */}
+        {isMediaBackdropActive && (
+          <div className="pointer-events-none absolute inset-0 rounded-[inherit] overflow-hidden z-[1]">
+            {mediaSession?.track.thumbnail_base64 ? (
+              <img
+                src={mediaSession.track.thumbnail_base64}
+                alt=""
+                className="w-full h-full object-cover scale-125 blur-[14px] saturate-[2.4] contrast-[1.15] brightness-[1.08]"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950" />
+            )}
+            {/* Ambient radial color glow behind scrim */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background:
+                  "radial-gradient(ellipse 80% 75% at 65% 45%, rgba(236, 72, 153, 0.22) 0%, rgba(99, 102, 241, 0.22) 50%, transparent 80%)",
+              }}
+            />
+            <div
+              className="absolute inset-0 bg-gradient-to-b from-[#0f172a]/30 via-[#0f172a]/42 to-[#090d1d]/62"
+              style={{
+                boxShadow:
+                  "inset 0 0 0 1.5px rgba(96, 165, 250, 0.72), inset 0 0 22px rgba(59, 130, 246, 0.35), inset 0 1.5px 2.5px rgba(255, 255, 255, 0.65)",
+              }}
+            />
+          </div>
+        )}
+
         {/* COMPACT / INTERMEDIATE 3D CAPSULE LAYER */}
         <CompactCapsule
           isExpanded={isExpanded}
@@ -2522,7 +2648,7 @@ export const IslandApp: React.FC = () => {
 
         {/* EXPANDED 3D PANEL LAYER (356x168 canvas with 3D Drum Section Carousel) */}
         <div
-          className="absolute top-0 left-0 w-[356px] h-[168px] px-3 pt-2.5 pb-3.5 pr-6 overflow-hidden select-none"
+          className="absolute top-0 left-0 w-[356px] h-[168px] px-3 pt-2.5 pb-3.5 pr-6 overflow-hidden select-none z-[3]"
           style={{
             opacity: isExpanded ? 1 : 0,
             transform: isExpanded
@@ -2574,16 +2700,18 @@ export const IslandApp: React.FC = () => {
                     e.stopPropagation();
                     setActiveSection(idx);
                   }}
-                  className={`w-[5px] h-[5px] rounded-full transition-all duration-250 outline-none focus:outline-none cursor-pointer ${
+                  className={`w-[5px] h-[5px] rounded-full transition-all duration-200 outline-none focus:outline-none cursor-pointer ${
                     isActive
-                      ? "scale-110"
-                      : "bg-white/25 hover:bg-white/45 scale-95"
+                      ? "scale-110 ring-1 ring-white/80 shadow-[0_0_4px_rgba(0,0,0,0.4)]"
+                      : "bg-white/35 hover:bg-white/65 ring-1 ring-black/20 hover:scale-105"
                   }`}
                   style={{
-                    backgroundColor: isActive ? "#ffffff" : undefined,
-                    boxShadow: isActive
-                      ? `0 0 8px #ffffff, 0 0 12px ${activeThemeMeta.color}`
+                    backgroundColor: isActive
+                      ? "var(--island-text, #ffffff)"
                       : undefined,
+                    boxShadow: isActive
+                      ? `0 0 6px ${activeThemeMeta.accent || "#ffffff"}, 0 1px 2px rgba(0,0,0,0.5)`
+                      : "0 0.5px 1.5px rgba(0,0,0,0.3)",
                   }}
                   aria-label={section.label}
                 />
@@ -2674,6 +2802,10 @@ export const IslandApp: React.FC = () => {
                         const calIdx = dynamicSections.findIndex((s) => s.id === "calendar");
                         setActiveSection(calIdx >= 0 ? calIdx : 1);
                       }}
+                      showTimerOverlay={showTimerOverlay}
+                      setShowTimerOverlay={setShowTimerOverlay}
+                      homeSubView={homeSubView}
+                      setHomeSubView={setHomeSubView}
                     />
                   )}
                   {section.id === "multitask" && (

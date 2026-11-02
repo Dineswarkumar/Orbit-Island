@@ -559,17 +559,669 @@ pub fn set_window_capture_stealth<R: tauri::Runtime>(
         } else {
             WDA_NONE
         };
+        // Serialise with the live-backdrop sampler, which briefly toggles the same flag.
+        let _guard = CAPTURE_AFFINITY_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         unsafe {
             let _ = SetWindowDisplayAffinity(hwnd.0 as HWND, affinity);
         }
     }
 }
 
+/// Guards every read-modify-write of the island's display-affinity flag so the stealth
+/// setting and the live-backdrop sampler can never leave it in the wrong state.
+pub static CAPTURE_AFFINITY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(not(target_os = "windows"))]
 pub fn set_window_capture_stealth<R: tauri::Runtime>(
     _window: &WebviewWindow<R>,
     _hide_from_capture: bool,
 ) {
+}
+
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveBackdropSnapshot {
+    pub data_url: String,
+    pub avg_luminance: f32,
+}
+
+// Capture resolution for the live glass backdrop. 3:4 of the 400x188 island window keeps the
+// refraction layer crisp enough to read as "glass" without bloating the IPC payload.
+pub const BACKDROP_WIDTH: i32 = 300;
+pub const BACKDROP_HEIGHT: i32 = 141;
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct GdiplusStartupInput {
+    gdiplus_version: u32,
+    debug_event_callback: usize,
+    suppress_background_thread: i32,
+    suppress_external_codecs: i32,
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "gdiplus")]
+unsafe extern "system" {
+    fn GdiplusStartup(
+        token: *mut usize,
+        input: *const GdiplusStartupInput,
+        output: *mut usize,
+    ) -> i32;
+    fn GdipCreateBitmapFromFile(filename: *const u16, bitmap: *mut usize) -> i32;
+    fn GdipCreateHBITMAPFromBitmap(
+        bitmap: usize,
+        hbm_return: *mut windows_sys::Win32::Graphics::Gdi::HBITMAP,
+        background: u32,
+    ) -> i32;
+    fn GdipDisposeImage(image: usize) -> i32;
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn GetWindowDisplayAffinity(
+        hwnd: windows_sys::Win32::Foundation::HWND,
+        paffinity: *mut u32,
+    ) -> windows_sys::Win32::Foundation::BOOL;
+    fn GetWindowDC(
+        hwnd: windows_sys::Win32::Foundation::HWND,
+    ) -> windows_sys::Win32::Graphics::Gdi::HDC;
+}
+
+#[cfg(target_os = "windows")]
+fn get_desktop_wallpaper_path() -> Option<std::path::PathBuf> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETDESKWALLPAPER};
+
+    let mut buf = [0u16; 1024];
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETDESKWALLPAPER,
+            buf.len() as u32,
+            buf.as_mut_ptr() as *mut _,
+            0,
+        )
+    };
+    if ok != 0 {
+        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        if len > 0 {
+            let path_str = String::from_utf16_lossy(&buf[..len]);
+            let p = std::path::PathBuf::from(path_str.trim());
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CURRENT_USER, KEY_READ, REG_SZ,
+    };
+    unsafe {
+        let subkey: Vec<u16> = "Control Panel\\Desktop\0".encode_utf16().collect();
+        let val_name: Vec<u16> = "WallPaper\0".encode_utf16().collect();
+        let mut hkey = std::ptr::null_mut();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey) == 0 {
+            let mut reg_buf = [0u8; 2048];
+            let mut reg_type = 0u32;
+            let mut reg_len = reg_buf.len() as u32;
+            let res = RegQueryValueExW(
+                hkey,
+                val_name.as_ptr(),
+                std::ptr::null_mut(),
+                &mut reg_type,
+                reg_buf.as_mut_ptr(),
+                &mut reg_len,
+            );
+            let _ = RegCloseKey(hkey);
+            if res == 0 && reg_type == REG_SZ && reg_len > 1 {
+                let u16_slice = std::slice::from_raw_parts(
+                    reg_buf.as_ptr() as *const u16,
+                    (reg_len as usize) / 2,
+                );
+                let len = u16_slice.iter().position(|&c| c == 0).unwrap_or(u16_slice.len());
+                let p_str = String::from_utf16_lossy(&u16_slice[..len]);
+                let p = std::path::PathBuf::from(p_str.trim());
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let transcoded = std::path::PathBuf::from(appdata)
+            .join("Microsoft")
+            .join("Windows")
+            .join("Themes")
+            .join("TranscodedWallpaper");
+        if transcoded.exists() {
+            return Some(transcoded);
+        }
+    }
+
+    None
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, PartialEq, Eq)]
+struct WallpaperKey {
+    path: std::path::PathBuf,
+    modified: Option<std::time::SystemTime>,
+    mon_w: i32,
+    mon_h: i32,
+    mon_left: i32,
+    mon_top: i32,
+    win_x: i32,
+    win_y: i32,
+    win_w: i32,
+    win_h: i32,
+}
+
+#[cfg(target_os = "windows")]
+struct CachedWallpaper {
+    key: WallpaperKey,
+    pixels: Vec<u8>,
+}
+
+#[cfg(target_os = "windows")]
+static WALLPAPER_CACHE: std::sync::Mutex<Option<CachedWallpaper>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "windows")]
+fn ensure_gdiplus() -> bool {
+    static GDIP_OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *GDIP_OK.get_or_init(|| {
+        let input = GdiplusStartupInput {
+            gdiplus_version: 1,
+            debug_event_callback: 0,
+            suppress_background_thread: 0,
+            suppress_external_codecs: 0,
+        };
+        let mut token: usize = 0;
+        let status = unsafe { GdiplusStartup(&mut token, &input, std::ptr::null_mut()) };
+        status == 0
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn get_wallpaper_crop(
+    mon_left: i32,
+    mon_top: i32,
+    mon_w: i32,
+    mon_h: i32,
+    win_x: i32,
+    win_y: i32,
+    win_w: i32,
+    win_h: i32,
+) -> Vec<u8> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, GetObjectW, ReleaseDC,
+        SelectObject, SetStretchBltMode, StretchBlt, BITMAP, BITMAPINFO, BITMAPINFOHEADER,
+        BI_RGB, DIB_RGB_COLORS, HALFTONE, HGDIOBJ, SRCCOPY,
+    };
+
+    let total_bytes = (BACKDROP_WIDTH * BACKDROP_HEIGHT * 4) as usize;
+
+    let path_opt = get_desktop_wallpaper_path();
+    let path = match path_opt {
+        Some(p) => p,
+        None => return vec![32u8; total_bytes],
+    };
+
+    let modified = std::fs::metadata(&path).ok().and_then(|m| m.modified().ok());
+    let key = WallpaperKey {
+        path: path.clone(),
+        modified,
+        mon_w,
+        mon_h,
+        mon_left,
+        mon_top,
+        win_x,
+        win_y,
+        win_w,
+        win_h,
+    };
+
+    if let Ok(guard) = WALLPAPER_CACHE.lock() {
+        if let Some(ref cached) = *guard {
+            if cached.key == key && cached.pixels.len() == total_bytes {
+                return cached.pixels.clone();
+            }
+        }
+    }
+
+    if !ensure_gdiplus() {
+        return vec![32u8; total_bytes];
+    }
+
+    let wide_path: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let mut gp_bitmap: usize = 0;
+    let status = unsafe { GdipCreateBitmapFromFile(wide_path.as_ptr(), &mut gp_bitmap) };
+    if status != 0 || gp_bitmap == 0 {
+        return vec![32u8; total_bytes];
+    }
+
+    let mut hbm: windows_sys::Win32::Graphics::Gdi::HBITMAP = std::ptr::null_mut();
+    let hbm_status = unsafe { GdipCreateHBITMAPFromBitmap(gp_bitmap, &mut hbm, 0xFF000000) };
+    unsafe { GdipDisposeImage(gp_bitmap) };
+
+    if hbm_status != 0 || hbm.is_null() {
+        return vec![32u8; total_bytes];
+    }
+
+    let mut bm: BITMAP = unsafe { std::mem::zeroed() };
+    unsafe {
+        GetObjectW(
+            hbm as HGDIOBJ,
+            std::mem::size_of::<BITMAP>() as i32,
+            &mut bm as *mut _ as *mut _,
+        );
+    }
+    let bm_w = bm.bmWidth;
+    let bm_h = bm.bmHeight;
+    if bm_w <= 0 || bm_h <= 0 {
+        unsafe { DeleteObject(hbm as HGDIOBJ) };
+        return vec![32u8; total_bytes];
+    }
+
+    let scale_cover = f64::max(mon_w as f64 / bm_w as f64, mon_h as f64 / bm_h as f64);
+    let disp_w = bm_w as f64 * scale_cover;
+    let disp_h = bm_h as f64 * scale_cover;
+    let offset_x = (disp_w - mon_w as f64) / 2.0;
+    let offset_y = (disp_h - mon_h as f64) / 2.0;
+
+    let rel_x = (win_x - mon_left).max(0) as f64;
+    let rel_y = (win_y - mon_top).max(0) as f64;
+    let rel_w = win_w.max(1) as f64;
+    let rel_h = win_h.max(1) as f64;
+
+    let src_x = (((rel_x + offset_x) / scale_cover).round() as i32).clamp(0, bm_w - 1);
+    let src_y = (((rel_y + offset_y) / scale_cover).round() as i32).clamp(0, bm_h - 1);
+    let src_w = ((rel_w / scale_cover).round() as i32).clamp(1, bm_w - src_x);
+    let src_h = ((rel_h / scale_cover).round() as i32).clamp(1, bm_h - src_y);
+
+    let hdc_screen = unsafe { GetDC(std::ptr::null_mut()) };
+    let hdc_mem_src = unsafe { CreateCompatibleDC(hdc_screen) };
+    let hdc_mem_dst = unsafe { CreateCompatibleDC(hdc_screen) };
+
+    let old_src = unsafe { SelectObject(hdc_mem_src, hbm as HGDIOBJ) };
+
+    let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
+    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    bmi.bmiHeader.biWidth = BACKDROP_WIDTH;
+    bmi.bmiHeader.biHeight = -BACKDROP_HEIGHT;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    let mut bits_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
+    let dib = unsafe {
+        CreateDIBSection(
+            hdc_mem_dst,
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut bits_ptr,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    let old_dst = unsafe { SelectObject(hdc_mem_dst, dib as HGDIOBJ) };
+
+    unsafe {
+        SetStretchBltMode(hdc_mem_dst, HALFTONE);
+        StretchBlt(
+            hdc_mem_dst,
+            0, 0, BACKDROP_WIDTH, BACKDROP_HEIGHT,
+            hdc_mem_src,
+            src_x, src_y, src_w, src_h,
+            SRCCOPY,
+        );
+    }
+
+    let mut pixels = vec![32u8; total_bytes];
+    if !bits_ptr.is_null() {
+        unsafe {
+            std::ptr::copy_nonoverlapping(bits_ptr as *const u8, pixels.as_mut_ptr(), total_bytes);
+        }
+    }
+
+    unsafe {
+        SelectObject(hdc_mem_src, old_src);
+        SelectObject(hdc_mem_dst, old_dst);
+        DeleteDC(hdc_mem_src);
+        DeleteDC(hdc_mem_dst);
+        DeleteObject(hbm as HGDIOBJ);
+        DeleteObject(dib as HGDIOBJ);
+        ReleaseDC(std::ptr::null_mut(), hdc_screen);
+    }
+
+    if let Ok(mut guard) = WALLPAPER_CACHE.lock() {
+        *guard = Some(CachedWallpaper {
+            key,
+            pixels: pixels.clone(),
+        });
+    }
+
+    pixels
+}
+
+#[cfg(target_os = "windows")]
+pub fn capture_live_backdrop(
+    window: &WebviewWindow,
+) -> Result<Option<LiveBackdropSnapshot>, String> {
+    use base64::Engine;
+    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows_sys::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, GetMonitorInfoW,
+        MonitorFromWindow, ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HALFTONE, HGDIOBJ, MONITORINFO,
+        MONITOR_DEFAULTTONEAREST, SRCCOPY,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetWindow, GetWindowRect, IsIconic, IsWindowVisible,
+        GW_HWNDNEXT,
+    };
+
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+    let island_hwnd = hwnd.0 as HWND;
+
+    let mut win_rect: RECT = unsafe { std::mem::zeroed() };
+    if unsafe { GetWindowRect(island_hwnd, &mut win_rect) } == 0 {
+        return Ok(None);
+    }
+
+    let win_w = (win_rect.right - win_rect.left).max(1);
+    let win_h = (win_rect.bottom - win_rect.top).max(1);
+
+    let hmon = unsafe { MonitorFromWindow(island_hwnd, MONITOR_DEFAULTTONEAREST) };
+    let mut mi: MONITORINFO = unsafe { std::mem::zeroed() };
+    mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+    let (mon_left, mon_top, mon_w, mon_h) = if unsafe { GetMonitorInfoW(hmon, &mut mi) } != 0 {
+        (
+            mi.rcMonitor.left,
+            mi.rcMonitor.top,
+            (mi.rcMonitor.right - mi.rcMonitor.left).max(1),
+            (mi.rcMonitor.bottom - mi.rcMonitor.top).max(1),
+        )
+    } else {
+        (0, 0, 1920, 1080)
+    };
+
+    let hdc_screen = unsafe { GetDC(std::ptr::null_mut()) };
+    let hdc_comp = unsafe { CreateCompatibleDC(hdc_screen) };
+
+    let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
+    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    bmi.bmiHeader.biWidth = BACKDROP_WIDTH;
+    bmi.bmiHeader.biHeight = -BACKDROP_HEIGHT;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    let mut bits_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
+    let dib_comp = unsafe {
+        CreateDIBSection(
+            hdc_comp,
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut bits_ptr,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if dib_comp.is_null() || bits_ptr.is_null() {
+        unsafe {
+            DeleteDC(hdc_comp);
+            ReleaseDC(std::ptr::null_mut(), hdc_screen);
+        }
+        return Ok(None);
+    }
+
+    let old_comp = unsafe { SelectObject(hdc_comp, dib_comp as HGDIOBJ) };
+
+    // Hold the affinity lock for the whole sample so the stealth setting cannot race the
+    // temporary exclusion below.
+    let _affinity_guard = CAPTURE_AFFINITY_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let mut affinity: u32 = 0;
+    let has_affinity = unsafe { GetWindowDisplayAffinity(island_hwnd, &mut affinity) } != 0;
+    const WDA_EXCLUDEFROMCAPTURE: u32 = 0x00000011;
+    let prior_affinity = if has_affinity { affinity } else { 0 };
+    let already_excluded = has_affinity && affinity == WDA_EXCLUDEFROMCAPTURE;
+
+    // The island is a transparent window, so a plain screen blit would photograph itself.
+    // Excluding it from capture for a few milliseconds makes DWM hand us exactly what is
+    // *behind* it (browsers, videos, wallpaper - all GPU composited) with the island removed.
+    // The exclusion only affects capture APIs; the island stays visible on the monitor.
+    let temporarily_excluded = if already_excluded {
+        false
+    } else {
+        unsafe {
+            windows_sys::Win32::UI::WindowsAndMessaging::SetWindowDisplayAffinity(
+                island_hwnd,
+                WDA_EXCLUDEFROMCAPTURE,
+            ) != 0
+        }
+    };
+    if temporarily_excluded {
+        // DWM applies the flag on its next composition pass.
+        std::thread::sleep(std::time::Duration::from_millis(34));
+    }
+
+    if already_excluded || temporarily_excluded {
+        unsafe {
+            SetStretchBltMode(hdc_comp, HALFTONE);
+            StretchBlt(
+                hdc_comp,
+                0, 0, BACKDROP_WIDTH, BACKDROP_HEIGHT,
+                hdc_screen,
+                win_rect.left, win_rect.top, win_w, win_h,
+                SRCCOPY,
+            );
+        }
+        if temporarily_excluded {
+            unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::SetWindowDisplayAffinity(
+                    island_hwnd,
+                    prior_affinity,
+                );
+            }
+        }
+    } else {
+        // Fallback for Windows builds without WDA_EXCLUDEFROMCAPTURE: rebuild the backdrop
+        // from the wallpaper and the visible windows stacked beneath the island.
+        let wp_pixels = get_wallpaper_crop(
+            mon_left, mon_top, mon_w, mon_h,
+            win_rect.left, win_rect.top, win_w, win_h,
+        );
+        let total_bytes = (BACKDROP_WIDTH * BACKDROP_HEIGHT * 4) as usize;
+        if wp_pixels.len() == total_bytes {
+            unsafe {
+                std::ptr::copy_nonoverlapping(wp_pixels.as_ptr(), bits_ptr as *mut u8, total_bytes);
+            }
+        }
+
+        let mut intersecting = Vec::new();
+        let mut curr = unsafe { GetWindow(island_hwnd, GW_HWNDNEXT) };
+        let mut iterations = 0;
+        while !curr.is_null() && iterations < 80 {
+            iterations += 1;
+            let visible = unsafe { IsWindowVisible(curr) } != 0;
+            let iconic = unsafe { IsIconic(curr) } != 0;
+            if visible && !iconic {
+                let mut cloaked: u32 = 0;
+                let hr = unsafe {
+                    DwmGetWindowAttribute(
+                        curr,
+                        DWMWA_CLOAKED as u32,
+                        &mut cloaked as *mut _ as *mut _,
+                        std::mem::size_of::<u32>() as u32,
+                    )
+                };
+                if hr == 0 && cloaked != 0 {
+                    curr = unsafe { GetWindow(curr, GW_HWNDNEXT) };
+                    continue;
+                }
+
+                let mut cls = [0u16; 64];
+                let len = unsafe { GetClassNameW(curr, cls.as_mut_ptr(), cls.len() as i32) };
+                let cls_name = if len > 0 { String::from_utf16_lossy(&cls[..len as usize]) } else { String::new() };
+                if cls_name == "Progman" || cls_name == "WorkerW" || cls_name == "Shell_TrayWnd" {
+                    curr = unsafe { GetWindow(curr, GW_HWNDNEXT) };
+                    continue;
+                }
+
+                let mut w_rect: RECT = unsafe { std::mem::zeroed() };
+                unsafe { GetWindowRect(curr, &mut w_rect) };
+
+                let ix1 = w_rect.left.max(win_rect.left);
+                let iy1 = w_rect.top.max(win_rect.top);
+                let ix2 = w_rect.right.min(win_rect.right);
+                let iy2 = w_rect.bottom.min(win_rect.bottom);
+
+                if ix2 > ix1 && iy2 > iy1 {
+                    intersecting.push((curr, w_rect, ix1, iy1, ix2, iy2));
+                    if intersecting.len() >= 6 {
+                        break;
+                    }
+                }
+            }
+            curr = unsafe { GetWindow(curr, GW_HWNDNEXT) };
+        }
+
+        for (w_hwnd, w_rect, ix1, iy1, ix2, iy2) in intersecting.into_iter().rev() {
+            let w_dc = unsafe { GetWindowDC(w_hwnd) };
+            if !w_dc.is_null() {
+                let src_x = (ix1 - w_rect.left).max(0);
+                let src_y = (iy1 - w_rect.top).max(0);
+                let src_w = (ix2 - ix1).max(1);
+                let src_h = (iy2 - iy1).max(1);
+
+                let dst_x = (((ix1 - win_rect.left) as f64 / win_w as f64) * BACKDROP_WIDTH as f64).round() as i32;
+                let dst_y = (((iy1 - win_rect.top) as f64 / win_h as f64) * BACKDROP_HEIGHT as f64).round() as i32;
+                let dst_w = ((src_w as f64 / win_w as f64) * BACKDROP_WIDTH as f64).round() as i32;
+                let dst_h = ((src_h as f64 / win_h as f64) * BACKDROP_HEIGHT as f64).round() as i32;
+
+                unsafe {
+                    SetStretchBltMode(hdc_comp, HALFTONE);
+                    StretchBlt(
+                        hdc_comp,
+                        dst_x, dst_y, dst_w.max(1), dst_h.max(1),
+                        w_dc,
+                        src_x, src_y, src_w, src_h,
+                        SRCCOPY,
+                    );
+                    ReleaseDC(w_hwnd, w_dc);
+                }
+            }
+        }
+    }
+
+    let total_pixels = (BACKDROP_WIDTH * BACKDROP_HEIGHT) as usize;
+    let bgra_slice = unsafe { std::slice::from_raw_parts(bits_ptr as *const u8, total_pixels * 4) };
+
+    let mut total_lum = 0.0f64;
+    for i in 0..total_pixels {
+        let offset = i * 4;
+        let b = bgra_slice[offset] as f64;
+        let g = bgra_slice[offset + 1] as f64;
+        let r = bgra_slice[offset + 2] as f64;
+        total_lum += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+    let avg_luminance = (total_lum / (total_pixels as f64 * 255.0)) as f32;
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    std::hash::Hasher::write(&mut hasher, bgra_slice);
+    let current_hash = std::hash::Hasher::finish(&hasher);
+
+    static LAST_SNAPSHOT: std::sync::Mutex<Option<(u64, LiveBackdropSnapshot)>> = std::sync::Mutex::new(None);
+    if let Ok(guard) = LAST_SNAPSHOT.lock() {
+        if let Some((cached_hash, ref snap)) = *guard {
+            if cached_hash == current_hash {
+                unsafe {
+                    SelectObject(hdc_comp, old_comp);
+                    DeleteDC(hdc_comp);
+                    DeleteObject(dib_comp as HGDIOBJ);
+                    ReleaseDC(std::ptr::null_mut(), hdc_screen);
+                }
+                return Ok(Some(snap.clone()));
+            }
+        }
+    }
+
+    let file_size: u32 = 54 + (BACKDROP_WIDTH * 3 * BACKDROP_HEIGHT) as u32;
+    let mut bmp = Vec::with_capacity(file_size as usize);
+
+    bmp.extend_from_slice(b"BM");
+    bmp.extend_from_slice(&file_size.to_le_bytes());
+    bmp.extend_from_slice(&[0u8; 4]);
+    let data_offset: u32 = 54;
+    bmp.extend_from_slice(&data_offset.to_le_bytes());
+
+    let bi_size: u32 = 40;
+    bmp.extend_from_slice(&bi_size.to_le_bytes());
+    bmp.extend_from_slice(&BACKDROP_WIDTH.to_le_bytes());
+    bmp.extend_from_slice(&BACKDROP_HEIGHT.to_le_bytes());
+    let planes: u16 = 1;
+    bmp.extend_from_slice(&planes.to_le_bytes());
+    let bit_count: u16 = 24;
+    bmp.extend_from_slice(&bit_count.to_le_bytes());
+    let compression: u32 = 0;
+    bmp.extend_from_slice(&compression.to_le_bytes());
+    let image_size: u32 = (BACKDROP_WIDTH * 3 * BACKDROP_HEIGHT) as u32;
+    bmp.extend_from_slice(&image_size.to_le_bytes());
+    let xpels: i32 = 0;
+    bmp.extend_from_slice(&xpels.to_le_bytes());
+    let ypels: i32 = 0;
+    bmp.extend_from_slice(&ypels.to_le_bytes());
+    let clr_used: u32 = 0;
+    bmp.extend_from_slice(&clr_used.to_le_bytes());
+    let clr_important: u32 = 0;
+    bmp.extend_from_slice(&clr_important.to_le_bytes());
+
+    for y in (0..BACKDROP_HEIGHT).rev() {
+        let row_offset = (y * BACKDROP_WIDTH * 4) as usize;
+        for x in 0..BACKDROP_WIDTH {
+            let px_offset = row_offset + (x * 4) as usize;
+            let b = bgra_slice[px_offset];
+            let g = bgra_slice[px_offset + 1];
+            let r = bgra_slice[px_offset + 2];
+            bmp.push(b);
+            bmp.push(g);
+            bmp.push(r);
+        }
+    }
+
+    unsafe {
+        SelectObject(hdc_comp, old_comp);
+        DeleteDC(hdc_comp);
+        DeleteObject(dib_comp as HGDIOBJ);
+        ReleaseDC(std::ptr::null_mut(), hdc_screen);
+    }
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bmp);
+    let data_url = format!("data:image/bmp;base64,{}", b64);
+    let snapshot = LiveBackdropSnapshot {
+        data_url,
+        avg_luminance,
+    };
+
+    if let Ok(mut guard) = LAST_SNAPSHOT.lock() {
+        *guard = Some((current_hash, snapshot.clone()));
+    }
+
+    Ok(Some(snapshot))
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn capture_live_backdrop(
+    _window: &WebviewWindow,
+) -> Result<Option<LiveBackdropSnapshot>, String> {
+    Ok(None)
 }
 
 pub fn ensure_window_on_screen<R: tauri::Runtime>(
@@ -1398,5 +2050,12 @@ mod tests {
         let res_yt = activate_app_window("youtube", "YouTube Music", Some("Guru Randhawa"));
         eprintln!("ACTIVATE_YTM_RESULT: {:?}", res_yt);
         assert!(res_yt.is_ok());
+    }
+
+    #[test]
+    fn test_bmp_header_size() {
+        let row_bytes = (BACKDROP_WIDTH * 3 + 3) & !3;
+        let file_size: u32 = 54 + (row_bytes * BACKDROP_HEIGHT) as u32;
+        assert_eq!(file_size, 126954);
     }
 }

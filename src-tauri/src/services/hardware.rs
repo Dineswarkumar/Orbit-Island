@@ -28,6 +28,8 @@ pub struct HardwareMetrics {
     pub screen_recording_active: bool,
     pub active_download_count: u32,
     pub last_completed_download: Option<String>,
+    pub battery_saver_active: bool,
+    pub os_transparency_enabled: bool,
 }
 
 impl Default for HardwareMetrics {
@@ -49,11 +51,13 @@ impl Default for HardwareMetrics {
             hotspot_active: false,
             network_upload_speed_bps: 0,
             network_download_speed_bps: 0,
-            gpu_name: "Unavailable".to_string(),
-            gpu_usage: None,
+            gpu_name: "Graphics".to_string(),
+            gpu_usage: Some(0.0),
             screen_recording_active: false,
             active_download_count: 0,
             last_completed_download: None,
+            battery_saver_active: false,
+            os_transparency_enabled: true,
         }
     }
 }
@@ -75,9 +79,19 @@ pub struct HardwareManager {
 
 impl HardwareManager {
     pub fn new() -> Self {
+        let (battery_percentage, ac_power_connected, battery_charging) = get_power_status();
+        let initial_metrics = HardwareMetrics {
+            battery_percentage,
+            ac_power_connected,
+            battery_charging,
+            battery_saver_active: is_battery_saver_active(),
+            os_transparency_enabled: is_os_transparency_enabled(),
+            ..HardwareMetrics::default()
+        };
         Self {
             is_running: Arc::new(AtomicBool::new(false)),
-            last_metrics: Arc::new(Mutex::new(collect_metrics_once(None, None))),
+            // Keep app setup fast. The monitor thread fills in real metrics after launch.
+            last_metrics: Arc::new(Mutex::new(initial_metrics)),
         }
     }
 
@@ -176,6 +190,8 @@ impl HardwareManager {
                         screen_recording_active,
                         active_download_count,
                         last_completed_download,
+                        battery_saver_active: is_battery_saver_active(),
+                        os_transparency_enabled: is_os_transparency_enabled(),
                     };
 
                     {
@@ -223,6 +239,8 @@ pub fn collect_metrics_once(
         screen_recording_active: is_screen_recording_active(),
         active_download_count: 0,
         last_completed_download: None,
+        battery_saver_active: is_battery_saver_active(),
+        os_transparency_enabled: is_os_transparency_enabled(),
     }
 }
 
@@ -416,6 +434,64 @@ fn get_power_status() -> (Option<u8>, Option<bool>, Option<bool>) {
 #[cfg(not(target_os = "windows"))]
 fn get_power_status() -> (Option<u8>, Option<bool>, Option<bool>) {
     (None, None, None)
+}
+
+#[cfg(target_os = "windows")]
+fn is_battery_saver_active() -> bool {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut status = unsafe { std::mem::zeroed::<SYSTEM_POWER_STATUS>() };
+    if unsafe { GetSystemPowerStatus(&mut status) } != 0 {
+        status.SystemStatusFlag == 1
+    } else {
+        false
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_battery_saver_active() -> bool {
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn is_os_transparency_enabled() -> bool {
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CURRENT_USER, KEY_READ,
+    };
+    let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let val_name: Vec<u16> = "EnableTransparency"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut hkey = std::ptr::null_mut();
+    if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey) } == 0 {
+        let mut val: u32 = 1;
+        let mut val_len = std::mem::size_of::<u32>() as u32;
+        let mut val_type = 0u32;
+        let query_res = unsafe {
+            RegQueryValueExW(
+                hkey,
+                val_name.as_ptr(),
+                std::ptr::null_mut(),
+                &mut val_type,
+                &mut val as *mut u32 as *mut u8,
+                &mut val_len,
+            )
+        };
+        unsafe { RegCloseKey(hkey) };
+        if query_res == 0 {
+            return val != 0;
+        }
+    }
+    true
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_os_transparency_enabled() -> bool {
+    true
 }
 
 #[cfg(target_os = "windows")]

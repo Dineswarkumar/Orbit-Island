@@ -4,7 +4,7 @@ pub mod services;
 use commands::{
     activate_app_source, add_reminder, add_shelf_item, clear_all_notifications, clear_imported_calendar,
     clear_local_data, clear_shelf, close_settings_window, delete_reminder, dismiss_notification,
-    free_up_memory, get_config, get_hardware_metrics, get_media_sources, get_media_state,
+    free_up_memory, get_config, get_hardware_metrics, get_live_backdrop, get_media_sources, get_media_state,
     get_memory_metrics, get_notification_access_status, get_notification_state, get_privacy_state,
     get_reminders, get_shelf_items, hide_island_window, media_seek, media_send_command,
     open_settings_window, open_shelf_file, pick_and_import_calendar, pick_shelf_file,
@@ -659,8 +659,14 @@ pub fn run() {
                 })
                 .expect("failed to spawn audio spectrum thread");
 
-            // Initialize native Media Foundation sensor activity monitor for camera hardware streaming
-            services::privacy::init_camera_monitor();
+            // Start the Media Foundation sensor monitor off the launch path so it cannot delay
+            // the first visible Island frame.
+            if let Err(error) = std::thread::Builder::new()
+                .name("orbit-camera-monitor-init".into())
+                .spawn(services::privacy::init_camera_monitor)
+            {
+                log::error!("Failed to spawn camera monitor initializer: {error}");
+            }
 
             // Spawn real-time background thread to continuously inspect camera & mic privacy indicators
             let app_handle_privacy = app.handle().clone();
@@ -756,7 +762,8 @@ pub fn run() {
             clear_shelf,
             clear_local_data,
             activate_app_source,
-            reveal_diagnostic_log
+            reveal_diagnostic_log,
+            get_live_backdrop
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

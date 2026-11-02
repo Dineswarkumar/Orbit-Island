@@ -205,10 +205,12 @@ body {
 }
 .theme-light .orbit-shell-3d {
   box-shadow:
-    0 16px 36px -8px rgba(15, 23, 42, 0.18),
-    0 6px 16px -4px rgba(15, 23, 42, 0.12),
-    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.95),
-    inset 0 0 16px rgba(186, 230, 253, 0.25) !important;
+    0 3px 9px -1px rgba(15, 23, 42, 0.28),
+    0 0 0 1px rgba(148, 163, 184, 0.42),
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 14px rgba(186, 230, 253, 0.14),
+    inset 1px 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset -1px 0 1px 0 rgba(255, 255, 255, 0.15) !important;
 }
 
 /* ==========================================================================
@@ -226,92 +228,43 @@ body {
   will-change: width, height, transform, border-radius, box-shadow;
   box-shadow:
     /* Outer 3D drop shadow within GDI margin */
-    0 3px 9px -1px rgba(0, 0, 0, 0.82),
+    0 3px 9px -1px rgba(15, 23, 42, 0.38),
     /* Outer 3D orbital rim aura */
-    0 0 0 1px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.45),
     /* Top 3D specular bevel catch-light */
     inset 0 1.5px 1px 0 var(--rim-highlight, rgba(255, 255, 255, 0.32)),
     /* Side 3D curvature rim */
     inset 1px 0 1px 0 rgba(255, 255, 255, 0.09),
-    inset -1px 0 1px 0 rgba(255, 255, 255, 0.09),
-    /* Bottom 3D recessed lens shadow */
-    inset 0 -2.5px 5px 0 rgba(0, 0, 0, 0.82),
-    /* Deep inner 3D chamber depth */
-    inset 0 8px 22px -6px rgba(0, 0, 0, 0.65);
+    inset -1px 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 
-.theme-light .orbit-shell-3d {
+/* Glass Mode 4: Solid Anodized 3D / Reduced-Effects Fallback ("solid") */
+.transparency-solid,
+.orbit-reduced-effects {
+  --orbit-success-ink: #4ade80;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: var(--island-panel, rgba(15, 23, 42, 0.96)) !important;
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(0, 0, 0, 0.35) 100%
+    ) !important;
   box-shadow:
-    0 3px 9px -1px rgba(0, 0, 0, 0.82),
-    0 0 0 1px rgba(148, 163, 184, 0.42),
-    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.55),
-    inset 0 0 14px rgba(186, 230, 253, 0.14),
-    inset 1px 0 1px 0 rgba(255, 255, 255, 0.15),
-    inset -1px 0 1px 0 rgba(255, 255, 255, 0.15),
-    inset 0 -2.5px 5px 0 rgba(0, 0, 0, 0.82),
-    inset 0 8px 22px -6px rgba(0, 0, 0, 0.65);
-}
-
-/* Glass Mode 1: Glossy 3D Lens (Default "glass") */
-.transparency-glass {
-  backdrop-filter: blur(24px) saturate(190%);
-  -webkit-backdrop-filter: blur(24px) saturate(190%);
-  background-image:
-    /* Curved top dome glass sheen */
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.11) 0%,
-      rgba(255, 255, 255, 0.03) 36%,
-      rgba(0, 0, 0, 0.18) 52%,
-      rgba(0, 0, 0, 0.42) 100%
-    );
-}
-
-/* Glass Mode 2: Frosted Acrylic 3D ("frosted") */
-.transparency-frosted {
-  backdrop-filter: blur(34px) saturate(210%) contrast(105%);
-  -webkit-backdrop-filter: blur(34px) saturate(210%) contrast(105%);
-  background-image:
-    linear-gradient(
-      165deg,
-      rgba(255, 255, 255, 0.14) 0%,
-      rgba(255, 255, 255, 0.04) 48%,
-      rgba(0, 0, 0, 0.25) 100%
-    );
-}
-
-/* Glass Mode 3: Smoked Obsidian 3D ("smoked") */
-.transparency-smoked {
-  backdrop-filter: blur(18px) brightness(0.82);
-  -webkit-backdrop-filter: blur(18px) brightness(0.82);
-  background-image:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.06) 0%,
-      rgba(0, 0, 0, 0.45) 100%
-    );
-}
-
-/* Glass Mode 4: Solid Anodized 3D ("solid") */
-.transparency-solid {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  background-image:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.09) 0%,
-      rgba(255, 255, 255, 0.01) 40%,
-      rgba(0, 0, 0, 0.55) 100%
-    );
+    0 3px 9px -1px rgba(0, 0, 0, 0.55),
+    0 0 0 1px var(--island-border, rgba(255, 255, 255, 0.22)),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.25) !important;
 }
 
 /* Volumetric 3D Core Aura (Stationary subtle ambient depth) */
 .orbit-core-aura {
-  background: radial-gradient(
-    ellipse 60% 50% at 50% 50%,
-    var(--core-glow, rgba(59, 130, 246, 0.16)) 0%,
-    transparent 75%
-  );
+  background: radial-gradient(circle at 50% 48%, var(--core-glow, rgba(59, 130, 246, 0.08)) 0%, transparent 48%);
+  pointer-events: none;
+}
+
+:is(.transparency-glass, .transparency-frosted, .transparency-smoked) .orbit-core-aura {
+  background: none !important;
   pointer-events: none;
 }
 
@@ -371,9 +324,481 @@ body {
 /* 3D Sculpted Clock Typography Shadow */
 .orbit-clock-3d {
   text-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.65),
-    0 8px 24px var(--core-glow, rgba(14, 116, 144, 0.45)),
-    0 -0.5px 0 rgba(255, 255, 255, 0.35);
+    0 1px 2px rgba(0, 0, 0, 0.32),
+    0 -0.5px 0 rgba(255, 255, 255, 0.24);
+}
+
+/* ==========================================================================
+   LIQUID GLASS ENGINE
+   --------------------------------------------------------------------------
+   The island window is transparent, so CSS backdrop-filter cannot see the desktop.
+   The Rust side samples what is behind the island and <GlassLayers/> renders it
+   refracted + blurred. Layers inside .orbit-shell-3d, bottom to top:
+     .orbit-glass-backdrop  live desktop, lens-refracted at the rim
+     .orbit-glass-scrim     density + tint (tone aware)
+     .orbit-glass-sheen     top light falloff, lower caustic
+     .orbit-glass-rim       thin directional specular edge
+   .glass-tone-dark / .glass-tone-light is chosen from the measured luminance of
+   the desktop behind the island so ink always has contrast.
+   ========================================================================== */
+
+/* All glass colour lives in the layers, never on the shell itself. */
+.orbit-shell-3d:is(.transparency-glass, .transparency-frosted, .transparency-smoked):not(.orbit-media-active) {
+  background: transparent !important;
+  background-image: none !important;
+  --glass-d: var(--surface-alpha, 0.8);
+  border-color: rgba(0, 0, 0, 0.32) !important;
+  box-shadow:
+    0 7px 18px -7px rgba(0, 0, 0, 0.52),
+    0 1px 3px rgba(0, 0, 0, 0.28) !important;
+}
+
+.orbit-shell-3d.glass-tone-light:is(.transparency-glass, .transparency-frosted, .transparency-smoked):not(.orbit-media-active) {
+  border-color: rgba(15, 23, 42, 0.22) !important;
+  box-shadow:
+    0 7px 18px -7px rgba(15, 23, 42, 0.40),
+    0 1px 3px rgba(15, 23, 42, 0.20) !important;
+}
+
+/* ---- ink tokens ----------------------------------------------------------- */
+.orbit-shell-3d.glass-tone-dark:is(.transparency-glass, .transparency-frosted, .transparency-smoked) {
+  --island-text: #f5f7fb;
+  --island-muted: rgba(226, 232, 240, 0.74);
+  --island-card-bg: rgba(255, 255, 255, 0.10);
+  --island-card-border: rgba(255, 255, 255, 0.16);
+  --island-badge-bg: rgba(255, 255, 255, 0.12);
+  --island-border: rgba(255, 255, 255, 0.28);
+  --orbit-success-ink: #4ade80;
+  color: #f5f7fb;
+}
+
+.orbit-shell-3d.glass-tone-light:is(.transparency-glass, .transparency-frosted, .transparency-smoked) {
+  --island-text: #0b172a;
+  --island-muted: #334155;
+  --island-card-bg: rgba(255, 255, 255, 0.50);
+  --island-card-border: rgba(255, 255, 255, 0.70);
+  --island-badge-bg: rgba(255, 255, 255, 0.55);
+  --island-border: rgba(255, 255, 255, 0.70);
+  --orbit-success-ink: #166534;
+  color: #0b172a;
+}
+
+/* ---- 1. backdrop ---------------------------------------------------------- */
+.orbit-glass-backdrop,
+.orbit-glass-native {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.orbit-glass-backdrop img {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* ---- 2. scrim: density + tint -------------------------------------------- */
+.orbit-glass-scrim,
+.orbit-glass-sheen,
+.orbit-glass-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.orbit-glass-scrim {
+  z-index: 1;
+}
+
+.glass-tone-dark .orbit-glass-scrim {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(16, 21, 34, calc(0.10 + var(--glass-d, 0.8) * 0.30)) 0%,
+      rgba(8, 11, 20, calc(0.20 + var(--glass-d, 0.8) * 0.38)) 100%
+    );
+}
+
+.glass-tone-light .orbit-glass-scrim {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, calc(0.20 + var(--glass-d, 0.8) * 0.34)) 0%,
+      rgba(238, 245, 255, calc(0.14 + var(--glass-d, 0.8) * 0.36)) 100%
+    );
+}
+
+/* Clear Glass: neutral crystal, slightly denser frost, no colour cast. */
+.transparency-frosted.glass-tone-dark .orbit-glass-scrim {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(20, 26, 40, calc(0.16 + var(--glass-d, 0.8) * 0.30)) 0%,
+      rgba(12, 16, 28, calc(0.24 + var(--glass-d, 0.8) * 0.36)) 100%
+    );
+}
+
+.transparency-frosted.glass-tone-light .orbit-glass-scrim {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, calc(0.28 + var(--glass-d, 0.8) * 0.34)) 0%,
+      rgba(244, 248, 255, calc(0.22 + var(--glass-d, 0.8) * 0.36)) 100%
+    );
+}
+
+/* Theme-Tinted Glass: the theme accent dyes the glass like coloured crystal. */
+.transparency-smoked.glass-tone-dark .orbit-glass-scrim {
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--theme-accent, #38bdf8) 40%, transparent) 0%,
+      color-mix(in srgb, var(--theme-accent-secondary, #2563eb) 24%, transparent) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(10, 14, 26, calc(0.10 + var(--glass-d, 0.8) * 0.28)) 0%,
+      rgba(6, 9, 18, calc(0.18 + var(--glass-d, 0.8) * 0.34)) 100%
+    );
+}
+
+.transparency-smoked.glass-tone-light .orbit-glass-scrim {
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in srgb, var(--theme-accent, #2563eb) 30%, transparent) 0%,
+      color-mix(in srgb, var(--theme-accent-secondary, #4f46e5) 18%, transparent) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, calc(0.18 + var(--glass-d, 0.8) * 0.30)) 0%,
+      rgba(238, 245, 255, calc(0.12 + var(--glass-d, 0.8) * 0.32)) 100%
+    );
+}
+
+/* No capture yet (first frame / capture unavailable): the desktop would show through
+   unblurred, so stay legible with a firmer scrim until the first sample arrives. */
+.orbit-glass-nocapture.glass-tone-dark .orbit-glass-scrim {
+  background-color: rgba(10, 14, 24, 0.62);
+}
+.orbit-glass-nocapture.glass-tone-light .orbit-glass-scrim {
+  background-color: rgba(240, 245, 255, 0.66);
+}
+
+/* ---- 3. sheen: light falloff + caustic ----------------------------------- */
+.orbit-glass-sheen {
+  z-index: 2;
+  background:
+    radial-gradient(140% 105% at 50% -38%, rgba(255, 255, 255, 0.30) 0%, rgba(255, 255, 255, 0.07) 40%, transparent 64%),
+    radial-gradient(85% 120% at 100% 125%, rgba(255, 255, 255, 0.12) 0%, transparent 62%);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.10),
+    inset 0 -10px 18px -12px rgba(0, 0, 0, 0.34);
+}
+
+.glass-tone-dark .orbit-glass-sheen {
+  background:
+    radial-gradient(140% 105% at 50% -38%, rgba(255, 255, 255, 0.20) 0%, rgba(255, 255, 255, 0.05) 40%, transparent 64%),
+    radial-gradient(85% 120% at 100% 125%, rgba(255, 255, 255, 0.08) 0%, transparent 62%);
+}
+
+.glass-tone-light .orbit-glass-sheen {
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.40),
+    inset 0 -10px 18px -14px rgba(15, 23, 42, 0.18);
+}
+
+/* ---- 4. rim: thin directional specular edge ------------------------------ */
+.orbit-glass-rim {
+  z-index: 4;
+  padding: 1.2px;
+  background:
+    radial-gradient(70% 150% at 7% 0%, rgba(255, 255, 255, 0.95) 0%, transparent 56%),
+    radial-gradient(60% 140% at 96% 100%, rgba(255, 255, 255, 0.62) 0%, transparent 56%),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.52) 0%,
+      rgba(255, 255, 255, 0.13) 24%,
+      rgba(255, 255, 255, 0.09) 76%,
+      rgba(255, 255, 255, 0.34) 100%
+    );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.glass-tone-light .orbit-glass-rim {
+  background:
+    radial-gradient(70% 150% at 7% 0%, rgba(255, 255, 255, 1) 0%, transparent 58%),
+    radial-gradient(60% 140% at 96% 100%, rgba(255, 255, 255, 0.85) 0%, transparent 58%),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.85) 0%,
+      rgba(255, 255, 255, 0.40) 26%,
+      rgba(255, 255, 255, 0.34) 74%,
+      rgba(255, 255, 255, 0.62) 100%
+    );
+}
+
+.transparency-smoked .orbit-glass-rim {
+  background:
+    radial-gradient(70% 150% at 7% 0%, rgba(255, 255, 255, 0.95) 0%, transparent 56%),
+    radial-gradient(60% 140% at 96% 100%, color-mix(in srgb, var(--theme-accent, #38bdf8) 70%, white) 0%, transparent 58%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-accent, #38bdf8) 40%, rgba(255, 255, 255, 0.60)) 0%,
+      color-mix(in srgb, var(--theme-accent, #38bdf8) 34%, rgba(255, 255, 255, 0.10)) 26%,
+      color-mix(in srgb, var(--theme-accent-secondary, #2563eb) 30%, rgba(255, 255, 255, 0.08)) 74%,
+      color-mix(in srgb, var(--theme-accent-secondary, #2563eb) 48%, rgba(255, 255, 255, 0.34)) 100%
+    );
+}
+
+/* ==========================================================================
+   SURFACES ON GLASS (cards, wells, badges, pills) - tone aware.
+   Glass on glass: translucent fills + hairline highlights. No nested
+   backdrop-filter - the backdrop is already blurred underneath.
+   ========================================================================== */
+.orbit-card-3d:is(.glass-tone-dark *, .glass-tone-light *) {
+  backdrop-filter: none;
+}
+
+.glass-tone-dark .orbit-card-3d {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.055) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 5px 12px -6px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+}
+.glass-tone-dark .orbit-card-3d:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.20) 0%, rgba(255, 255, 255, 0.09) 100%);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.transparency-smoked.glass-tone-dark .orbit-card-3d {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent, #38bdf8) 20%, rgba(255, 255, 255, 0.10)) 0%,
+    color-mix(in srgb, var(--theme-accent-secondary, #2563eb) 12%, rgba(255, 255, 255, 0.04)) 100%
+  );
+  border-color: color-mix(in srgb, var(--theme-accent, #38bdf8) 34%, rgba(255, 255, 255, 0.12));
+}
+
+.glass-tone-light .orbit-card-3d {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.64) 0%, rgba(255, 255, 255, 0.36) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 4px 10px -5px rgba(15, 23, 42, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.05);
+}
+.glass-tone-light .orbit-card-3d:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.50) 100%);
+  border-color: rgba(255, 255, 255, 0.95);
+}
+.transparency-smoked.glass-tone-light .orbit-card-3d {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent, #2563eb) 14%, rgba(255, 255, 255, 0.62)) 0%,
+    color-mix(in srgb, var(--theme-accent-secondary, #4f46e5) 10%, rgba(255, 255, 255, 0.34)) 100%
+  );
+  border-color: color-mix(in srgb, var(--theme-accent, #2563eb) 30%, rgba(255, 255, 255, 0.70));
+}
+
+/* Recessed tracks (progress bars, input wells) */
+.glass-tone-dark .orbit-well-3d {
+  background: rgba(0, 0, 0, 0.34) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  box-shadow: inset 0 1.5px 3px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+.glass-tone-light .orbit-well-3d {
+  background: rgba(15, 23, 42, 0.11) !important;
+  border: 1px solid rgba(255, 255, 255, 0.60) !important;
+  box-shadow: inset 0 1.5px 3px rgba(15, 23, 42, 0.20) !important;
+}
+
+/* Badges */
+.glass-tone-dark .orbit-pill-badge-3d {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.08) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  color: #f5f7fb;
+  box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+.glass-tone-light .orbit-pill-badge-3d {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.70) 0%, rgba(255, 255, 255, 0.42) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  color: #0b172a;
+  box-shadow: 0 2px 6px -2px rgba(15, 23, 42, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+.transparency-smoked.glass-tone-dark .orbit-pill-badge-3d {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent, #38bdf8) 30%, rgba(255, 255, 255, 0.12)) 0%,
+    color-mix(in srgb, var(--theme-accent, #38bdf8) 16%, rgba(255, 255, 255, 0.05)) 100%
+  );
+  border-color: color-mix(in srgb, var(--theme-accent, #38bdf8) 44%, rgba(255, 255, 255, 0.16));
+}
+.transparency-smoked.glass-tone-light .orbit-pill-badge-3d {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent, #2563eb) 22%, rgba(255, 255, 255, 0.68)) 0%,
+    color-mix(in srgb, var(--theme-accent, #2563eb) 12%, rgba(255, 255, 255, 0.40)) 100%
+  );
+  border-color: color-mix(in srgb, var(--theme-accent, #2563eb) 36%, rgba(255, 255, 255, 0.78));
+}
+
+/* Clock typography */
+.orbit-clock-3d {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.32),
+    0 -0.5px 0 rgba(255, 255, 255, 0.24);
+}
+.glass-tone-dark .orbit-clock-3d {
+  color: #ffffff !important;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.38), 0 0 1px rgba(0, 0, 0, 0.30) !important;
+}
+.glass-tone-light .orbit-clock-3d {
+  color: #0b172a !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.50) !important;
+}
+
+/* Header strip and soft cushions */
+.orbit-system-header-glass {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+}
+.glass-tone-dark .orbit-system-header-glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.06) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: #f5f7fb;
+}
+.glass-tone-light .orbit-system-header-glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58) 0%, rgba(255, 255, 255, 0.34) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 2px 5px -2px rgba(15, 23, 42, 0.14);
+  color: #0b172a;
+}
+.orbit-reduced-effects .orbit-system-header-glass,
+.transparency-solid .orbit-system-header-glass {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: none !important;
+  color: #f8fafc !important;
+}
+
+.orbit-calendar-grid-backing,
+.orbit-soft-frost-cushion {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.glass-tone-dark .orbit-soft-frost-cushion {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+.glass-tone-light .orbit-soft-frost-cushion {
+  background: rgba(255, 255, 255, 0.26) !important;
+}
+
+/* Top-right control pills (Shelf / notifications / settings) */
+.orbit-top-control-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--theme-accent, #38bdf8);
+  transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+.glass-tone-dark .orbit-top-control-pill {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: color-mix(in srgb, var(--theme-accent, #38bdf8) 55%, #ffffff);
+  box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.glass-tone-dark .orbit-top-control-pill:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.14) 100%);
+  border-color: rgba(255, 255, 255, 0.40);
+}
+.glass-tone-light .orbit-top-control-pill {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.44) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.90);
+  color: color-mix(in srgb, var(--theme-accent, #2563eb) 85%, #0b172a);
+  box-shadow: 0 2px 6px -2px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+.glass-tone-light .orbit-top-control-pill:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.62) 100%);
+  border-color: color-mix(in srgb, var(--theme-accent, #2563eb) 55%, white);
+}
+.orbit-reduced-effects .orbit-top-control-pill,
+.transparency-solid .orbit-top-control-pill {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: var(--theme-accent, #38bdf8) !important;
+  box-shadow: none !important;
+}
+
+/* ==========================================================================
+   INK: light tone needs dark type. Dark tone keeps the authored white type,
+   and explicitly beats the Apple Ceramic Pearl theme's dark-ink overrides.
+   ========================================================================== */
+.glass-tone-light .text-white:not(.orbit-keep-white):not(.orbit-media-surface *) {
+  color: #0b172a !important;
+  text-shadow: none !important;
+}
+.glass-tone-light :is(.text-white\/95, .text-white\/90, .text-white\/85, .text-white\/80):not(.orbit-keep-white):not(.orbit-media-surface *) {
+  color: #1e293b !important;
+  text-shadow: none !important;
+}
+.glass-tone-light :is(.text-white\/75, .text-white\/70, .text-white\/65, .text-white\/60):not(.orbit-keep-white):not(.orbit-media-surface *) {
+  color: #334155 !important;
+  text-shadow: none !important;
+}
+.glass-tone-light :is(.text-white\/55, .text-white\/50, .text-white\/45, .text-white\/40):not(.orbit-keep-white):not(.orbit-media-surface *) {
+  color: #475569 !important;
+}
+.glass-tone-light .text-slate-200:not(.orbit-keep-white):not(.orbit-media-surface *) { color: #1e293b !important; }
+.glass-tone-light .text-slate-300:not(.orbit-keep-white):not(.orbit-media-surface *) { color: #334155 !important; }
+.glass-tone-light .text-slate-400:not(.orbit-keep-white):not(.orbit-media-surface *) { color: #475569 !important; }
+
+.theme-light .orbit-shell-3d.glass-tone-dark .text-white:not(.orbit-media-surface *) { color: #ffffff !important; }
+.theme-light .orbit-shell-3d.glass-tone-dark :is(.text-white\/90, .text-white\/85, .text-white\/80):not(.orbit-media-surface *) { color: rgba(255, 255, 255, 0.92) !important; }
+.theme-light .orbit-shell-3d.glass-tone-dark :is(.text-white\/75, .text-white\/70, .text-white\/65, .text-white\/60, .text-white\/55, .text-white\/50, .text-white\/45, .text-white\/40):not(.orbit-media-surface *) { color: rgba(226, 232, 240, 0.74) !important; }
+
+/* Exclude Music Player / Media Surface from glass dark ink overrides */
+.orbit-media-surface,
+.orbit-media-surface .text-white {
+  color: #ffffff !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65) !important;
+}
+.orbit-media-surface .text-white\/95,
+.orbit-media-surface .text-white\/90,
+.orbit-media-surface .text-white\/85,
+.orbit-media-surface .text-white\/80,
+.orbit-media-surface .text-white\/75,
+.orbit-media-surface .text-white\/70 {
+  color: rgba(248, 250, 252, 0.88) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55) !important;
+}
+.orbit-media-surface .text-white\/65,
+.orbit-media-surface .text-white\/60,
+.orbit-media-surface .text-white\/55,
+.orbit-media-surface .text-white\/50,
+.orbit-media-surface .text-white\/45,
+.orbit-media-surface .text-white\/40,
+.orbit-media-surface .text-slate-200,
+.orbit-media-surface .text-slate-300,
+.orbit-media-surface .text-slate-400 {
+  color: rgba(226, 232, 240, 0.75) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45) !important;
+}
+
+.orbit-keep-white,
+:is(.transparency-glass, .transparency-frosted, .transparency-smoked) :is(.bg-blue-500, .bg-blue-600, .bg-sky-500, .bg-emerald-500, .bg-rose-500, .bg-amber-500, .bg-indigo-500, .bg-violet-500) .text-white,
+:is(.transparency-glass, .transparency-frosted, .transparency-smoked) :is(.bg-blue-500, .bg-blue-600, .bg-sky-500, .bg-emerald-500, .bg-rose-500, .bg-amber-500, .bg-indigo-500, .bg-violet-500).text-white {
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
 }
 
 /* Custom dark scrollbars for scrollable surfaces */
