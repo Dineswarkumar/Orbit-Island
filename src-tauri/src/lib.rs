@@ -16,7 +16,7 @@ use services::config::load_config;
 use services::notifications::NotificationManager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, Listener};
 
 #[derive(Clone)]
 pub struct TrayState(pub std::sync::Arc<TrayIcon>);
@@ -26,6 +26,35 @@ pub struct IslandVisibilityState {
     pub user_manually_hidden: std::sync::atomic::AtomicBool,
     pub auto_suppressed_fullscreen: std::sync::atomic::AtomicBool,
     pub shortcuts_enabled: std::sync::atomic::AtomicBool,
+}
+
+pub struct ConfigStore {
+    inner: std::sync::RwLock<services::config::AppConfig>,
+}
+
+impl ConfigStore {
+    pub fn new(initial: services::config::AppConfig) -> Self {
+        Self {
+            inner: std::sync::RwLock::new(initial),
+        }
+    }
+
+    pub fn get(&self) -> services::config::AppConfig {
+        self.inner.read().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    pub fn update(&self, new_config: services::config::AppConfig) {
+        let mut guard = self.inner.write().unwrap_or_else(|p| p.into_inner());
+        *guard = new_config;
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub const WM_ORBIT_UPDATE_HOTKEYS: u32 = windows_sys::Win32::UI::WindowsAndMessaging::WM_APP + 1;
+
+#[derive(Default, Clone)]
+pub struct HotkeyState {
+    pub thread_id: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -222,8 +251,36 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            // Initialize and persist default configuration if not already present
+            // Initialize in-memory configuration cache from disk once on application boot
             let initial_config = load_config(&app.handle());
+            let config_store = std::sync::Arc::new(ConfigStore::new(initial_config.clone()));
+            app.manage(config_store.clone());
+
+            let hotkey_thread_state = HotkeyState::default();
+            app.manage(hotkey_thread_state.clone());
+
+            let cs_listener = config_store.clone();
+            #[cfg(target_os = "windows")]
+            let hk_listener = hotkey_thread_state.clone();
+            app.listen("config-changed", move |event| {
+                if let Ok(cfg) = serde_json::from_str::<services::config::AppConfig>(event.payload()) {
+                    cs_listener.update(cfg.clone());
+                    #[cfg(target_os = "windows")]
+                    {
+                        let tid = hk_listener.thread_id.load(std::sync::atomic::Ordering::SeqCst);
+                        if tid != 0 {
+                            unsafe {
+                                windows_sys::Win32::UI::WindowsAndMessaging::PostThreadMessageW(
+                                    tid,
+                                    WM_ORBIT_UPDATE_HOTKEYS,
+                                    if cfg.shortcuts_enabled { 1 } else { 0 },
+                                    0,
+                                );
+                            }
+                        }
+                    }
+                }
+            });
 
             // Position the compact island on the primary monitor according to config.position.
             if let Some(main_win) = app.get_webview_window("main") {
@@ -295,6 +352,9 @@ pub fn run() {
             {
                 let app_handle_hk = app.handle().clone();
                 let vis_hk = visibility_state.clone();
+                let config_store_hk = config_store.clone();
+                let hk_thread_id = hotkey_thread_state.thread_id.clone();
+
                 std::thread::Builder::new()
                     .name("orbit-hotkey-manager".into())
                     .spawn(move || {
@@ -303,8 +363,17 @@ pub fn run() {
                             RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_NOREPEAT,
                         };
                         use windows_sys::Win32::UI::WindowsAndMessaging::{
-                            PeekMessageW, MSG, PM_REMOVE, WM_HOTKEY,
+                            GetMessageW, PeekMessageW, MSG, PM_NOREMOVE, WM_HOTKEY, WM_QUIT,
                         };
+
+                        let thread_id = unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
+                        hk_thread_id.store(thread_id, std::sync::atomic::Ordering::SeqCst);
+
+                        // Ensure thread message queue exists before any PostThreadMessageW calls
+                        let mut init_msg: MSG = unsafe { std::mem::zeroed() };
+                        unsafe {
+                            PeekMessageW(&mut init_msg, 0 as HWND, 0, 0, PM_NOREMOVE);
+                        }
 
                         let mut registered = false;
                         // ID 1 = Alt+O (Expand/Collapse), ID 2 = Alt+H (Hide/Show), ID 3 = Alt+S (Stealth Capture), ID 4 = Alt+M (Play/Pause Media)
@@ -315,104 +384,115 @@ pub fn run() {
                             (4, b'M' as u32),
                         ];
 
-                        loop {
-                            let should_enable = vis_hk
-                                .shortcuts_enabled
-                                .load(std::sync::atomic::Ordering::Relaxed);
-
-                            if should_enable && !registered {
-                                unsafe {
-                                    for &(id, vk) in &hotkeys {
-                                        let _ = RegisterHotKey(
-                                            0 as HWND,
-                                            id,
-                                            MOD_ALT | MOD_NOREPEAT,
-                                            vk,
-                                        );
+                        let initial_enable = vis_hk
+                            .shortcuts_enabled
+                            .load(std::sync::atomic::Ordering::Relaxed);
+                        if initial_enable {
+                            unsafe {
+                                for &(id, vk) in &hotkeys {
+                                    let res = RegisterHotKey(0 as HWND, id, MOD_ALT | MOD_NOREPEAT, vk);
+                                    if res == 0 {
+                                        log::warn!("RegisterHotKey failed for id {id} vk {vk}");
                                     }
                                 }
-                                registered = true;
-                            } else if !should_enable && registered {
-                                unsafe {
-                                    for &(id, _) in &hotkeys {
-                                        let _ = UnregisterHotKey(0 as HWND, id);
-                                    }
-                                    let mut dummy: MSG = std::mem::zeroed();
-                                    while PeekMessageW(&mut dummy, 0 as HWND, WM_HOTKEY, WM_HOTKEY, PM_REMOVE) != 0 {}
-                                }
-                                registered = false;
                             }
+                            registered = true;
+                        }
 
-                            if registered {
-                                unsafe {
-                                    let mut msg: MSG = std::mem::zeroed();
-                                    while PeekMessageW(
-                                        &mut msg,
-                                        0 as HWND,
-                                        WM_HOTKEY,
-                                        WM_HOTKEY,
-                                        PM_REMOVE,
-                                    ) != 0
-                                    {
-                                        services::logger::log_event(
-                                            "DEBUG",
-                                            "hotkey",
-                                            &format!("Hotkey msg.wParam: {}", msg.wParam),
-                                        );
-                                        match msg.wParam as i32 {
-                                            1 => {
-                                                // Alt+O: Expand / Collapse Island
-                                                if let Some(main_win) = app_handle_hk.get_webview_window("main") {
-                                                    if !main_win.is_visible().unwrap_or(true) {
+                        let mut msg: MSG = unsafe { std::mem::zeroed() };
+                        while unsafe { GetMessageW(&mut msg, 0 as HWND, 0, 0) } > 0 {
+                            match msg.message {
+                                WM_HOTKEY => {
+                                    let id = msg.wParam as i32;
+                                    services::logger::log_event(
+                                        "DEBUG",
+                                        "hotkey",
+                                        &format!("Hotkey msg.wParam: {}", id),
+                                    );
+                                    match id {
+                                        1 => {
+                                            // Alt+O: Expand / Collapse Island
+                                            if let Some(main_win) = app_handle_hk.get_webview_window("main") {
+                                                if !main_win.is_visible().unwrap_or(true) {
+                                                    vis_hk.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                                                    let _ = main_win.show();
+                                                    let _ = app_handle_hk.emit("island-shown", ());
+                                                }
+                                            }
+                                            let _ = app_handle_hk.emit("hotkey-toggle-expand", ());
+                                        }
+                                        2 => {
+                                            // Alt+H: Hide / Show Island
+                                            if let Some(main_win) = app_handle_hk.get_webview_window("main") {
+                                                if let Ok(is_visible) = main_win.is_visible() {
+                                                    if is_visible {
+                                                        vis_hk.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
+                                                        let _ = app_handle_hk.emit("request-hide-island", ());
+                                                    } else {
                                                         vis_hk.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
                                                         let _ = main_win.show();
+                                                        let _ = main_win.set_focus();
                                                         let _ = app_handle_hk.emit("island-shown", ());
                                                     }
                                                 }
-                                                let _ = app_handle_hk.emit("hotkey-toggle-expand", ());
                                             }
-                                            2 => {
-                                                // Alt+H: Hide / Show Island
-                                                if let Some(main_win) = app_handle_hk.get_webview_window("main") {
-                                                    if let Ok(is_visible) = main_win.is_visible() {
-                                                        if is_visible {
-                                                            vis_hk.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
-                                                            let _ = app_handle_hk.emit("request-hide-island", ());
-                                                        } else {
-                                                            vis_hk.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
-                                                            let _ = main_win.show();
-                                                            let _ = main_win.set_focus();
-                                                            let _ = app_handle_hk.emit("island-shown", ());
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            3 => {
-                                                // Alt+S: Toggle Screen-Share / Recording Stealth
-                                                let mut cfg = load_config(&app_handle_hk);
-                                                cfg.hide_from_screen_capture = !cfg.hide_from_screen_capture;
-                                                if let Some(main_win) = app_handle_hk.get_webview_window("main") {
-                                                    services::window::set_window_capture_stealth(
-                                                        &main_win,
-                                                        cfg.hide_from_screen_capture,
-                                                    );
-                                                }
-                                                if services::config::save_config(&app_handle_hk, &cfg).is_ok() {
-                                                    let _ = app_handle_hk.emit("config-changed", &cfg);
-                                                    let _ = app_handle_hk.emit("stealth-mode-toggled", cfg.hide_from_screen_capture);
-                                                }
-                                            }
-                                            4 => {
-                                                // Alt+M: Play / Pause Media
-                                                let _ = app_handle_hk.emit("hotkey-media-play-pause", ());
-                                            }
-                                            _ => {}
                                         }
+                                        3 => {
+                                            // Alt+S: Toggle Screen-Share / Recording Stealth
+                                            let mut cfg = config_store_hk.get();
+                                            cfg.hide_from_screen_capture = !cfg.hide_from_screen_capture;
+                                            if let Some(main_win) = app_handle_hk.get_webview_window("main") {
+                                                services::window::set_window_capture_stealth(
+                                                    &main_win,
+                                                    cfg.hide_from_screen_capture,
+                                                );
+                                            }
+                                            config_store_hk.update(cfg.clone());
+                                            if services::config::save_config(&app_handle_hk, &cfg).is_ok() {
+                                                let _ = app_handle_hk.emit("config-changed", &cfg);
+                                                let _ = app_handle_hk.emit("stealth-mode-toggled", cfg.hide_from_screen_capture);
+                                            }
+                                        }
+                                        4 => {
+                                            // Alt+M: Play / Pause Media
+                                            let _ = app_handle_hk.emit("hotkey-media-play-pause", ());
+                                        }
+                                        _ => {}
                                     }
                                 }
+                                m if m == WM_ORBIT_UPDATE_HOTKEYS => {
+                                    let should_enable = msg.wParam != 0;
+                                    if should_enable && !registered {
+                                        unsafe {
+                                            for &(id, vk) in &hotkeys {
+                                                let res = RegisterHotKey(0 as HWND, id, MOD_ALT | MOD_NOREPEAT, vk);
+                                                if res == 0 {
+                                                    log::warn!("RegisterHotKey failed for id {id} vk {vk}");
+                                                }
+                                            }
+                                        }
+                                        registered = true;
+                                    } else if !should_enable && registered {
+                                        unsafe {
+                                            for &(id, _) in &hotkeys {
+                                                let _ = UnregisterHotKey(0 as HWND, id);
+                                            }
+                                        }
+                                        registered = false;
+                                    }
+                                }
+                                WM_QUIT => {
+                                    if registered {
+                                        unsafe {
+                                            for &(id, _) in &hotkeys {
+                                                let _ = UnregisterHotKey(0 as HWND, id);
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                                _ => {}
                             }
-
-                            std::thread::sleep(std::time::Duration::from_millis(45));
                         }
                     })
                     .expect("failed to spawn hotkey manager thread");
@@ -442,6 +522,7 @@ pub fn run() {
             // Spawn fullscreen auto-suppression background monitor (Task M4.1)
             let app_handle_fs = app.handle().clone();
             let vis_fs = visibility_state.clone();
+            let config_store_fs = config_store.clone();
             std::thread::Builder::new()
                 .name("orbit-fullscreen-monitor".into())
                 .spawn(move || {
@@ -452,7 +533,7 @@ pub fn run() {
                                 let is_fs = services::window::is_foreground_fullscreen(hwnd.0 as isize);
                                 let auto_suppressed = vis_fs.auto_suppressed_fullscreen.load(std::sync::atomic::Ordering::Relaxed);
                                 let manually_hidden = vis_fs.user_manually_hidden.load(std::sync::atomic::Ordering::Relaxed);
-                                let cfg = load_config(&app_handle_fs);
+                                let cfg = config_store_fs.get();
                                 let should_pause = cfg.pause_in_fullscreen;
 
                                 if is_fs && should_pause && !auto_suppressed && !manually_hidden {
@@ -709,17 +790,6 @@ pub fn run() {
                     }
                 })
                 .expect("failed to spawn privacy monitor thread");
-
-            // Intercept settings window close requested event to hide instead of destroy
-            if let Some(settings_win) = app.get_webview_window("settings") {
-                let win_clone = settings_win.clone();
-                settings_win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = win_clone.hide();
-                    }
-                });
-            }
 
             Ok(())
         })

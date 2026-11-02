@@ -106,7 +106,7 @@ interface GlassLayersProps {
  *  3. sheen     - top light falloff and lower caustic for volume
  *  4. rim       - thin directional specular edge
  */
-export const GlassLayers: React.FC<GlassLayersProps> = ({
+export const GlassLayers: React.FC<GlassLayersProps> = React.memo(({
   mode,
   tone,
   width,
@@ -236,7 +236,9 @@ export const GlassLayers: React.FC<GlassLayersProps> = ({
       <div className="orbit-glass-rim" aria-hidden="true" />
     </>
   );
-};
+});
+
+GlassLayers.displayName = "GlassLayers";
 
 /**
  * Picks light/dark ink from the measured luminance of the desktop behind the island.

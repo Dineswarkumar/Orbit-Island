@@ -467,17 +467,22 @@ export const IslandApp: React.FC = () => {
   });
 
   const isTimerPaused = timerPausedRemainingSecs !== null && timerPausedRemainingSecs > 0;
-  const timerRemainingSecs = isTimerPaused
-    ? (timerPausedRemainingSecs || 0)
-    : timerDeadlineMs
-    ? Math.max(0, Math.ceil((timerDeadlineMs - currentTime.getTime()) / 1000))
-    : 0;
+  const [timerRemainingSecs, setTimerRemainingSecs] = useState<number>(() => {
+    if (timerPausedRemainingSecs !== null && timerPausedRemainingSecs > 0) {
+      return timerPausedRemainingSecs;
+    }
+    if (timerDeadlineMs) {
+      return Math.max(0, Math.ceil((timerDeadlineMs - Date.now()) / 1000));
+    }
+    return 0;
+  });
 
   const startTimer = (durationSecs: number, label = timerLabel) => {
     const deadline = Date.now() + durationSecs * 1000;
     setTimerDeadlineMs(deadline);
     setTimerTotalSecs(durationSecs);
     setTimerPausedRemainingSecs(null);
+    setTimerRemainingSecs(durationSecs);
     setTimerLabel(label);
     localStorage.setItem(
       "orbit_timer_state",
@@ -489,6 +494,7 @@ export const IslandApp: React.FC = () => {
     if (timerDeadlineMs && !isTimerPaused) {
       const rem = Math.max(0, Math.ceil((timerDeadlineMs - Date.now()) / 1000));
       setTimerPausedRemainingSecs(rem);
+      setTimerRemainingSecs(rem);
       setTimerDeadlineMs(null);
       localStorage.setItem(
         "orbit_timer_state",
@@ -502,6 +508,7 @@ export const IslandApp: React.FC = () => {
       const deadline = Date.now() + timerPausedRemainingSecs * 1000;
       setTimerDeadlineMs(deadline);
       setTimerPausedRemainingSecs(null);
+      setTimerRemainingSecs(timerPausedRemainingSecs);
       localStorage.setItem(
         "orbit_timer_state",
         JSON.stringify({ deadlineMs: deadline, totalSecs: timerTotalSecs, label: timerLabel })
@@ -527,21 +534,40 @@ export const IslandApp: React.FC = () => {
     setTimerDeadlineMs(null);
     setTimerPausedRemainingSecs(null);
     setTimerTotalSecs(0);
+    setTimerRemainingSecs(0);
     localStorage.removeItem("orbit_timer_state");
   };
 
-  // Timer completion notification
+  // Focus timer countdown & completion ticker (only ticks when active)
   useEffect(() => {
-    if (timerDeadlineMs !== null && currentTime.getTime() >= timerDeadlineMs) {
-      stopTimer();
-      triggerUtilityAlertRef.current({
-        kind: "timer_done",
-        label: `${timerLabel} Timer`,
-        detail: "Time's Up!",
-        color: "#f59e0b",
-      });
+    if (isTimerPaused) {
+      setTimerRemainingSecs(timerPausedRemainingSecs || 0);
+      return;
     }
-  }, [currentTime, timerDeadlineMs, timerLabel]);
+    if (!timerDeadlineMs) {
+      setTimerRemainingSecs(0);
+      return;
+    }
+
+    const checkTimer = () => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((timerDeadlineMs - now) / 1000));
+      setTimerRemainingSecs(remaining);
+      if (now >= timerDeadlineMs) {
+        stopTimer();
+        triggerUtilityAlertRef.current({
+          kind: "timer_done",
+          label: `${timerLabel} Timer`,
+          detail: "Time's Up!",
+          color: "#f59e0b",
+        });
+      }
+    };
+
+    checkTimer();
+    const timer = setInterval(checkTimer, 1000);
+    return () => clearInterval(timer);
+  }, [timerDeadlineMs, isTimerPaused, timerLabel]);
 
   // Upcoming Event / Exam / Meeting countdown alert (within 15 minutes)
   useEffect(() => {
@@ -1546,12 +1572,23 @@ export const IslandApp: React.FC = () => {
     };
   }, [loadConfig]);
 
-  // Live system clock ticker (1-second interval)
+  // Live system clock ticker (minute-boundary interval)
   useEffect(() => {
-    const timer = setInterval(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const now = Date.now();
+    const msUntilNextMinute = 60000 - (now % 60000);
+
+    const timeoutId = setTimeout(() => {
       setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
+      intervalId = setInterval(() => {
+        setCurrentTime(new Date());
+      }, 60000);
+    }, msUntilNextMinute);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   // Completion-driven native collapse finalizer
@@ -2388,6 +2425,8 @@ export const IslandApp: React.FC = () => {
       ? Math.max(0.88, (config.surfaceOpacity ?? 80) / 100)
       : (config.surfaceOpacity ?? 80) / 100;
 
+  const backdropInFlightRef = useRef(false);
+
   // Live Optical Desktop Backdrop (fetches screen capture from Rust backend)
   useEffect(() => {
     if (effectiveTransparencyMode === "solid" || isReducedEffects || isMediaBackdropActive) {
@@ -2396,20 +2435,28 @@ export const IslandApp: React.FC = () => {
 
     let isMounted = true;
     const fetchBackdrop = async () => {
+      if (backdropInFlightRef.current) return;
+      backdropInFlightRef.current = true;
       try {
         const res = await invoke<{ dataUrl: string; avgLuminance: number } | null>("get_live_backdrop");
-        if (isMounted && res?.dataUrl) {
-          setLiveBackdropUrl((prev) => (prev !== res.dataUrl ? res.dataUrl : prev));
-          setGlassTone((prev) => nextGlassTone(prev, res.avgLuminance));
+        if (isMounted && res) {
+          if (res.dataUrl) {
+            setLiveBackdropUrl((prev) => (prev !== res.dataUrl ? res.dataUrl : prev));
+          }
+          if (typeof res.avgLuminance === "number") {
+            setGlassTone((prev) => nextGlassTone(prev, res.avgLuminance));
+          }
         }
       } catch {
         // Silently handle if command unavailable
+      } finally {
+        backdropInFlightRef.current = false;
       }
     };
 
     fetchBackdrop();
-    // Each sample briefly flags the island as capture-excluded, so keep the cadence calm.
-    const intervalTime = isExpanded || transientNotif ? 700 : 1800;
+    // Event-driven / calm cadence: 2000ms when expanded or notification active, 4000ms when idle
+    const intervalTime = isExpanded || transientNotif ? 2000 : 4000;
     const timer = setInterval(fetchBackdrop, intervalTime);
     return () => {
       isMounted = false;

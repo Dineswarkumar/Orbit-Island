@@ -9,7 +9,7 @@ interface HardwareSectionProps {
   onFreeMemory?: () => Promise<{ freedMb: number } | void>;
 }
 
-export const HardwareSection: React.FC<HardwareSectionProps> = ({
+export const HardwareSection: React.FC<HardwareSectionProps> = React.memo(({
   activeThemeMeta: _activeThemeMeta,
   hardwareMetrics,
   formatNetworkSpeed,
@@ -211,7 +211,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
                     type="button"
                     onClick={handleFreeMemory}
                     disabled={isCleaning}
-                    title="MSI-Center Quick Memory Cleaner"
+                    title="Trim ORBIT Working Set"
                     className="px-1 py-0.5 text-[7.5px] font-bold tracking-tight rounded orbit-card-3d hover:brightness-125 transition-all active:scale-95 leading-none cursor-pointer"
                     style={{
                       color: freedResult !== null ? "#16a34a" : "#c4b5fd",
@@ -222,7 +222,7 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
                       ? "..."
                       : freedResult !== null
                       ? `-${freedResult.toFixed(0)}M`
-                      : "Boost"}
+                      : "Trim"}
                   </button>
                 )}
               </div>
@@ -394,4 +394,6 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
       </div>
     </div>
   );
-};
+});
+
+HardwareSection.displayName = "HardwareSection";

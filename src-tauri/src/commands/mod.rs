@@ -16,6 +16,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 #[tauri::command]
 pub fn get_config(app: AppHandle) -> Result<AppConfig, String> {
+    if let Some(store) = app.try_state::<std::sync::Arc<crate::ConfigStore>>() {
+        return Ok(store.get());
+    }
     Ok(load_config(&app))
 }
 
@@ -218,6 +221,10 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, Strin
             .store(config.shortcuts_enabled, std::sync::atomic::Ordering::SeqCst);
     }
 
+    if let Some(store) = app.try_state::<std::sync::Arc<crate::ConfigStore>>() {
+        store.update(config.clone());
+    }
+
     let _ = app.emit("config-changed", &config);
 
     Ok(config)
@@ -237,20 +244,44 @@ pub fn hide_island_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_settings_window(app: AppHandle) -> Result<(), String> {
-    let settings_win = app
-        .get_webview_window("settings")
-        .ok_or_else(|| "Settings window not found".to_string())?;
-    settings_win.show().map_err(|e| e.to_string())?;
-    settings_win.unminimize().map_err(|e| e.to_string())?;
-    settings_win.set_focus().map_err(|e| e.to_string())
+    if let Some(settings_win) = app.get_webview_window("settings") {
+        settings_win.show().map_err(|e| e.to_string())?;
+        settings_win.unminimize().map_err(|e| e.to_string())?;
+        settings_win.set_focus().map_err(|e| e.to_string())
+    } else {
+        let settings_win = tauri::WebviewWindowBuilder::new(
+            &app,
+            "settings",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("ORBIT Settings")
+        .inner_size(640.0, 520.0)
+        .resizable(true)
+        .decorations(true)
+        .always_on_top(false)
+        .skip_taskbar(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+        let win_clone = settings_win.clone();
+        settings_win.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = win_clone.hide();
+            }
+        });
+
+        settings_win.show().map_err(|e| e.to_string())?;
+        settings_win.set_focus().map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
 pub fn close_settings_window(app: AppHandle) -> Result<(), String> {
-    app.get_webview_window("settings")
-        .ok_or_else(|| "Settings window not found".to_string())?
-        .hide()
-        .map_err(|e| e.to_string())
+    if let Some(settings_win) = app.get_webview_window("settings") {
+        settings_win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

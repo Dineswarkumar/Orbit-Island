@@ -23,19 +23,6 @@
         "skipTaskbar": true,
         "shadow": false,
         "visible": true
-      },
-      {
-        "label": "settings",
-        "title": "ORBIT Settings",
-        "width": 640,
-        "height": 520,
-        "resizable": true,
-        "transparent": false,
-        "decorations": true,
-        "alwaysOnTop": false,
-        "skipTaskbar": false,
-        "visible": false,
-        "url": "index.html"
       }
     ],
     "security": {

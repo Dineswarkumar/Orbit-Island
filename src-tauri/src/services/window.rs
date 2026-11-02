@@ -587,10 +587,10 @@ pub struct LiveBackdropSnapshot {
     pub avg_luminance: f32,
 }
 
-// Capture resolution for the live glass backdrop. 3:4 of the 400x188 island window keeps the
-// refraction layer crisp enough to read as "glass" without bloating the IPC payload.
-pub const BACKDROP_WIDTH: i32 = 300;
-pub const BACKDROP_HEIGHT: i32 = 141;
+// Capture resolution for the live glass backdrop. Downscaled to 150x70 to reduce IPC
+// payload by 75% while keeping optical refraction crisp after Gaussian blur in CSS.
+pub const BACKDROP_WIDTH: i32 = 150;
+pub const BACKDROP_HEIGHT: i32 = 70;
 
 #[cfg(target_os = "windows")]
 #[repr(C)]
@@ -981,8 +981,7 @@ pub fn capture_live_backdrop(
 
     let old_comp = unsafe { SelectObject(hdc_comp, dib_comp as HGDIOBJ) };
 
-    // Hold the affinity lock for the whole sample so the stealth setting cannot race the
-    // temporary exclusion below.
+    // Hold the affinity lock for the sample to serialize with stealth mode updates.
     let _affinity_guard = CAPTURE_AFFINITY_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -990,29 +989,11 @@ pub fn capture_live_backdrop(
     let mut affinity: u32 = 0;
     let has_affinity = unsafe { GetWindowDisplayAffinity(island_hwnd, &mut affinity) } != 0;
     const WDA_EXCLUDEFROMCAPTURE: u32 = 0x00000011;
-    let prior_affinity = if has_affinity { affinity } else { 0 };
     let already_excluded = has_affinity && affinity == WDA_EXCLUDEFROMCAPTURE;
 
-    // The island is a transparent window, so a plain screen blit would photograph itself.
-    // Excluding it from capture for a few milliseconds makes DWM hand us exactly what is
-    // *behind* it (browsers, videos, wallpaper - all GPU composited) with the island removed.
-    // The exclusion only affects capture APIs; the island stays visible on the monitor.
-    let temporarily_excluded = if already_excluded {
-        false
-    } else {
-        unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::SetWindowDisplayAffinity(
-                island_hwnd,
-                WDA_EXCLUDEFROMCAPTURE,
-            ) != 0
-        }
-    };
-    if temporarily_excluded {
-        // DWM applies the flag on its next composition pass.
-        std::thread::sleep(std::time::Duration::from_millis(34));
-    }
-
-    if already_excluded || temporarily_excluded {
+    if already_excluded {
+        // Window is already excluded from capture (e.g. stealth mode enabled), so we can directly
+        // sample from the screen DC with zero delay and no affinity churn.
         unsafe {
             SetStretchBltMode(hdc_comp, HALFTONE);
             StretchBlt(
@@ -1023,17 +1004,10 @@ pub fn capture_live_backdrop(
                 SRCCOPY,
             );
         }
-        if temporarily_excluded {
-            unsafe {
-                windows_sys::Win32::UI::WindowsAndMessaging::SetWindowDisplayAffinity(
-                    island_hwnd,
-                    prior_affinity,
-                );
-            }
-        }
     } else {
-        // Fallback for Windows builds without WDA_EXCLUDEFROMCAPTURE: rebuild the backdrop
-        // from the wallpaper and the visible windows stacked beneath the island.
+        // When not already excluded, rebuild the backdrop from the wallpaper crop and intersecting
+        // visible windows stacked beneath the island without toggling WDA_EXCLUDEFROMCAPTURE or
+        // sleeping 34ms, preventing screen-recording (OBS/Teams/Zoom) flicker.
         let wp_pixels = get_wallpaper_crop(
             mon_left, mon_top, mon_w, mon_h,
             win_rect.left, win_rect.top, win_w, win_h,
@@ -1140,7 +1114,7 @@ pub fn capture_live_backdrop(
 
     static LAST_SNAPSHOT: std::sync::Mutex<Option<(u64, LiveBackdropSnapshot)>> = std::sync::Mutex::new(None);
     if let Ok(guard) = LAST_SNAPSHOT.lock() {
-        if let Some((cached_hash, ref snap)) = *guard {
+        if let Some((cached_hash, _)) = *guard {
             if cached_hash == current_hash {
                 unsafe {
                     SelectObject(hdc_comp, old_comp);
@@ -1148,12 +1122,15 @@ pub fn capture_live_backdrop(
                     DeleteObject(dib_comp as HGDIOBJ);
                     ReleaseDC(std::ptr::null_mut(), hdc_screen);
                 }
-                return Ok(Some(snap.clone()));
+                return Ok(None);
             }
         }
     }
 
-    let file_size: u32 = 54 + (BACKDROP_WIDTH * 3 * BACKDROP_HEIGHT) as u32;
+    let row_bytes = (BACKDROP_WIDTH * 3 + 3) & !3;
+    let padding_bytes = (row_bytes - (BACKDROP_WIDTH * 3)) as usize;
+    let image_size: u32 = (row_bytes * BACKDROP_HEIGHT) as u32;
+    let file_size: u32 = 54 + image_size;
     let mut bmp = Vec::with_capacity(file_size as usize);
 
     bmp.extend_from_slice(b"BM");
@@ -1172,7 +1149,6 @@ pub fn capture_live_backdrop(
     bmp.extend_from_slice(&bit_count.to_le_bytes());
     let compression: u32 = 0;
     bmp.extend_from_slice(&compression.to_le_bytes());
-    let image_size: u32 = (BACKDROP_WIDTH * 3 * BACKDROP_HEIGHT) as u32;
     bmp.extend_from_slice(&image_size.to_le_bytes());
     let xpels: i32 = 0;
     bmp.extend_from_slice(&xpels.to_le_bytes());
@@ -1193,6 +1169,9 @@ pub fn capture_live_backdrop(
             bmp.push(b);
             bmp.push(g);
             bmp.push(r);
+        }
+        for _ in 0..padding_bytes {
+            bmp.push(0);
         }
     }
 
@@ -2056,6 +2035,6 @@ mod tests {
     fn test_bmp_header_size() {
         let row_bytes = (BACKDROP_WIDTH * 3 + 3) & !3;
         let file_size: u32 = 54 + (row_bytes * BACKDROP_HEIGHT) as u32;
-        assert_eq!(file_size, 126954);
+        assert_eq!(file_size, 31694);
     }
 }

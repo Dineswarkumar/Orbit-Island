@@ -5,6 +5,7 @@ import { MediaSessionSnapshot, AudioSpectrumState } from "../../core/types/media
 import { NotificationItem } from "../../core/types/notifications";
 import { HardwareMetrics } from "../../core/types/hardware";
 import { NotificationBrandIcon } from "./NotificationBrandIcon";
+import { ClockDisplay } from "./ClockDisplay";
 import { ipc } from "../../core/ipc/client";
 
 export interface WeatherGlance {
@@ -83,7 +84,7 @@ const formatTransferByteSpeed = (bps: number): string => {
   return `${Math.max(1, Math.round(bps / 1024))} KB/s`;
 };
 
-export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
+export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
   isExpanded,
   prefersReducedMotion,
   config,
@@ -1213,27 +1214,16 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
             )}
 
             {/* Direct Time Display (clicking opens Expanded Island Home) */}
-            <div
+            <ClockDisplay
+              className="flex items-baseline space-x-0.5 shrink-0 pr-1.5 border-r border-white/15 cursor-pointer hover:opacity-80 transition-opacity"
+              title="Click to open Home"
+              timeClassName="font-extrabold tracking-tight leading-none orbit-clock-3d text-[12px] text-white orbit-keep-white"
+              ampmClassName="text-[8px] font-extrabold leading-none uppercase tracking-wider text-[#818cf8]"
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenHome?.();
               }}
-              className="flex items-baseline space-x-0.5 shrink-0 pr-1.5 border-r border-white/15 cursor-pointer hover:opacity-80 transition-opacity"
-              title="Click to open Home"
-            >
-              <span
-                className="font-extrabold tracking-tight leading-none orbit-clock-3d text-[12px] text-white orbit-keep-white"
-              >
-                {timeDisplay.timeStr}
-              </span>
-              {timeDisplay.ampm && (
-                <span
-                  className="text-[8px] font-extrabold leading-none uppercase tracking-wider text-[#818cf8]"
-                >
-                  {timeDisplay.ampm}
-                </span>
-              )}
-            </div>
+            />
 
             <div
               className="w-6 h-6 rounded-md overflow-hidden shrink-0 flex items-center justify-center border border-white/30 shadow-md bg-black/40"
@@ -1383,25 +1373,16 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
             )}
 
             {/* Clock on Left */}
-            <div className="flex items-baseline space-x-1 shrink-0">
-              <span
-                className="font-bold tracking-tight leading-none orbit-clock-3d text-[13.5px]"
-                style={{ color: "var(--island-text)" }}
-              >
-                {timeDisplay.timeStr}
-              </span>
-              {timeDisplay.ampm && (
-                <span
-                  className="text-[9px] font-bold leading-none uppercase tracking-wider"
-                  style={{
-                    color: activeThemeMeta.accent || activeThemeMeta.color,
-                    textShadow: `0 0 8px ${activeThemeMeta.borderGlow}`,
-                  }}
-                >
-                  {timeDisplay.ampm}
-                </span>
-              )}
-            </div>
+            <ClockDisplay
+              className="flex items-baseline space-x-1 shrink-0"
+              timeClassName="font-bold tracking-tight leading-none orbit-clock-3d text-[13.5px]"
+              timeStyle={{ color: "var(--island-text)" }}
+              ampmClassName="text-[9px] font-bold leading-none uppercase tracking-wider"
+              ampmStyle={{
+                color: activeThemeMeta.accent || activeThemeMeta.color,
+                textShadow: `0 0 8px ${activeThemeMeta.borderGlow}`,
+              }}
+            />
 
             {/* Single Transfer Active (Download XOR Upload active): Flip only Right Slot */}
             {isDownloading || isUploading ? (
@@ -1454,4 +1435,6 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
       )}
     </div>
   );
-};
+});
+
+CompactCapsule.displayName = "CompactCapsule";

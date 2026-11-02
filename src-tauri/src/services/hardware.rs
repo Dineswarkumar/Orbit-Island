@@ -270,6 +270,7 @@ fn round_one_decimal(val: f32) -> f32 {
 
 #[cfg(target_os = "windows")]
 fn clean_working_sets() -> u32 {
+    use std::collections::HashSet;
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
@@ -277,43 +278,71 @@ fn clean_working_sets() -> u32 {
     };
     use windows_sys::Win32::System::ProcessStatus::K32EmptyWorkingSet;
     use windows_sys::Win32::System::Threading::{
-        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
+        GetCurrentProcess, GetCurrentProcessId, OpenProcess, PROCESS_QUERY_INFORMATION,
+        PROCESS_SET_QUOTA,
     };
 
     let mut trimmed_count = 0u32;
+
+    // 1. Trim ORBIT's primary process working set
+    unsafe {
+        let current_proc = GetCurrentProcess();
+        if K32EmptyWorkingSet(current_proc) != 0 {
+            trimmed_count += 1;
+        }
+    }
+
+    // 2. Discover and trim child processes belonging strictly to ORBIT's process tree (e.g. WebView2 renderers)
+    let my_pid = unsafe { GetCurrentProcessId() };
+    let mut child_pids = Vec::new();
+
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snapshot == INVALID_HANDLE_VALUE {
-            return 0;
-        }
+        if snapshot != INVALID_HANDLE_VALUE {
+            let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
 
-        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-
-        if Process32FirstW(snapshot, &mut entry) != FALSE {
-            loop {
-                // Ignore system idle / kernel process (PID <= 4)
-                if entry.th32ProcessID > 4 {
-                    let handle = OpenProcess(
-                        PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA,
-                        FALSE,
-                        entry.th32ProcessID,
-                    );
-                    if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
-                        if K32EmptyWorkingSet(handle) != 0 {
-                            trimmed_count += 1;
-                        }
-                        CloseHandle(handle);
+            let mut all_processes = Vec::new();
+            if Process32FirstW(snapshot, &mut entry) != FALSE {
+                loop {
+                    all_processes.push((entry.th32ProcessID, entry.th32ParentProcessID));
+                    if Process32NextW(snapshot, &mut entry) == FALSE {
+                        break;
                     }
                 }
+            }
+            CloseHandle(snapshot);
 
-                if Process32NextW(snapshot, &mut entry) == FALSE {
-                    break;
+            // Traverse descendant tree rooted at my_pid
+            let mut pending = vec![my_pid];
+            let mut seen = HashSet::from([my_pid]);
+
+            while let Some(parent) = pending.pop() {
+                for &(pid, parent_pid) in &all_processes {
+                    if parent_pid == parent && seen.insert(pid) {
+                        child_pids.push(pid);
+                        pending.push(pid);
+                    }
                 }
             }
         }
+    }
 
-        CloseHandle(snapshot);
+    // 3. Trim each discovered child process
+    for pid in child_pids {
+        unsafe {
+            let handle = OpenProcess(
+                PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA,
+                FALSE,
+                pid,
+            );
+            if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+                if K32EmptyWorkingSet(handle) != 0 {
+                    trimmed_count += 1;
+                }
+                CloseHandle(handle);
+            }
+        }
     }
 
     trimmed_count

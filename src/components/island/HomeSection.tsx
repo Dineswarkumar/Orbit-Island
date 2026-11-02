@@ -65,7 +65,7 @@ interface HomeSectionProps {
   setHomeSubView?: (view: "auto" | "media" | "call" | "clock") => void;
 }
 
-export const HomeSection: React.FC<HomeSectionProps> = ({
+export const HomeSection: React.FC<HomeSectionProps> = React.memo(({
   config,
   activeThemeMeta,
   showHomeNotifications,
@@ -1363,4 +1363,6 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
     </div>
   </div>
   );
-};
+});
+
+HomeSection.displayName = "HomeSection";
