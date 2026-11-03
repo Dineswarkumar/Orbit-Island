@@ -2455,8 +2455,8 @@ export const IslandApp: React.FC = () => {
     };
 
     fetchBackdrop();
-    // Event-driven / calm cadence: 2000ms when expanded or notification active, 4000ms when idle
-    const intervalTime = isExpanded || transientNotif ? 2000 : 4000;
+    // Each sample briefly flags the island as capture-excluded, so keep the cadence calm.
+    const intervalTime = isExpanded || transientNotif ? 700 : 1800;
     const timer = setInterval(fetchBackdrop, intervalTime);
     return () => {
       isMounted = false;
@@ -2559,6 +2559,8 @@ export const IslandApp: React.FC = () => {
           transform: shellTransform,
           // @ts-expect-error CSS custom property
           "--surface-alpha": surfaceAlpha,
+          "--theme-accent": activeThemeMeta.accent,
+          "--theme-accent-secondary": activeThemeMeta.accentSecondary,
           transition: prefersReducedMotion
             ? "none"
             : isClosing

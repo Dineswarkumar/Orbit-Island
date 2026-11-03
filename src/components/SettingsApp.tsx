@@ -737,10 +737,10 @@ export const SettingsApp: React.FC = () => {
                   }
                   className={`w-full rounded-xl px-3 py-2 text-xs border focus:outline-none cursor-pointer ${inputBg}`}
                 >
-                  <option value="glass" className={optionCls}>Liquid Glass (Optical Rim & Lens)</option>
-                  <option value="frosted" className={optionCls}>Clear Glass (Untinted Crystal)</option>
-                  <option value="smoked" className={optionCls}>Theme-Tinted Glass (Adaptive Tint)</option>
-                  <option value="solid" className={optionCls}>Solid / Reduced Effects (Opaque Fallback)</option>
+                  <option value="glass" className={optionCls}>Glossy 3D Lens (Liquid Optical Glass)</option>
+                  <option value="frosted" className={optionCls}>Frosted Acrylic (Clear Satin Glass)</option>
+                  <option value="smoked" className={optionCls}>Smoked Obsidian (Deep Theme Glass)</option>
+                  <option value="solid" className={optionCls}>Anodized Carbon (Solid Opaque)</option>
                 </select>
               </div>
 
