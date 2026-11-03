@@ -186,7 +186,7 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
           >
             {monthName}
           </div>
-          <div className="text-[10px] font-semibold text-white/50 tabular-nums">
+          <div className="text-[10px] font-semibold text-white/70 tabular-nums">
             {selectedYear}
           </div>
         </div>
@@ -218,17 +218,22 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
               e.stopPropagation();
               setShowTaskDrawer((prev) => !prev);
             }}
-            className="mt-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold transition-all cursor-pointer orbit-pill-badge-3d max-w-[92px] truncate"
+            className="mt-1 px-2.5 py-0.5 rounded-full text-[9.5px] font-extrabold transition-all cursor-pointer orbit-keep-white max-w-[92px] truncate hover:brightness-110"
             style={
               selectedDayStyle
                 ? {
                     backgroundColor: selectedDayStyle.bg,
                     border: `1px solid ${selectedDayStyle.border}`,
-                    color: selectedDayStyle.text,
+                    color: "var(--island-text)",
                     boxShadow: `0 1px 8px ${selectedDayStyle.hex}40`,
                   }
                 : {
-                    color: "var(--island-muted)",
+                    background:
+                      "linear-gradient(180deg, #0ea5e9 0%, #2563eb 100%)",
+                    border: "1.25px solid rgba(255, 255, 255, 0.92)",
+                    color: "#ffffff",
+                    boxShadow:
+                      "0 2px 8px rgba(37, 99, 235, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.7)",
                   }
             }
             title="View or add tasks for this date"
@@ -245,7 +250,7 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
       </div>
 
       {/* Right Column: 7-Day 3D Calendar Grid OR Task Drawer for Selected Date */}
-      <div className="flex-1 flex flex-col justify-between min-w-0 py-0.5">
+      <div className="flex-1 flex flex-col justify-between min-w-0 py-0.5 pr-1 orbit-soft-frost-cushion rounded-2xl">
         {showTaskDrawer ? (
           <div className="flex flex-col h-full justify-between">
             <div className="flex items-center justify-between pb-1 border-b border-white/10 shrink-0">
@@ -434,7 +439,9 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
             <div className="flex items-center justify-between pb-1 border-b border-white/10 shrink-0">
               <div
                 className="grid grid-cols-7 flex-1 text-center text-[10px] font-bold"
-                style={{ color: "var(--island-muted)" }}
+                style={{
+                  color: "var(--island-muted)",
+                }}
               >
                 {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
                   <span key={`${d}-${idx}`}>{d}</span>
@@ -502,46 +509,45 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
                     }}
                     className={`h-[20px] w-[24px] mx-auto rounded-full flex items-center justify-center relative text-[11px] font-bold tabular-nums transition-all cursor-pointer ${
                       isSelected
-                        ? "scale-105"
+                        ? "scale-105 orbit-keep-white"
                         : dayStyle
                         ? "hover:scale-105"
                         : isToday
                         ? "border border-white/40"
                         : isWeekend
-                        ? "text-white/45 hover:bg-white/10 hover:text-white/80"
-                        : "text-white/90 hover:bg-white/10"
+                        ? "hover:bg-white/10"
+                        : "hover:bg-white/10"
                     }`}
                     style={
                       isSelected
                         ? {
                             backgroundColor: dayStyle
                               ? dayStyle.hex
-                              : activeThemeMeta.accent,
-                            color:
-                              dayStyle &&
-                              (dayStyle.badge === "EXAM" ||
-                                dayStyle.badge === "MEETING")
-                                ? "#ffffff"
-                                : activeThemeMeta.id === "black" ||
-                                  activeThemeMeta.id === "dark"
-                                ? "#090a0f"
-                                : "#ffffff",
-                            boxShadow: `0 0 0 1.5px #ffffff, 0 2px 10px ${
-                              dayStyle ? dayStyle.hex : activeThemeMeta.accent
-                            }90`,
+                              : (activeThemeMeta.accent || "var(--theme-accent, #2563eb)"),
+                            color: "#ffffff",
+                            boxShadow: `0 0 0 1px rgba(255,255,255,0.88), 0 1px 5px ${
+                              dayStyle ? dayStyle.hex : (activeThemeMeta.accent || "#2563eb")
+                            }45`,
                           }
                         : dayStyle
                         ? {
                             backgroundColor: dayStyle.bg,
                             border: `1px solid ${dayStyle.border}`,
-                            color: dayStyle.text,
-                            boxShadow: `0 1px 6px ${dayStyle.hex}35`,
+                            color: "var(--island-text)",
+                            boxShadow: "none",
                           }
                         : isToday
                         ? {
                             color: activeThemeMeta.accent,
                           }
-                        : undefined
+                        : isWeekend
+                        ? {
+                            color: "var(--island-muted)",
+                            opacity: 0.92,
+                          }
+                        : {
+                            color: "var(--island-text)",
+                          }
                     }
                   >
                     <span>{dayNum}</span>

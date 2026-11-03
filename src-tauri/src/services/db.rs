@@ -35,6 +35,83 @@ pub struct DatabaseManager {
     shelf_storage_dir: PathBuf,
 }
 
+const SCHEMA_SQL: &str = "
+CREATE TABLE IF NOT EXISTS reminders (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    due_timestamp_ms INTEGER NOT NULL,
+    is_completed INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'local',
+    category TEXT NOT NULL DEFAULT 'task',
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS file_shelf (
+    id TEXT PRIMARY KEY,
+    file_path TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    extension TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    is_managed_copy INTEGER NOT NULL DEFAULT 0
+);
+";
+
+fn init_connection_pragmas_and_schema(conn: &Connection, is_file: bool) -> Result<(), String> {
+    if is_file {
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL;
+             PRAGMA synchronous = NORMAL;",
+        )
+        .map_err(|e| format!("Failed to configure SQLite WAL mode: {e}"))?;
+
+        let check: String = conn
+            .query_row("PRAGMA quick_check(1);", [], |row| row.get(0))
+            .map_err(|e| format!("PRAGMA quick_check failed: {e}"))?;
+
+        if check != "ok" {
+            return Err(format!("SQLite integrity quick_check reported: {check}"));
+        }
+    }
+
+    conn.execute_batch(SCHEMA_SQL)
+        .map_err(|e| format!("Failed to initialize SQLite schema: {e}"))?;
+
+    // Migration: ensure is_managed_copy column exists for pre-existing databases
+    let _ = conn.execute(
+        "ALTER TABLE file_shelf ADD COLUMN is_managed_copy INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
+
+    Ok(())
+}
+
+fn quarantine_corrupt_db(db_path: &Path) {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let corrupt_name = format!(
+        "{}.corrupt.{}",
+        db_path.file_name().unwrap_or_default().to_string_lossy(),
+        timestamp
+    );
+    let corrupt_path = db_path.with_file_name(corrupt_name);
+    log::warn!("Quarantining corrupt database file {:?} to {:?}", db_path, corrupt_path);
+    let _ = fs::rename(db_path, &corrupt_path);
+
+    // Also remove stale WAL and SHM sidecars if present
+    let file_stem = db_path.file_name().unwrap_or_default().to_string_lossy();
+    let wal_path = db_path.with_file_name(format!("{file_stem}-wal"));
+    if wal_path.exists() {
+        let _ = fs::remove_file(&wal_path);
+    }
+    let shm_path = db_path.with_file_name(format!("{file_stem}-shm"));
+    if shm_path.exists() {
+        let _ = fs::remove_file(&shm_path);
+    }
+}
+
 impl DatabaseManager {
     pub fn new(db_path: PathBuf) -> Result<Self, String> {
         let shelf_storage_dir = db_path
@@ -46,33 +123,61 @@ impl DatabaseManager {
                 .map_err(|e| format!("Failed to create db directory: {e}"))?;
         }
 
-        let conn = Connection::open(&db_path)
-            .map_err(|e| format!("Failed to open SQLite database: {e}"))?;
+        let primary_result = Connection::open(&db_path)
+            .map_err(|e| format!("Open error: {e}"))
+            .and_then(|conn| {
+                init_connection_pragmas_and_schema(&conn, true)?;
+                Ok(conn)
+            });
 
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS reminders (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                due_timestamp_ms INTEGER NOT NULL,
-                is_completed INTEGER NOT NULL DEFAULT 0,
-                source TEXT NOT NULL DEFAULT 'local',
-                category TEXT NOT NULL DEFAULT 'task',
-                created_at INTEGER NOT NULL
-            );
+        match primary_result {
+            Ok(conn) => Ok(Self {
+                conn: Arc::new(Mutex::new(conn)),
+                shelf_storage_dir,
+            }),
+            Err(err) => {
+                log::warn!(
+                    "Primary SQLite database initialization failed at {:?}: {err}. Initiating quarantine and recovery...",
+                    db_path
+                );
 
-            CREATE TABLE IF NOT EXISTS file_shelf (
-                id TEXT PRIMARY KEY,
-                file_path TEXT NOT NULL UNIQUE,
-                display_name TEXT NOT NULL,
-                file_size INTEGER NOT NULL,
-                extension TEXT NOT NULL,
-                added_at INTEGER NOT NULL
-            );
-            ",
-        )
-        .map_err(|e| format!("Failed to initialize SQLite schema: {e}"))?;
+                quarantine_corrupt_db(&db_path);
 
+                let recovery_result = Connection::open(&db_path)
+                    .map_err(|e| format!("Re-open error: {e}"))
+                    .and_then(|conn| {
+                        init_connection_pragmas_and_schema(&conn, true)?;
+                        Ok(conn)
+                    });
+
+                match recovery_result {
+                    Ok(conn) => {
+                        log::info!("Successfully recreated and recovered SQLite database at {:?}", db_path);
+                        Ok(Self {
+                            conn: Arc::new(Mutex::new(conn)),
+                            shelf_storage_dir,
+                        })
+                    }
+                    Err(second_err) => {
+                        log::error!(
+                            "Recreation of SQLite database failed at {:?}: {second_err}. Falling back to in-memory database.",
+                            db_path
+                        );
+                        Self::in_memory_with_shelf_dir(shelf_storage_dir)
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn in_memory() -> Result<Self, String> {
+        Self::in_memory_with_shelf_dir(PathBuf::from("shelf_storage"))
+    }
+
+    pub fn in_memory_with_shelf_dir(shelf_storage_dir: PathBuf) -> Result<Self, String> {
+        let conn = Connection::open_in_memory()
+            .map_err(|e| format!("Failed to create in-memory database: {e}"))?;
+        init_connection_pragmas_and_schema(&conn, false)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             shelf_storage_dir,
@@ -134,14 +239,14 @@ impl DatabaseManager {
             return Err("Reminder title cannot be empty".to_string());
         }
 
-        let id = format!("rem_{}", std::time::SystemTime::now()
+        static REMINDER_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let seq = REMINDER_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let now_nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis());
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+            .as_nanos();
+        let id = format!("rem_{now_nanos}_{seq}");
+        let now = (now_nanos / 1_000_000) as u64;
 
         let item = ReminderItem {
             id: id.clone(),
@@ -218,10 +323,8 @@ impl DatabaseManager {
     /// Imports calendar events from an `.ics`, `.csv`, or `.json` file into SQLite `reminders`.
     /// Automatically deduplicates by `(LOWER(title), due_timestamp_ms)` and classifies categories.
     pub fn import_calendar_file(&self, raw_path: &str, source_tag: &str) -> Result<usize, String> {
-        let path = Path::new(raw_path.trim());
-        if !path.exists() {
-            return Err(format!("Schedule file does not exist: {}", raw_path));
-        }
+        let canonical = validate_local_safe_path(raw_path)?;
+        let path = canonical.as_path();
 
         let content = fs::read_to_string(path)
             .map_err(|e| format!("Failed to read schedule file: {e}"))?;
@@ -310,18 +413,17 @@ impl DatabaseManager {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
-                "SELECT id, file_path, display_name, file_size, extension, added_at
+                "SELECT id, file_path, display_name, file_size, extension, added_at, is_managed_copy
                  FROM file_shelf
                  ORDER BY added_at DESC",
             )
             .map_err(|e| e.to_string())?;
 
-        let storage_prefix = self.shelf_storage_dir.to_string_lossy().to_string();
         let rows = stmt
             .query_map([], |row| {
                 let fp: String = row.get(1)?;
                 let exists = Path::new(&fp).exists();
-                let is_managed_copy = fp.starts_with(&storage_prefix) || fp.contains("shelf_storage");
+                let is_managed_copy: bool = row.get::<_, i32>(6).unwrap_or(0) != 0;
                 Ok(ShelfItem {
                     id: row.get(0)?,
                     file_path: fp,
@@ -349,13 +451,15 @@ impl DatabaseManager {
     }
 
     pub fn add_shelf_item_with_mode(&self, raw_path: &str, mode: &str) -> Result<ShelfItem, String> {
-        let path = Path::new(raw_path.trim());
-        if !path.exists() {
-            return Err(format!("File does not exist: {}", raw_path));
-        }
+        let canonical = validate_local_safe_path(raw_path)?;
+        let path = canonical.as_path();
 
         let metadata = fs::metadata(path)
             .map_err(|e| format!("Could not read file metadata: {e}"))?;
+
+        if !metadata.is_file() {
+            return Err("Only regular files may be added to the shelf.".to_string());
+        }
 
         const MAX_COPY_BYTES: u64 = 50 * 1024 * 1024;
         if mode == "copy" && metadata.len() > MAX_COPY_BYTES {
@@ -365,23 +469,20 @@ impl DatabaseManager {
             );
         }
 
-        let canonical = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         let norm_path = canonical.to_string_lossy().to_string();
 
         let conn = self.conn.lock().unwrap();
 
         // Check if already in shelf (duplicate check by normalized path)
-        let storage_prefix = self.shelf_storage_dir.to_string_lossy().to_string();
         let existing: Option<ShelfItem> = conn
             .query_row(
-                "SELECT id, file_path, display_name, file_size, extension, added_at
+                "SELECT id, file_path, display_name, file_size, extension, added_at, is_managed_copy
                  FROM file_shelf WHERE file_path = ?1",
                 params![norm_path],
                 |row| {
                     let fp: String = row.get(1)?;
                     let exists = Path::new(&fp).exists();
-                    let is_managed_copy =
-                        fp.starts_with(&storage_prefix) || fp.contains("shelf_storage");
+                    let is_managed_copy = row.get::<_, i32>(6).unwrap_or(0) != 0;
                     Ok(ShelfItem {
                         id: row.get(0)?,
                         file_path: fp,
@@ -454,8 +555,8 @@ impl DatabaseManager {
         };
 
         conn.execute(
-            "INSERT INTO file_shelf (id, file_path, display_name, file_size, extension, added_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO file_shelf (id, file_path, display_name, file_size, extension, added_at, is_managed_copy)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 item.id,
                 item.file_path,
@@ -463,6 +564,7 @@ impl DatabaseManager {
                 item.file_size as i64,
                 item.extension,
                 item.added_at as i64,
+                if item.is_managed_copy { 1 } else { 0 },
             ],
         )
         .map_err(|e| format!("Failed to insert shelf item: {e}"))?;
@@ -474,21 +576,28 @@ impl DatabaseManager {
         // Removing reference from shelf NEVER deletes original user files outside shelf_storage.
         // If the item is a managed copy inside shelf_storage, clean up that managed copy.
         let conn = self.conn.lock().unwrap();
-        let existing_path: Option<String> = conn
+        let existing: Option<(String, bool)> = conn
             .query_row(
-                "SELECT file_path FROM file_shelf WHERE id = ?1",
+                "SELECT file_path, is_managed_copy FROM file_shelf WHERE id = ?1",
                 params![id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get::<_, i32>(1).unwrap_or(0) != 0)),
             )
             .ok();
 
         conn.execute("DELETE FROM file_shelf WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to remove shelf item: {e}"))?;
 
-        if let Some(fp) = existing_path {
-            let storage_prefix = self.shelf_storage_dir.to_string_lossy().to_string();
-            if fp.starts_with(&storage_prefix) || fp.contains("shelf_storage") {
-                let _ = fs::remove_file(&fp);
+        if let Some((fp, is_managed_copy)) = existing {
+            if is_managed_copy {
+                let target_path = Path::new(&fp);
+                if let (Ok(target_canon), Ok(storage_canon)) = (
+                    dunce::canonicalize(target_path),
+                    dunce::canonicalize(&self.shelf_storage_dir),
+                ) {
+                    if target_canon.starts_with(&storage_canon) && target_canon != storage_canon {
+                        let _ = fs::remove_file(&target_canon);
+                    }
+                }
             }
         }
         Ok(())
@@ -507,6 +616,18 @@ impl DatabaseManager {
         let path = Path::new(&file_path);
         if !path.exists() {
             return Err("File not found at its original location. It may have been moved or deleted.".to_string());
+        }
+
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_ascii_lowercase())
+            .unwrap_or_default();
+
+        if DANGEROUS_EXTENSIONS.contains(&ext.as_str()) {
+            return Err(format!(
+                "Opening executable or script files (.{ext}) from the shelf is blocked for security reasons.",
+            ));
         }
 
         #[cfg(target_os = "windows")]
@@ -552,7 +673,8 @@ impl DatabaseManager {
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
-            let _ = std::process::Command::new("explorer")
+            let explorer_cmd = get_explorer_path();
+            let _ = std::process::Command::new(explorer_cmd)
                 .arg(format!("/select,{}", file_path))
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
@@ -585,6 +707,109 @@ impl DatabaseManager {
         }
         Ok(())
     }
+}
+
+pub const DANGEROUS_EXTENSIONS: &[&str] = &[
+    "exe", "bat", "cmd", "msi", "vbs", "ps1", "com", "scr", "pif", "reg",
+    "hta", "cpl", "jar", "wsf", "vbe", "jse",
+];
+
+pub fn validate_local_safe_path(raw_path: &str) -> Result<PathBuf, String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Err("Path cannot be empty".to_string());
+    }
+    if trimmed.contains('\0') {
+        return Err("Path contains null character".to_string());
+    }
+
+    // 1. Reject UNC network paths: \\host\share or //host/share
+    if trimmed.starts_with(r"\\") || trimmed.starts_with("//") {
+        return Err(format!("UNC network paths are not allowed: {trimmed}"));
+    }
+
+    // 2. Reject NT/Win32 device namespaces: \\.\ or \\?\
+    let norm_slashes = trimmed.replace('/', "\\");
+    if norm_slashes.starts_with(r"\\.\") || norm_slashes.starts_with(r"\\?\") {
+        return Err(format!("Device namespace paths are not allowed: {trimmed}"));
+    }
+
+    // 3. Reject directory traversal tokens ("..")
+    if trimmed.contains("..") {
+        return Err("Directory traversal ('..') is not permitted".to_string());
+    }
+    for component in Path::new(trimmed).components() {
+        if let std::path::Component::ParentDir = component {
+            return Err("Directory traversal ('..') is not permitted".to_string());
+        }
+    }
+
+    // 4. Reject reserved DOS device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    const DOS_DEVICES: &[&str] = &[
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+
+    let path_obj = Path::new(trimmed);
+    for comp in path_obj.components() {
+        let os_str = comp.as_os_str().to_string_lossy();
+        let stem = Path::new(&*os_str)
+            .file_stem()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or(os_str.clone());
+        let stem_upper = stem.trim().to_ascii_uppercase();
+        if DOS_DEVICES.contains(&stem_upper.as_str()) {
+            return Err(format!("Reserved DOS device name is not allowed: {stem_upper}"));
+        }
+    }
+
+    // 5. Must exist on disk
+    if !path_obj.exists() {
+        return Err(format!("File does not exist: {trimmed}"));
+    }
+
+    // 6. Canonicalize using dunce
+    let canonical = dunce::canonicalize(path_obj)
+        .map_err(|e| format!("Failed to canonicalize path: {e}"))?;
+
+    // 7. Verify canonical path does not resolve to a UNC path
+    let canon_str = canonical.to_string_lossy();
+    if canon_str.starts_with(r"\\") && !canon_str.starts_with(r"\\?\") {
+        return Err(format!("Path resolved to forbidden UNC location: {canon_str}"));
+    }
+
+    Ok(canonical)
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_system_root_binary(subpath: &str, fallback_name: &str) -> PathBuf {
+    let system_root = std::env::var("SystemRoot")
+        .or_else(|_| std::env::var("windir"))
+        .unwrap_or_else(|_| r"C:\Windows".to_string());
+    let candidate = Path::new(&system_root).join(subpath);
+    if candidate.exists() {
+        candidate
+    } else {
+        PathBuf::from(fallback_name)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_system_root_binary(_subpath: &str, fallback_name: &str) -> PathBuf {
+    PathBuf::from(fallback_name)
+}
+
+pub fn get_powershell_path() -> PathBuf {
+    get_system_root_binary(r"System32\WindowsPowerShell\v1.0\powershell.exe", "powershell.exe")
+}
+
+pub fn get_explorer_path() -> PathBuf {
+    get_system_root_binary(r"explorer.exe", "explorer.exe")
+}
+
+pub fn get_curl_path() -> PathBuf {
+    get_system_root_binary(r"System32\curl.exe", "curl.exe")
 }
 
 // Module dunce provides Windows path normalisation fallback
@@ -1171,6 +1396,57 @@ mod tests {
     }
 
     #[test]
+    fn test_removing_external_shelf_reference_with_shelf_storage_in_path_leaves_file_intact() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbit_test_external_shelf_storage_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let db_path = temp_dir.join("shelf_test.db");
+        let db = DatabaseManager::new(db_path).expect("Failed to create test db");
+
+        // External folder containing substring "shelf_storage"
+        let external_dir = temp_dir.join("my_shelf_storage_user_docs");
+        fs::create_dir_all(&external_dir).unwrap();
+        let external_file = external_dir.join("critical_report.txt");
+        let file_content = "important user file content that must not be deleted";
+        fs::write(&external_file, file_content).unwrap();
+
+        // Add as reference item
+        let shelf_item = db
+            .add_shelf_item_with_mode(&external_file.to_string_lossy(), "reference")
+            .expect("Failed to add reference item");
+        assert!(!shelf_item.is_managed_copy);
+        assert!(shelf_item.exists);
+
+        // Verify it is in database
+        let items_before = db.get_shelf_items().unwrap();
+        assert_eq!(items_before.len(), 1);
+        assert_eq!(items_before[0].id, shelf_item.id);
+        assert!(!items_before[0].is_managed_copy);
+
+        // Remove from shelf
+        db.remove_shelf_item(&shelf_item.id)
+            .expect("Failed to remove shelf item");
+
+        // Verify removed from database
+        let items_after = db.get_shelf_items().unwrap();
+        assert_eq!(items_after.len(), 0);
+
+        // Verify critical user file on disk is STILL INTACT and unchanged!
+        assert!(
+            external_file.exists(),
+            "External user file was deleted by remove_shelf_item!"
+        );
+        let preserved_content = fs::read_to_string(&external_file).unwrap();
+        assert_eq!(preserved_content, file_content);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
     fn test_ics_import_parses_vevents_and_deduplicates() {
         let temp_dir = std::env::temp_dir().join(format!(
             "orbit_test_ics_{}",
@@ -1285,6 +1561,156 @@ Machine Learning Lab,2026-10-29,11:00,Class
 
         let lab = list.iter().find(|i| i.title.contains("Machine Learning")).unwrap();
         assert_eq!(lab.category, "class");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_wal_mode_and_synchronous_normal_enabled() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbit_test_wal_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let db_path = temp_dir.join("wal_test.db");
+        let db = DatabaseManager::new(db_path).expect("Failed to create test db");
+
+        let conn = db.conn.lock().unwrap();
+        let journal_mode: String = conn
+            .query_row("PRAGMA journal_mode;", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(journal_mode.to_lowercase(), "wal");
+
+        let synchronous: i32 = conn
+            .query_row("PRAGMA synchronous;", [], |row| row.get(0))
+            .unwrap();
+        // 1 = NORMAL in SQLite
+        assert_eq!(synchronous, 1);
+
+        drop(conn);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_database_corruption_quarantine_and_clean_recovery() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbit_test_corrupt_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let db_path = temp_dir.join("orbit.db");
+
+        // Write corrupt garbage bytes to simulate on-disk SQLite corruption
+        fs::write(&db_path, b"MALFORMED_HEADER_NOT_A_VALID_SQLITE_3_DATABASE_CORRUPT_BYTES").unwrap();
+
+        // DatabaseManager::new should detect corruption, quarantine to .corrupt.<timestamp>, and re-create cleanly
+        let db = DatabaseManager::new(db_path.clone()).expect("Recovery should succeed");
+
+        // Verify recovered database works and schema is accessible
+        assert!(db.get_reminders().is_ok());
+
+        // Verify quarantine file was created
+        let entries = fs::read_dir(&temp_dir).unwrap();
+        let quarantined = entries
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().contains("orbit.db.corrupt."));
+        assert!(quarantined, "Corrupt database file was not quarantined!");
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_in_memory_database_fallback() {
+        let db = DatabaseManager::in_memory().expect("In-memory database initialization failed");
+        db.add_reminder("In-memory task", 1700000000000, "task", "local").unwrap();
+        let reminders = db.get_reminders().unwrap();
+        assert_eq!(reminders.len(), 1);
+        assert_eq!(reminders[0].title, "In-memory task");
+    }
+
+    #[test]
+    fn test_validate_local_safe_path() {
+        // UNC paths must be rejected
+        assert!(super::validate_local_safe_path(r"\\127.0.0.1\c$\passwords.txt").is_err());
+        assert!(super::validate_local_safe_path("//attacker.com/share/payload").is_err());
+
+        // Device namespaces must be rejected
+        assert!(super::validate_local_safe_path(r"\\.\COM1").is_err());
+        assert!(super::validate_local_safe_path(r"\\?\C:\test.txt").is_err());
+
+        // Directory traversal must be rejected
+        assert!(super::validate_local_safe_path(r"C:\safe\..\..\windows\system32").is_err());
+        assert!(super::validate_local_safe_path("../relative/traversal").is_err());
+
+        // Reserved DOS device names must be rejected
+        assert!(super::validate_local_safe_path("CON").is_err());
+        assert!(super::validate_local_safe_path("con.txt").is_err());
+        assert!(super::validate_local_safe_path("NUL").is_err());
+        assert!(super::validate_local_safe_path("AUX.dat").is_err());
+        assert!(super::validate_local_safe_path("COM1.log").is_err());
+        assert!(super::validate_local_safe_path("LPT2").is_err());
+
+        // Non-existent path must be rejected
+        assert!(super::validate_local_safe_path(r"C:\non_existent_orbit_test_path_12345.xyz").is_err());
+
+        // Existing local file must succeed
+        let temp_file = std::env::temp_dir().join(format!(
+            "orbit_safe_path_{}.txt",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::write(&temp_file, "valid content").unwrap();
+
+        let result = super::validate_local_safe_path(&temp_file.to_string_lossy());
+        assert!(result.is_ok(), "Expected valid safe path to succeed: {:?}", result.err());
+
+        let _ = fs::remove_file(&temp_file);
+    }
+
+    #[test]
+    fn test_open_shelf_file_blocks_dangerous_executables() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbit_test_shelf_exec_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let db_path = temp_dir.join("test_exec.db");
+        let db = DatabaseManager::new(db_path).unwrap();
+
+        let exe_file = temp_dir.join("payload.exe");
+        fs::write(&exe_file, b"MZ dummy exe").unwrap();
+
+        // Add to shelf via direct insert to test open_shelf_file guard
+        {
+            let conn = db.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO file_shelf (id, file_path, display_name, file_size, extension, added_at, is_managed_copy)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+                rusqlite::params![
+                    "test_exe_id",
+                    exe_file.to_string_lossy().to_string(),
+                    "payload.exe",
+                    12,
+                    "exe",
+                    1000
+                ],
+            ).unwrap();
+        }
+
+        let open_res = db.open_shelf_file("test_exe_id");
+        assert!(open_res.is_err());
+        let err_msg = open_res.err().unwrap();
+        assert!(err_msg.contains("blocked for security"), "Unexpected error: {err_msg}");
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

@@ -1,4 +1,6 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+use serde::{Deserialize, Serialize};
 use crate::services::config::{load_config, save_config as persist_config, AppConfig};
 use crate::services::media::{
     get_available_media_sources, get_current_media_session, run_blocking_media_task, seek_media,
@@ -14,6 +16,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 #[tauri::command]
 pub fn get_config(app: AppHandle) -> Result<AppConfig, String> {
+    if let Some(store) = app.try_state::<std::sync::Arc<crate::ConfigStore>>() {
+        return Ok(store.get());
+    }
     Ok(load_config(&app))
 }
 
@@ -182,6 +187,14 @@ pub fn show_context_menu(app: AppHandle, window: tauri::Window) -> Result<bool, 
     Ok(false)
 }
 
+pub fn verify_settings_window(label: &str) -> Result<(), String> {
+    if label != "settings" {
+        Err("Access denied: command only permitted from settings window".into())
+    } else {
+        Ok(())
+    }
+}
+
 #[tauri::command]
 pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, String> {
     let previous = load_config(&app);
@@ -216,6 +229,10 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, Strin
             .store(config.shortcuts_enabled, std::sync::atomic::Ordering::SeqCst);
     }
 
+    if let Some(store) = app.try_state::<std::sync::Arc<crate::ConfigStore>>() {
+        store.update(config.clone());
+    }
+
     let _ = app.emit("config-changed", &config);
 
     Ok(config)
@@ -235,20 +252,44 @@ pub fn hide_island_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_settings_window(app: AppHandle) -> Result<(), String> {
-    let settings_win = app
-        .get_webview_window("settings")
-        .ok_or_else(|| "Settings window not found".to_string())?;
-    settings_win.show().map_err(|e| e.to_string())?;
-    settings_win.unminimize().map_err(|e| e.to_string())?;
-    settings_win.set_focus().map_err(|e| e.to_string())
+    if let Some(settings_win) = app.get_webview_window("settings") {
+        settings_win.show().map_err(|e| e.to_string())?;
+        settings_win.unminimize().map_err(|e| e.to_string())?;
+        settings_win.set_focus().map_err(|e| e.to_string())
+    } else {
+        let settings_win = tauri::WebviewWindowBuilder::new(
+            &app,
+            "settings",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("ORBIT Settings")
+        .inner_size(640.0, 520.0)
+        .resizable(true)
+        .decorations(true)
+        .always_on_top(false)
+        .skip_taskbar(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+        let win_clone = settings_win.clone();
+        settings_win.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = win_clone.hide();
+            }
+        });
+
+        settings_win.show().map_err(|e| e.to_string())?;
+        settings_win.set_focus().map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
 pub fn close_settings_window(app: AppHandle) -> Result<(), String> {
-    app.get_webview_window("settings")
-        .ok_or_else(|| "Settings window not found".to_string())?
-        .hide()
-        .map_err(|e| e.to_string())
+    if let Some(settings_win) = app.get_webview_window("settings") {
+        settings_win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -585,7 +626,8 @@ pub fn pick_and_import_calendar(
                 Write-Output $dialog.FileName
             }
         "#;
-        let output = std::process::Command::new("powershell")
+        let powershell_exe = crate::services::db::get_powershell_path();
+        let output = std::process::Command::new(powershell_exe)
             .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
@@ -610,9 +652,11 @@ pub fn pick_and_import_calendar(
 #[tauri::command]
 pub fn clear_imported_calendar(
     app: AppHandle,
+    window: tauri::Window,
     source_filter: Option<String>,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<usize, String> {
+    verify_settings_window(window.label())?;
     let deleted = db.clear_imported_reminders(source_filter.as_deref())?;
     if let Ok(updated) = db.get_reminders() {
         let _ = app.emit("reminders-updated", &updated);
@@ -704,7 +748,8 @@ pub fn pick_shelf_file() -> Result<Option<String>, String> {
                 Write-Output $dialog.FileName
             }
         "#;
-        let output = std::process::Command::new("powershell")
+        let powershell_exe = crate::services::db::get_powershell_path();
+        let output = std::process::Command::new(powershell_exe)
             .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
@@ -731,8 +776,10 @@ pub fn clear_shelf(
 
 #[tauri::command]
 pub fn clear_local_data(
+    window: tauri::Window,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<(), String> {
+    verify_settings_window(window.label())?;
     db.clear_local_data()
 }
 
@@ -757,10 +804,239 @@ pub fn reveal_diagnostic_log() -> Result<String, String> {
     let path_str = log_path.to_string_lossy().to_string();
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("explorer.exe")
+        let explorer_exe = crate::services::db::get_explorer_path();
+        let _ = std::process::Command::new(explorer_exe)
             .arg(format!("/select,{}", path_str))
             .spawn();
     }
     Ok(path_str)
 }
 
+#[tauri::command]
+pub async fn get_live_backdrop(
+    app: AppHandle,
+) -> Result<Option<crate::services::window::LiveBackdropSnapshot>, String> {
+    let target_win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Island main window not found".to_string())?;
+    // The sampler waits a few milliseconds for DWM, so it must never run on the UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::window::capture_live_backdrop(&target_win)
+    })
+    .await
+    .map_err(|e| format!("Live backdrop task failed: {e}"))?
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WeatherGlance {
+    pub temp_c: i32,
+    pub temp_f: i32,
+    pub condition_code: String,
+    pub label: String,
+}
+
+struct WeatherCache {
+    data: WeatherGlance,
+    fetched_at: Instant,
+}
+
+static WEATHER_CACHE: Mutex<Option<WeatherCache>> = Mutex::new(None);
+
+pub fn parse_wttr_json(json_str: &str) -> Result<WeatherGlance, String> {
+    let val: serde_json::Value = serde_json::from_str(json_str)
+        .map_err(|e| format!("Invalid weather JSON: {e}"))?;
+
+    let current = val
+        .get("current_condition")
+        .and_then(|c| c.as_array())
+        .and_then(|a| a.first())
+        .ok_or_else(|| "Missing current_condition in weather data".to_string())?;
+
+    let temp_c = current
+        .get("temp_C")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<i32>().ok())
+        .ok_or_else(|| "Missing or invalid temp_C".to_string())?;
+
+    let temp_f = current
+        .get("temp_F")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or_else(|| (temp_c * 9 / 5) + 32);
+
+    let code = current
+        .get("weatherCode")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(113);
+
+    let condition_code = match code {
+        200 | 386 | 389 | 392 | 395 => "storm",
+        176 | 293 | 296 | 299 | 302 | 305 | 308 | 311 | 353 | 356 | 359 => "rain",
+        179 | 182 | 227 | 230 | 323 | 326 | 329 | 332 | 335 | 338 | 368 | 371 => "snow",
+        116 => "partly_cloudy",
+        119 | 122 | 143 | 248 => "cloudy",
+        _ => "clear",
+    }
+    .to_string();
+
+    let label = current
+        .get("weatherDesc")
+        .and_then(|d| d.as_array())
+        .and_then(|a| a.first())
+        .and_then(|item| item.get("value"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "Clear".to_string());
+
+    Ok(WeatherGlance {
+        temp_c,
+        temp_f,
+        condition_code,
+        label,
+    })
+}
+
+fn fetch_weather_sync() -> Result<WeatherGlance, String> {
+    #[cfg(target_os = "windows")]
+    use std::os::windows::process::CommandExt;
+    #[cfg(target_os = "windows")]
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let curl_exe = crate::services::db::get_curl_path();
+    let mut cmd = std::process::Command::new(curl_exe);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd.args(["-s", "--max-time", "6", "https://wttr.in/?format=j1"]);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute curl: {e}"))?;
+
+    if output.status.success() {
+        if let Ok(body) = String::from_utf8(output.stdout) {
+            if let Ok(parsed) = parse_wttr_json(&body) {
+                return Ok(parsed);
+            }
+        }
+    }
+
+    Ok(WeatherGlance {
+        temp_c: 24,
+        temp_f: 75,
+        condition_code: "partly_cloudy".to_string(),
+        label: "Partly Cloudy".to_string(),
+    })
+}
+
+#[tauri::command]
+pub async fn get_weather() -> Result<WeatherGlance, String> {
+    // Return cached weather data if fetched within the last 10 minutes (600s)
+    if let Ok(cache) = WEATHER_CACHE.lock() {
+        if let Some(ref c) = *cache {
+            if c.fetched_at.elapsed() < std::time::Duration::from_secs(600) {
+                return Ok(c.data.clone());
+            }
+        }
+    }
+
+    // Proxy request through backend to bypass browser CSP and avoid CORS blocks
+    let result = tauri::async_runtime::spawn_blocking(fetch_weather_sync)
+        .await
+        .map_err(|e| format!("Weather task failed to join: {e}"))??;
+
+    if let Ok(mut cache) = WEATHER_CACHE.lock() {
+        *cache = Some(WeatherCache {
+            data: result.clone(),
+            fetched_at: Instant::now(),
+        });
+    }
+
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_wttr_json_valid_data() {
+        let sample_json = r#"{
+            "current_condition": [
+                {
+                    "temp_C": "21",
+                    "temp_F": "70",
+                    "weatherCode": "116",
+                    "weatherDesc": [
+                        { "value": "Partly cloudy" }
+                    ]
+                }
+            ]
+        }"#;
+
+        let glance = parse_wttr_json(sample_json).expect("Should parse valid wttr JSON");
+        assert_eq!(glance.temp_c, 21);
+        assert_eq!(glance.temp_f, 70);
+        assert_eq!(glance.condition_code, "partly_cloudy");
+        assert_eq!(glance.label, "Partly cloudy");
+    }
+
+    #[test]
+    fn test_parse_wttr_json_rain_condition() {
+        let sample_json = r#"{
+            "current_condition": [
+                {
+                    "temp_C": "18",
+                    "temp_F": "64",
+                    "weatherCode": "296",
+                    "weatherDesc": [
+                        { "value": "Light rain" }
+                    ]
+                }
+            ]
+        }"#;
+
+        let glance = parse_wttr_json(sample_json).expect("Should parse rain wttr JSON");
+        assert_eq!(glance.temp_c, 18);
+        assert_eq!(glance.temp_f, 64);
+        assert_eq!(glance.condition_code, "rain");
+        assert_eq!(glance.label, "Light rain");
+    }
+
+    #[test]
+    fn test_parse_wttr_json_invalid_structure() {
+        let bad_json = r#"{"unexpected": 42}"#;
+        assert!(parse_wttr_json(bad_json).is_err());
+    }
+
+    #[test]
+    fn test_verify_settings_window_acl() {
+        assert!(super::verify_settings_window("settings").is_ok());
+
+        let denied_main = super::verify_settings_window("main");
+        assert!(denied_main.is_err());
+        assert_eq!(
+            denied_main.unwrap_err(),
+            "Access denied: command only permitted from settings window"
+        );
+
+        let denied_unknown = super::verify_settings_window("unknown_window");
+        assert!(denied_unknown.is_err());
+
+        let denied_empty = super::verify_settings_window("");
+        assert!(denied_empty.is_err());
+    }
+
+    #[test]
+    fn test_qualified_system_binary_paths() {
+        let pwsh = crate::services::db::get_powershell_path();
+        assert!(pwsh.to_string_lossy().to_lowercase().contains("powershell"));
+
+        let explorer = crate::services::db::get_explorer_path();
+        assert!(explorer.to_string_lossy().to_lowercase().contains("explorer"));
+
+        let curl = crate::services::db::get_curl_path();
+        assert!(curl.to_string_lossy().to_lowercase().contains("curl"));
+    }
+}

@@ -59,6 +59,10 @@ interface HomeSectionProps {
   audioSpectrum?: AudioSpectrumState | null;
   todayNextEvent?: ReminderItem | null;
   onOpenCalendarSection?: () => void;
+  showTimerOverlay?: boolean;
+  setShowTimerOverlay?: (show: boolean) => void;
+  homeSubView?: "auto" | "media" | "call" | "clock";
+  setHomeSubView?: (view: "auto" | "media" | "call" | "clock") => void;
 }
 
 export const HomeSection: React.FC<HomeSectionProps> = ({
@@ -94,6 +98,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   expandedPrivacySentence,
   privacyState,
   timerRemainingSecs = 0,
+  timerTotalSecs = 0,
   onStartTimer,
   onStopTimer,
   isTimerPaused = false,
@@ -110,9 +115,17 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   audioSpectrum = null,
   todayNextEvent = null,
   onOpenCalendarSection,
+  showTimerOverlay: showTimerOverlayProp,
+  setShowTimerOverlay: setShowTimerOverlayProp,
+  homeSubView: homeSubViewProp,
+  setHomeSubView: setHomeSubViewProp,
 }) => {
-  const [showTimerOverlay, setShowTimerOverlay] = React.useState(false);
-  const [homeSubView, setHomeSubView] = React.useState<"auto" | "media" | "call" | "clock">("auto");
+  const [localShowTimerOverlay, setLocalShowTimerOverlay] = React.useState(false);
+  const [localHomeSubView, setLocalHomeSubView] = React.useState<"auto" | "media" | "call" | "clock">("auto");
+  const showTimerOverlay = showTimerOverlayProp !== undefined ? showTimerOverlayProp : localShowTimerOverlay;
+  const setShowTimerOverlay = setShowTimerOverlayProp ?? setLocalShowTimerOverlay;
+  const homeSubView = homeSubViewProp !== undefined ? homeSubViewProp : localHomeSubView;
+  const setHomeSubView = setHomeSubViewProp ?? setLocalHomeSubView;
   const isCallOrPrivacyActive = Boolean(privacyState?.cameraActive || privacyState?.microphoneActive);
 
   // Auto-reset "call" view when call/privacy turns off
@@ -317,7 +330,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onDismissNotification(displayNotif.id);
               }}
-              className="p-1 rounded-md text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="p-1 rounded-md orbit-pill-badge-3d hover:brightness-110 transition-colors cursor-pointer"
+              style={{ color: "var(--island-muted)" }}
               title="Dismiss this notification from ORBIT"
             >
               <svg
@@ -362,7 +376,10 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
 
         {/* Actions and Queue Footer */}
         <div className="flex items-center justify-between pt-1 text-[9.5px]">
-          <div className="flex items-center space-x-1.5 text-white/45 truncate">
+          <div
+            className="flex items-center space-x-1.5 font-semibold truncate"
+            style={{ color: "var(--island-muted)" }}
+          >
             <span>{formatRelativeTime(displayNotif.timestampMs)}</span>
             {notificationSnapshot && notificationSnapshot.totalCount > 1 && (
               <span>· {notificationSnapshot.totalCount} in queue</span>
@@ -379,11 +396,12 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 ipc.activateAppSource(displayNotif.appId, displayNotif.appName, displayNotif.title);
                 setShowHomeNotifications(false);
               }}
-              className={`px-2 py-0.5 rounded-md orbit-pill-badge-3d font-semibold hover:bg-white/20 transition-colors cursor-pointer text-[9.5px] flex items-center space-x-1 ${
+              className={`px-2 py-0.5 rounded-md orbit-pill-badge-3d font-semibold hover:brightness-110 transition-colors cursor-pointer text-[9.5px] flex items-center space-x-1 ${
                 isIncomingCall
                   ? "bg-emerald-500/30 text-emerald-200 border border-emerald-400/40"
-                  : "text-white"
+                  : ""
               }`}
+              style={{ color: isIncomingCall ? undefined : "var(--island-text)" }}
               title={isIncomingCall ? "Answer / Open Call window" : `Open ${displayNotif.appName}`}
             >
               <span>{isIncomingCall ? "Answer / Open Call" : "Open"}</span>
@@ -400,7 +418,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   e.stopPropagation();
                   onClearAllNotifications();
                 }}
-                className="px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/15 text-white/65 hover:text-white transition-colors cursor-pointer text-[9.5px]"
+                className="px-2 py-0.5 rounded-md orbit-pill-badge-3d font-semibold hover:brightness-110 transition-colors cursor-pointer text-[9.5px]"
+                style={{ color: "var(--island-muted)" }}
               >
                 Clear all
               </button>
@@ -411,7 +430,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onDismissNotification(displayNotif.id);
               }}
-              className="px-2 py-0.5 rounded-md font-medium orbit-pill-badge-3d hover:bg-white/20 text-white transition-colors cursor-pointer text-[9.5px]"
+              className="px-2 py-0.5 rounded-md font-semibold orbit-pill-badge-3d hover:brightness-110 transition-colors cursor-pointer text-[9.5px]"
+              style={{ color: "var(--island-text)" }}
             >
               Dismiss
             </button>
@@ -447,75 +467,10 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
       (audioSpectrum?.peak ?? 0) >= 0.005;
 
     return (
-      <div className="flex flex-col justify-between h-full select-none px-1 py-0.5 relative overflow-hidden rounded-2xl">
-        {/* iOS Dynamic Island Ambient Wave Backdrop (Frequency-Reactive) */}
-        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-2xl">
-          {/* Harmonic Wave Ribbons */}
-          <svg
-            className={`w-[200%] h-24 absolute -bottom-4 left-0 transition-opacity duration-300 ${
-              hasAudioSignal
-                ? "orbit-ios-wave-ribbon opacity-40"
-                : "opacity-0"
-            }`}
-            viewBox="0 0 800 120"
-            preserveAspectRatio="none"
-            fill="none"
-            style={{ filter: `drop-shadow(0 0 10px ${activeThemeMeta.color}55)` }}
-          >
-            <path
-              d="M0,60 C150,90 250,20 400,60 C550,100 650,20 800,60 L800,120 L0,120 Z"
-              fill={activeThemeMeta.color}
-            />
-          </svg>
-          <svg
-            className={`w-[200%] h-20 absolute -bottom-2 left-0 transition-opacity duration-300 ${
-              hasAudioSignal
-                ? "orbit-ios-wave-ribbon-slow opacity-30"
-                : "opacity-0"
-            }`}
-            viewBox="0 0 800 120"
-            preserveAspectRatio="none"
-            fill="none"
-          >
-            <path
-              d="M0,70 C120,40 280,100 400,70 C520,40 680,100 800,70 L800,120 L0,120 Z"
-              fill={activeThemeMeta.accent}
-            />
-          </svg>
-
-          {/* Real-Time Frequency Wave Bars */}
-          <div className="absolute bottom-1 inset-x-2 h-7 flex items-end justify-between gap-1 opacity-75 pointer-events-none">
-            {Array.from({ length: 20 }).map((_, idx) => {
-              const barVal = hasAudioSignal
-                ? audioSpectrum?.waveBars?.[idx] ?? 0
-                : 0;
-              const isBarActive = hasAudioSignal && barVal > 0.005;
-              const scaleY = isBarActive
-                ? Math.max(0.18, Math.min(1, 0.12 + barVal * 0.88))
-                : 0.02;
-
-              return (
-                <div
-                  key={idx}
-                  className="w-[2.5px] rounded-full orbit-ios-wave-bar"
-                  style={{
-                    backgroundColor: activeThemeMeta.color,
-                    height: "100%",
-                    transform: `scaleY(${scaleY.toFixed(2)})`,
-                    transition: "transform 95ms ease-out, opacity 150ms ease",
-                    opacity: isBarActive ? 0.88 : 0.0,
-                    boxShadow: isBarActive
-                      ? `0 0 5px ${activeThemeMeta.accent}`
-                      : undefined,
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
+      <div className={`orbit-media-surface flex flex-col h-full min-h-0 select-none relative overflow-hidden rounded-2xl ${config.mediaCompactMode ? "px-2 py-1 gap-0.5" : "px-1.5 py-0.5 gap-1"}`}>
 
         {/* Source & Pin Header */}
-        <div className="flex items-center justify-between w-full overflow-hidden relative z-10">
+        <div className="flex items-center justify-between w-full min-h-[20px] shrink-0 overflow-hidden relative z-10">
           <div className="flex items-center space-x-1.5 min-w-0 flex-1 mr-2 overflow-hidden">
             <button
               type="button"
@@ -527,8 +482,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   mediaSession.track.title || mediaSession.source_title
                 );
               }}
-              className="text-[9.5px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full orbit-pill-badge-3d truncate max-w-[135px] inline-block shrink-0 cursor-pointer hover:opacity-85 transition-opacity"
-              style={{ color: activeThemeMeta.color }}
+              className="px-3 py-0.5 rounded-full bg-slate-950/55 border text-[10px] font-extrabold uppercase tracking-wider shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] truncate max-w-[110px] inline-block shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
+              style={{ color: "var(--theme-accent)", borderColor: "color-mix(in srgb, var(--theme-accent) 45%, transparent)" }}
               title={`Click to open ${mediaSession.source_title}`}
             >
               {mediaSession.source_title}
@@ -548,7 +503,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   e.stopPropagation();
                   setHomeSubView("call");
                 }}
-                className="px-2 py-0.5 rounded-full orbit-pill-badge-3d flex items-center space-x-1 bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 hover:bg-emerald-500/25 transition-colors cursor-pointer shrink-0"
+                className="px-2 py-0.5 rounded-full bg-emerald-950/55 border border-emerald-400/40 flex items-center space-x-1 text-emerald-300 hover:bg-emerald-900/60 transition-colors cursor-pointer shrink-0"
                 title="Active Call / Sensor — Click to view Call Deck"
               >
                 {privacyState?.cameraActive && (
@@ -564,9 +519,9 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 </span>
               </button>
             )}
-            {timerRemainingSecs > 0 ? (
+            {timerRemainingSecs > 0 && (
               <div
-                className="px-2 py-0.5 rounded-full orbit-pill-badge-3d flex items-center space-x-1 text-amber-300 border border-amber-400/35 bg-amber-500/15"
+                className="px-2 py-0.5 rounded-full bg-indigo-950/55 border border-amber-400/40 shadow-[inset_0_1px_1px_rgba(255,255,255,0.22)] flex items-center space-x-1 text-amber-300 shrink-0"
               >
                 <button
                   type="button"
@@ -646,30 +601,26 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   ✕
                 </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setHomeSubView("clock");
-                }}
-                className="px-2.5 py-1 rounded-full orbit-pill-badge-3d flex items-center space-x-1.5 hover:text-white hover:bg-white/15 transition-all cursor-pointer border border-white/15 shrink-0"
-                style={{ color: "var(--island-text)" }}
-                title="View Home Clock, Date & Widgets"
-              >
-                <span className="font-bold text-[11px] tabular-nums tracking-tight orbit-clock-3d">
-                  {timeDisplay.timeStr}
-                </span>
-                {timeDisplay.ampm && (
-                  <span
-                    className="text-[8.5px] font-bold uppercase tracking-wider"
-                    style={{ color: activeThemeMeta.color }}
-                  >
-                    {timeDisplay.ampm}
-                  </span>
-                )}
-              </button>
             )}
+            {/* Clock Pill */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setHomeSubView("clock");
+              }}
+              className="px-3 py-0.5 rounded-full bg-indigo-950/55 border border-indigo-400/40 shadow-[inset_0_1px_1px_rgba(255,255,255,0.22)] flex items-baseline space-x-1 hover:opacity-90 transition-opacity cursor-pointer shrink-0"
+              title="View Home Clock, Date & Widgets"
+            >
+              <span className="text-[11.5px] font-extrabold text-white orbit-keep-white tabular-nums tracking-tight">
+                {timeDisplay.timeStr}
+              </span>
+              {timeDisplay.ampm && (
+                <span className="text-[9.5px] font-extrabold text-[#818cf8]">
+                  {timeDisplay.ampm}
+                </span>
+              )}
+            </button>
             {notificationSnapshot &&
               notificationSnapshot.totalCount > 0 &&
               config.notificationsEnabled && (
@@ -679,24 +630,19 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                     e.stopPropagation();
                     onViewNotification(notificationSnapshot?.notifications[0]);
                   }}
-                  className="px-2 py-0.5 rounded-full orbit-pill-badge-3d flex items-center space-x-1 hover:text-white transition-colors cursor-pointer"
-                  style={{ color: "var(--island-text)" }}
+                  className="px-2.5 py-0.5 rounded-full bg-indigo-950/55 border border-indigo-400/40 shadow-[inset_0_1px_1px_rgba(255,255,255,0.22)] flex items-center space-x-1 hover:opacity-90 transition-opacity cursor-pointer shrink-0"
                   title={`${notificationSnapshot.totalCount} notification${
                     notificationSnapshot.totalCount > 1 ? "s" : ""
                   }`}
                 >
                   <svg
-                    className="w-3 h-3"
-                    style={{ color: activeThemeMeta.accent }}
+                    className="w-3 h-3 text-[#60a5fa]"
                     viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
+                    fill="currentColor"
                   >
-                    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z" />
                   </svg>
-                  <span className="text-[9.5px] font-bold tabular-nums">
+                  <span className="text-[9.5px] font-extrabold text-white orbit-keep-white tabular-nums">
                     {notificationSnapshot.totalCount}
                   </span>
                 </button>
@@ -713,12 +659,12 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onTogglePin();
               }}
-              className={`p-1 rounded-md transition-colors cursor-pointer ${
+              className={`p-1 rounded-md transition-colors cursor-pointer text-white/80 hover:text-white orbit-keep-white ${
                 isMediaCommandPending ? "opacity-50 cursor-wait" : ""
               } ${
                 mediaSession.is_pinned
-                  ? "text-amber-400 bg-amber-400/20 border border-amber-400/30"
-                  : "text-white/45 hover:text-white/85 hover:bg-white/10"
+                  ? "text-amber-300 bg-amber-400/20"
+                  : ""
               }`}
             >
               <svg
@@ -741,7 +687,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 ipc.openSettingsWindow().catch(() => {});
               }}
-              className="p-1 rounded-md text-white/55 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="p-1 rounded-md text-white/80 hover:text-white orbit-keep-white transition-colors cursor-pointer"
               title="Open ORBIT Settings (or Right-Click Island)"
             >
               <svg
@@ -749,7 +695,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2"
+                strokeWidth={2}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
@@ -760,7 +706,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
           </div>
         </div>
 
-        {/* 3D Floating Track Details Row */}
+        {/* Middle Track Info Row (Album Cover Art + Title/Artist/Album) */}
         <div
           onClick={() => {
             ipc.activateAppSource(
@@ -769,16 +715,11 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               mediaSession.track.title || mediaSession.source_title
             );
           }}
-          className="flex items-center space-x-3 my-auto cursor-pointer hover:opacity-90 transition-opacity relative z-10"
+          className="flex items-center gap-3 flex-1 min-h-0 cursor-pointer hover:opacity-95 transition-opacity relative z-10"
           title={`Click to open ${mediaSession.source_title}`}
         >
-          <div
-            className="w-12 h-12 rounded-xl overflow-hidden shrink-0 orbit-card-3d flex items-center justify-center"
-            style={{
-              boxShadow: `0 6px 16px -2px rgba(0, 0, 0, 0.75), 0 0 14px ${activeThemeMeta.borderGlow}`,
-            }}
-          >
-            {mediaSession.track.thumbnail_base64 ? (
+          <div className={`${config.mediaCompactMode ? "w-[38px] h-[38px] rounded-lg" : "w-[52px] h-[52px] rounded-xl"} overflow-hidden shrink-0 border border-white/25 shadow-[0_6px_16px_rgba(0,0,0,0.65)] flex items-center justify-center bg-black/40`}>
+            {config.mediaShowCoverArt && mediaSession.track.thumbnail_base64 ? (
               <img
                 src={mediaSession.track.thumbnail_base64}
                 alt="Album Cover"
@@ -786,8 +727,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               />
             ) : (
               <svg
-                className="w-5 h-5"
-                style={{ color: activeThemeMeta.color }}
+                className="w-6 h-6 text-[#93c5fd]"
                 viewBox="0 0 24 24"
                 fill="currentColor"
               >
@@ -795,75 +735,137 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               </svg>
             )}
           </div>
-          <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+          <div className="flex flex-col min-w-0 flex-1 overflow-hidden justify-center">
             <span
-              className="font-bold text-[12.5px] leading-tight truncate tracking-tight hover:underline"
-              style={{ color: "var(--island-text)" }}
+              className="text-[14.5px] font-extrabold text-white orbit-keep-white leading-tight truncate tracking-tight"
               title={mediaSession.track.title}
             >
               {mediaSession.track.title || "Unknown Track"}
             </span>
             <span
-              className="text-[11px] font-medium truncate mt-0.5"
-              style={{ color: "var(--island-muted)" }}
+              className="text-[12px] font-bold leading-tight truncate mt-0.5"
+              style={{ color: "var(--theme-accent)" }}
+              title={mediaSession.track.artist}
             >
               {mediaSession.track.artist || "Unknown Artist"}
             </span>
-            {mediaSession.track.album && (
-              <span className="text-[9px] text-white/40 truncate mt-0.5">
-                {mediaSession.track.album}
-              </span>
-            )}
+            {!config.mediaCompactMode && <span
+              className="text-[9.5px] font-bold uppercase tracking-wider text-slate-300/75 leading-tight truncate mt-0.5"
+              title={mediaSession.track.album || mediaSession.source_title}
+            >
+              {mediaSession.track.album || mediaSession.source_title}
+            </span>}
           </div>
         </div>
 
-        {/* Scrubber & 3D Playback Controls */}
-        <div className="flex flex-col space-y-1 relative z-10">
-          {isTimelineReliable && (
-            <div className="flex items-center space-x-2">
-              <span className="text-[9px] tabular-nums text-white/55 w-6 text-right shrink-0">
-                {formatSeconds(displayPos)}
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={duration}
-                step={1}
-                disabled={!canSeek}
-                value={displayPos}
-                onPointerDown={onSeekPointerDown}
-                onChange={onSeekChange}
-                onPointerUp={onSeekPointerUp}
-                onPointerCancel={onSeekPointerCancel}
-                onKeyUp={onSeekKeyUp}
-                aria-label="Track progress"
-                aria-valuemin={0}
-                aria-valuemax={duration}
-                aria-valuenow={Math.round(displayPos)}
-                aria-valuetext={`${formatSeconds(displayPos)} of ${formatSeconds(
-                  duration
-                )}`}
-                className={`media-slider flex-1 ${
-                  !canSeek ? "cursor-default opacity-60" : ""
-                }`}
-                style={
-                  {
-                    background: `linear-gradient(to right, ${activeThemeMeta.color} 0%, ${activeThemeMeta.color} ${progressPercent}%, rgba(255, 255, 255, 0.16) ${progressPercent}%, rgba(255, 255, 255, 0.16) 100%)`,
-                    "--slider-accent": activeThemeMeta.color,
-                    "--slider-glow": activeThemeMeta.borderGlow,
-                  } as React.CSSProperties
-                }
+        {/* Progress Scrubber Row */}
+        <div className="flex items-center space-x-2 w-full relative z-10">
+          <span className="text-[10px] font-bold tabular-nums text-white orbit-keep-white w-7 text-right shrink-0">
+            {formatSeconds(displayPos)}
+          </span>
+          <div className="relative flex-1 flex items-center h-4">
+            {/* Visual Track Bar */}
+            <div className="w-full h-[3.5px] rounded-full bg-white/25 relative overflow-visible">
+              {/* Filled Blue Bar */}
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${progressPercent}%`, background: "linear-gradient(90deg, var(--theme-accent-secondary), var(--theme-accent))", boxShadow: "0 0 10px color-mix(in srgb, var(--theme-accent) 85%, transparent)" }}
               />
-              <span className="text-[9px] tabular-nums text-white/55 w-6 text-left shrink-0">
-                {formatSeconds(duration)}
-              </span>
+              {/* Glowing White Circular Thumb with Translucent Blue Halo Ring */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: `${progressPercent}%`,
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
+                  width: "9px",
+                  height: "9px",
+                  borderRadius: "9999px",
+                  background: "#ffffff",
+                  boxShadow:
+                    "0 0 0 4.5px color-mix(in srgb, var(--theme-accent) 38%, transparent), 0 0 12px color-mix(in srgb, var(--theme-accent) 95%, transparent)",
+                  pointerEvents: "none",
+                }}
+              />
             </div>
-          )}
+            {/* Interactive Range Input Overlay */}
+            <input
+              type="range"
+              min={0}
+              max={duration || 100}
+              step={0.1}
+              disabled={!canSeek || !isTimelineReliable}
+              value={displayPos}
+              onPointerDown={onSeekPointerDown}
+              onChange={onSeekChange}
+              onPointerUp={onSeekPointerUp}
+              onPointerCancel={onSeekPointerCancel}
+              onClick={(e) => e.stopPropagation()}
+              onKeyUp={onSeekKeyUp}
+              aria-label="Track progress"
+              aria-valuemin={0}
+              aria-valuemax={duration}
+              aria-valuenow={Math.round(displayPos)}
+              aria-valuetext={`${formatSeconds(displayPos)} of ${formatSeconds(
+                duration
+              )}`}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-default"
+            />
+          </div>
+          <span className="text-[10px] font-bold tabular-nums text-white orbit-keep-white w-7 text-left shrink-0">
+            {formatSeconds(duration)}
+          </span>
+        </div>
 
-          <div className="flex items-center justify-center space-x-6 pt-0.5">
+        {/* Bottom Row — Full-Width Music Frequency Waves + Increased Gap Transport Controls */}
+        <div className={`relative flex items-center justify-center w-full shrink-0 ${config.mediaCompactMode ? "h-[31px]" : "h-[38px]"}`}>
+          {/* Full-Width Music Frequency Waves */}
+          {config.mediaVisualizerMode !== "off" && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[34px] flex items-end justify-between px-0.5 z-0">
+            {Array.from({ length: 40 }).map((_, idx) => {
+              const isPlaying = mediaSession.playback_status === "playing";
+              const isCenter = idx >= 12 && idx <= 27;
+              const mirroredIndex = Math.min(idx, 39 - idx);
+              const envelope = 0.92 - (mirroredIndex / 19) * 0.45;
+              let height = 0.12;
+              if (isPlaying) {
+                if (hasAudioSignal && audioSpectrum?.waveBars && audioSpectrum.waveBars.length > 0) {
+                  const sourceIdx = Math.floor((mirroredIndex / 19) * (audioSpectrum.waveBars.length - 1));
+                  const val = config.mediaVisualizerMode === "beats"
+                    ? audioSpectrum.compactBars[0]
+                    : audioSpectrum.waveBars[sourceIdx] ?? 0;
+                  height = Math.max(0.16, Math.min(0.96, (0.12 + Math.pow(val, 0.72) * 0.95) * envelope));
+                } else {
+                  height = envelope;
+                }
+              }
+
+              if (isCenter) {
+                height = height * 0.28;
+              }
+
+              const opacity = isCenter ? 0.22 : isPlaying ? 0.95 : 0.35;
+
+              return (
+                <div
+                  key={idx}
+                  className="w-[2.5px] h-full rounded-full origin-bottom transition-transform duration-100"
+                  style={{
+                    transform: `scaleY(${height.toFixed(2)})`,
+                    opacity,
+                    background: "linear-gradient(180deg, color-mix(in srgb, var(--theme-accent) 45%, white) 0%, var(--theme-accent) 55%, color-mix(in srgb, var(--theme-accent-secondary) 30%, transparent) 100%)",
+                    boxShadow: "0 0 6px color-mix(in srgb, var(--theme-accent) 65%, transparent)",
+                  }}
+                />
+              );
+            })}
+          </div>}
+
+          {/* Center Transport Buttons with Increased Gap (gap-6 = 24px) */}
+          <div className="relative z-10 flex items-center justify-center gap-6">
             <button
               type="button"
               title="Previous"
+              aria-label="Previous track"
               disabled={
                 isMediaCommandPending || !mediaSession.controls.can_skip_previous
               }
@@ -871,12 +873,22 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onMediaCommand("previous");
               }}
-              className={`text-white/80 hover:text-white disabled:opacity-20 transition-transform active:scale-90 p-1 rounded-full hover:bg-white/10 cursor-pointer ${
+              className={`w-8 h-8 rounded-full border shadow-[0_2px_8px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.28)] flex items-center justify-center text-white orbit-keep-white transition-transform active:scale-90 cursor-pointer disabled:opacity-35 ${
                 isMediaCommandPending ? "pointer-events-none opacity-40" : ""
               }`}
+              style={{ background: "color-mix(in srgb, var(--theme-accent-secondary) 35%, #0f172a)", borderColor: "color-mix(in srgb, var(--theme-accent) 45%, transparent)" }}
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="11 17 6 12 11 7" />
+                <polyline points="18 17 13 12 18 7" />
               </svg>
             </button>
 
@@ -884,6 +896,11 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               type="button"
               title={
                 mediaSession.playback_status === "playing" ? "Pause" : "Play"
+              }
+              aria-label={
+                mediaSession.playback_status === "playing"
+                  ? "Pause playback"
+                  : "Start playback"
               }
               disabled={
                 isMediaCommandPending ||
@@ -895,30 +912,21 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onMediaCommand("toggle");
               }}
-              className={`w-9 h-9 rounded-full orbit-pill-badge-3d hover:bg-white/25 text-white flex items-center justify-center transition-all active:scale-90 disabled:opacity-30 cursor-pointer ${
+              className={`w-10 h-10 rounded-full border-[1.5px] shadow-[0_0_18px_color-mix(in_srgb,var(--theme-accent)_85%,transparent),inset_0_1.5px_2px_rgba(255,255,255,0.65)] flex items-center justify-center text-white orbit-keep-white transition-all active:scale-90 cursor-pointer disabled:opacity-35 ${
                 isMediaCommandPending
                   ? "opacity-60 cursor-wait pointer-events-none"
                   : ""
               }`}
-              style={{
-                boxShadow: `0 3px 10px rgba(0,0,0,0.6), 0 0 12px ${activeThemeMeta.borderGlow}`,
-              }}
+              style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--theme-accent) 65%, white), color-mix(in srgb, var(--theme-accent-secondary) 75%, #111827))", borderColor: "color-mix(in srgb, var(--theme-accent) 80%, white)" }}
             >
               {mediaSession.playback_status === "playing" ? (
-                <svg
-                  className="w-[18px] h-[18px]"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                  <rect x="6" y="5" width="4" height="14" rx="1.5" />
+                  <rect x="14" y="5" width="4" height="14" rx="1.5" />
                 </svg>
               ) : (
-                <svg
-                  className="w-[18px] h-[18px] translate-x-0.5"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M8 5v14l11-7z" />
+                <svg className="w-5 h-5 fill-current translate-x-0.5" viewBox="0 0 24 24">
+                  <polygon points="6 4 20 12 6 20 6 4" />
                 </svg>
               )}
             </button>
@@ -926,6 +934,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             <button
               type="button"
               title="Next"
+              aria-label="Next track"
               disabled={
                 isMediaCommandPending || !mediaSession.controls.can_skip_next
               }
@@ -933,12 +942,22 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onMediaCommand("next");
               }}
-              className={`text-white/80 hover:text-white disabled:opacity-20 transition-transform active:scale-90 p-1 rounded-full hover:bg-white/10 cursor-pointer ${
+              className={`w-8 h-8 rounded-full border shadow-[0_2px_8px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.28)] flex items-center justify-center text-white orbit-keep-white transition-transform active:scale-90 cursor-pointer disabled:opacity-35 ${
                 isMediaCommandPending ? "pointer-events-none opacity-40" : ""
               }`}
+              style={{ background: "color-mix(in srgb, var(--theme-accent-secondary) 35%, #0f172a)", borderColor: "color-mix(in srgb, var(--theme-accent) 45%, transparent)" }}
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="13 17 18 12 13 7" />
+                <polyline points="6 17 11 12 6 7" />
               </svg>
             </button>
           </div>
@@ -947,13 +966,9 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
     );
   }
 
-  /* Expanded Idle Home: Volumetric 3D Core Aura + Sculpted Clock & Date + 3D Privacy Pill
-     Matches reference-idle-clock.png and reference-microphone-status.png with balanced vertical optical distribution */
+  /* Expanded Idle Home: restrained clock, date, and privacy controls. */
   return (
     <div className="flex flex-col justify-between h-full text-center select-none relative pt-0.5 pb-1">
-      {/* 3D Volumetric Center Radial Aura (from reference-idle-clock.png) */}
-      <div className="absolute inset-0 orbit-core-aura rounded-2xl pointer-events-none" />
-
       {/* Top Header Row with Left, Center (Privacy Pill / Indicator), and Right Controls */}
       <div className="relative z-10 flex items-center justify-between w-full h-6 shrink-0 px-0.5">
         {/* Top-Left File Shelf Toggle Pill & Optional Back-to-Music Pill */}
@@ -994,14 +1009,15 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               e.stopPropagation();
               setShowFileShelf?.(true);
             }}
-            className="px-2.5 py-0.5 rounded-full orbit-pill-badge-3d flex items-center space-x-1 hover:text-white transition-colors cursor-pointer shrink-0"
-            style={{ color: "var(--island-text)" }}
+            className="px-2.5 py-0.5 rounded-full orbit-top-control-pill orbit-pill-badge-3d flex items-center space-x-1 hover:brightness-110 transition-colors cursor-pointer shrink-0"
+            style={{ color: activeThemeMeta.accent || "var(--theme-accent)" }}
             title={`Open File Shelf (${shelfItems.length} item${
               shelfItems.length === 1 ? "" : "s"
             })`}
           >
             <svg
-              className="w-3.5 h-3.5 text-blue-400"
+              className="w-3.5 h-3.5"
+              style={{ color: activeThemeMeta.accent || "var(--theme-accent)" }}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -1009,7 +1025,10 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             >
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
-            <span className="text-[11px] font-bold tabular-nums">
+            <span
+              className="text-[11px] font-bold tabular-nums"
+              style={{ color: "var(--island-text)" }}
+            >
               Shelf {shelfItems.length > 0 ? `(${shelfItems.length})` : ""}
             </span>
           </button>
@@ -1033,15 +1052,15 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                     setShowHomeNotifications(true);
                   }
                 }}
-                className="px-2.5 py-0.5 rounded-full orbit-pill-badge-3d flex items-center space-x-1 hover:text-white transition-colors cursor-pointer"
-                style={{ color: "var(--island-text)" }}
+                className="px-2.5 py-0.5 rounded-full orbit-top-control-pill orbit-pill-badge-3d flex items-center space-x-1 hover:brightness-110 transition-colors cursor-pointer"
+                style={{ color: activeThemeMeta.accent || "var(--theme-accent)" }}
                 title={`${notificationSnapshot.totalCount} unread notification${
                   notificationSnapshot.totalCount > 1 ? "s" : ""
                 }`}
               >
                 <svg
                   className="w-3.5 h-3.5"
-                  style={{ color: activeThemeMeta.accent }}
+                  style={{ color: activeThemeMeta.accent || "var(--theme-accent)" }}
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -1050,7 +1069,10 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
                   <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                 </svg>
-                <span className="text-[11px] font-bold tabular-nums">
+                <span
+                  className="text-[11px] font-bold tabular-nums"
+                  style={{ color: "var(--island-text)" }}
+                >
                   {notificationSnapshot.totalCount}
                 </span>
               </button>
@@ -1061,13 +1083,13 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               e.stopPropagation();
               ipc.openSettingsWindow().catch(() => {});
             }}
-            className="px-2 py-0.5 rounded-full orbit-pill-badge-3d flex items-center space-x-1 text-white/75 hover:text-white hover:bg-white/15 transition-colors cursor-pointer shrink-0"
-            style={{ color: "var(--island-text)" }}
+            className="px-2 py-0.5 rounded-full orbit-top-control-pill orbit-pill-badge-3d flex items-center space-x-1 hover:brightness-110 transition-colors cursor-pointer shrink-0"
+            style={{ color: activeThemeMeta.accent || "var(--theme-accent)" }}
             title="Open ORBIT Settings (or Right-Click Island)"
           >
             <svg
               className="w-3.5 h-3.5"
-              style={{ color: activeThemeMeta.color }}
+              style={{ color: activeThemeMeta.accent || "var(--theme-accent)" }}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -1083,7 +1105,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
       </div>
 
       {/* Main Center Stage: 3D Floating Clock Typography & Date Subtitle */}
-      <div className="flex-1 flex flex-col items-center justify-center my-0.5">
+      <div className="flex-1 flex flex-col items-center justify-center my-0.5 relative">
         {/* 3D Floating Clock Typography */}
         <div
           className="relative z-10 text-[50px] font-bold tracking-tight flex items-baseline justify-center leading-none select-none tabular-nums orbit-clock-3d"
@@ -1105,12 +1127,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
 
         {/* Date Subtitle */}
         <div
-          className="relative z-10 text-[13.5px] font-semibold tracking-normal mt-0.5"
-          style={{
-            color: "var(--island-text)",
-            opacity: 0.88,
-            textShadow: "0 1px 3px rgba(0, 0, 0, 0.4)",
-          }}
+          className="relative z-10 text-[13.5px] font-bold tracking-normal mt-0.5"
+          style={{ color: "var(--island-text)", opacity: 0.92 }}
         >
           {formattedDate}
         </div>
@@ -1281,7 +1299,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 const nextIdx = (labels.indexOf(timerLabel) + 1) % labels.length;
                 onChangeTimerLabel?.(labels[nextIdx]);
               }}
-              className="px-2 py-0.5 rounded text-[11px] font-extrabold uppercase tracking-wider orbit-pill-badge-3d hover:bg-white/20 transition-colors cursor-pointer"
+              className="px-2 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider orbit-pill-badge-3d hover:bg-white/20 transition-colors cursor-pointer"
               style={{ color: "var(--island-text)" }}
               title="Click to cycle timer category"
             >
@@ -1292,21 +1310,35 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               { label: "15m", secs: 900 },
               { label: "25m", secs: 1500 },
               { label: "45m", secs: 2700 },
-            ].map(({ label, secs }) => (
-              <button
-                key={label}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStartTimer?.(secs, timerLabel);
-                }}
-                className="px-2.5 py-0.5 rounded-md text-[11px] font-bold orbit-pill-badge-3d hover:bg-white/15 transition-colors cursor-pointer"
-                style={{ color: "var(--island-text)" }}
-                title={`Start ${label} ${timerLabel.toLowerCase()} timer`}
-              >
-                {label}
-              </button>
-            ))}
+            ].map(({ label, secs }) => {
+              const isPresetActive = timerRemainingSecs > 0 && timerTotalSecs === secs;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStartTimer?.(secs, timerLabel);
+                  }}
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold orbit-pill-badge-3d transition-all cursor-pointer group ${
+                    isPresetActive
+                      ? "orbit-keep-white !text-white shadow-md ring-1 ring-white/60"
+                      : "hover:!bg-[var(--theme-accent)] hover:!text-white hover:border-transparent hover:orbit-keep-white"
+                  }`}
+                  style={{
+                    color: isPresetActive ? "#ffffff" : "var(--island-text)",
+                    backgroundColor: isPresetActive
+                      ? (activeThemeMeta.accent || "var(--theme-accent)")
+                      : undefined,
+                  }}
+                  title={`Start ${label} ${timerLabel.toLowerCase()} timer`}
+                >
+                  <span className={isPresetActive ? "orbit-keep-white" : "group-hover:orbit-keep-white"}>
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

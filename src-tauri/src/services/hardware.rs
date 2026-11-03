@@ -28,6 +28,8 @@ pub struct HardwareMetrics {
     pub screen_recording_active: bool,
     pub active_download_count: u32,
     pub last_completed_download: Option<String>,
+    pub battery_saver_active: bool,
+    pub os_transparency_enabled: bool,
 }
 
 impl Default for HardwareMetrics {
@@ -49,11 +51,13 @@ impl Default for HardwareMetrics {
             hotspot_active: false,
             network_upload_speed_bps: 0,
             network_download_speed_bps: 0,
-            gpu_name: "Unavailable".to_string(),
-            gpu_usage: None,
+            gpu_name: "Graphics".to_string(),
+            gpu_usage: Some(0.0),
             screen_recording_active: false,
             active_download_count: 0,
             last_completed_download: None,
+            battery_saver_active: false,
+            os_transparency_enabled: true,
         }
     }
 }
@@ -75,9 +79,19 @@ pub struct HardwareManager {
 
 impl HardwareManager {
     pub fn new() -> Self {
+        let (battery_percentage, ac_power_connected, battery_charging) = get_power_status();
+        let initial_metrics = HardwareMetrics {
+            battery_percentage,
+            ac_power_connected,
+            battery_charging,
+            battery_saver_active: is_battery_saver_active(),
+            os_transparency_enabled: is_os_transparency_enabled(),
+            ..HardwareMetrics::default()
+        };
         Self {
             is_running: Arc::new(AtomicBool::new(false)),
-            last_metrics: Arc::new(Mutex::new(collect_metrics_once(None, None))),
+            // Keep app setup fast. The monitor thread fills in real metrics after launch.
+            last_metrics: Arc::new(Mutex::new(initial_metrics)),
         }
     }
 
@@ -88,22 +102,18 @@ impl HardwareManager {
     pub fn free_up_memory(&self) -> MemoryCleanResult {
         let (before_used, _, _) = get_ram_metrics();
         let trimmed_processes = clean_working_sets();
-        let (after_used, _, after_pct) = get_ram_metrics();
-
-        let freed_bytes = before_used.saturating_sub(after_used);
-        let freed_mb = round_one_decimal(freed_bytes as f32 / (1024.0 * 1024.0));
-
-        {
-            let mut guard = self.last_metrics.lock().unwrap();
-            guard.ram_used_bytes = after_used;
-            guard.ram_percentage = after_pct;
-        }
+        std::thread::sleep(Duration::from_millis(100));
+        let (ram_used_bytes, _, ram_percentage) = get_ram_metrics();
+        let freed_bytes = system_memory_freed(before_used, ram_used_bytes);
+        let mut metrics = self.last_metrics.lock().unwrap();
+        metrics.ram_used_bytes = ram_used_bytes;
+        metrics.ram_percentage = ram_percentage;
 
         MemoryCleanResult {
             freed_bytes,
-            freed_mb,
-            ram_used_bytes: after_used,
-            ram_percentage: after_pct,
+            freed_mb: round_one_decimal(freed_bytes as f32 / (1024.0 * 1024.0)),
+            ram_used_bytes,
+            ram_percentage,
             trimmed_processes,
         }
     }
@@ -176,6 +186,8 @@ impl HardwareManager {
                         screen_recording_active,
                         active_download_count,
                         last_completed_download,
+                        battery_saver_active: is_battery_saver_active(),
+                        os_transparency_enabled: is_os_transparency_enabled(),
                     };
 
                     {
@@ -223,6 +235,8 @@ pub fn collect_metrics_once(
         screen_recording_active: is_screen_recording_active(),
         active_download_count: 0,
         last_completed_download: None,
+        battery_saver_active: is_battery_saver_active(),
+        os_transparency_enabled: is_os_transparency_enabled(),
     }
 }
 
@@ -250,6 +264,46 @@ fn round_one_decimal(val: f32) -> f32 {
     (val * 10.0).round() / 10.0
 }
 
+fn system_memory_freed(before_used: u64, after_used: u64) -> u64 {
+    before_used.saturating_sub(after_used)
+}
+
+#[cfg(target_os = "windows")]
+fn trim_process_in_session(pid: u32, current_session: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, FALSE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::ProcessStatus::K32EmptyWorkingSet;
+    use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
+    };
+
+    if pid <= 4 {
+        return false;
+    }
+
+    unsafe {
+        let mut process_session = 0u32;
+        if ProcessIdToSessionId(pid, &mut process_session) == FALSE
+            || process_session != current_session
+        {
+            return false;
+        }
+
+        let handle = OpenProcess(
+            PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA,
+            FALSE,
+            pid,
+        );
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return false;
+        }
+
+        let trimmed = K32EmptyWorkingSet(handle) != 0;
+        CloseHandle(handle);
+        trimmed
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn clean_working_sets() -> u32 {
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE, INVALID_HANDLE_VALUE};
@@ -257,13 +311,18 @@ fn clean_working_sets() -> u32 {
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
-    use windows_sys::Win32::System::ProcessStatus::K32EmptyWorkingSet;
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
-    };
+    use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 
     let mut trimmed_count = 0u32;
+    let current_pid = unsafe { GetCurrentProcessId() };
+    let mut current_session = 0u32;
+
     unsafe {
+        if ProcessIdToSessionId(current_pid, &mut current_session) == FALSE {
+            return 0;
+        }
+
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snapshot == INVALID_HANDLE_VALUE {
             return 0;
@@ -271,22 +330,11 @@ fn clean_working_sets() -> u32 {
 
         let mut entry: PROCESSENTRY32W = std::mem::zeroed();
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-
         if Process32FirstW(snapshot, &mut entry) != FALSE {
             loop {
-                // Ignore system idle / kernel process (PID <= 4)
-                if entry.th32ProcessID > 4 {
-                    let handle = OpenProcess(
-                        PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA,
-                        FALSE,
-                        entry.th32ProcessID,
-                    );
-                    if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
-                        if K32EmptyWorkingSet(handle) != 0 {
-                            trimmed_count += 1;
-                        }
-                        CloseHandle(handle);
-                    }
+                // Limit trimming to apps in ORBIT's sign-in session, not Windows services.
+                if trim_process_in_session(entry.th32ProcessID, current_session) {
+                    trimmed_count += 1;
                 }
 
                 if Process32NextW(snapshot, &mut entry) == FALSE {
@@ -294,7 +342,6 @@ fn clean_working_sets() -> u32 {
                 }
             }
         }
-
         CloseHandle(snapshot);
     }
 
@@ -416,6 +463,64 @@ fn get_power_status() -> (Option<u8>, Option<bool>, Option<bool>) {
 #[cfg(not(target_os = "windows"))]
 fn get_power_status() -> (Option<u8>, Option<bool>, Option<bool>) {
     (None, None, None)
+}
+
+#[cfg(target_os = "windows")]
+fn is_battery_saver_active() -> bool {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut status = unsafe { std::mem::zeroed::<SYSTEM_POWER_STATUS>() };
+    if unsafe { GetSystemPowerStatus(&mut status) } != 0 {
+        status.SystemStatusFlag == 1
+    } else {
+        false
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_battery_saver_active() -> bool {
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn is_os_transparency_enabled() -> bool {
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CURRENT_USER, KEY_READ,
+    };
+    let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let val_name: Vec<u16> = "EnableTransparency"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut hkey = std::ptr::null_mut();
+    if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey) } == 0 {
+        let mut val: u32 = 1;
+        let mut val_len = std::mem::size_of::<u32>() as u32;
+        let mut val_type = 0u32;
+        let query_res = unsafe {
+            RegQueryValueExW(
+                hkey,
+                val_name.as_ptr(),
+                std::ptr::null_mut(),
+                &mut val_type,
+                &mut val as *mut u32 as *mut u8,
+                &mut val_len,
+            )
+        };
+        unsafe { RegCloseKey(hkey) };
+        if query_res == 0 {
+            return val != 0;
+        }
+    }
+    true
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_os_transparency_enabled() -> bool {
+    true
 }
 
 #[cfg(target_os = "windows")]
@@ -852,14 +957,22 @@ mod tests {
     }
 
     #[test]
-    fn free_up_memory_executes_safely_and_returns_valid_metrics() {
-        let hw = HardwareManager::new();
-        let result = hw.free_up_memory();
-        assert!(result.ram_percentage >= 0.0 && result.ram_percentage <= 100.0);
-        assert!(result.freed_mb >= 0.0);
-        let current = hw.get_metrics();
-        assert_eq!(current.ram_used_bytes, result.ram_used_bytes);
-        assert_eq!(current.ram_percentage, result.ram_percentage);
+    fn system_memory_delta_never_reports_more_freed_than_observed() {
+        assert_eq!(system_memory_freed(800, 500), 300);
+        assert_eq!(system_memory_freed(500, 800), 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn working_set_trim_can_target_only_the_current_session_process() {
+        use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+        use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+
+        let current_pid = unsafe { GetCurrentProcessId() };
+        let mut current_session = 0u32;
+        assert_ne!(unsafe { ProcessIdToSessionId(current_pid, &mut current_session) }, 0);
+        assert!(!trim_process_in_session(4, current_session));
+        assert!(trim_process_in_session(current_pid, current_session));
     }
 
     #[test]

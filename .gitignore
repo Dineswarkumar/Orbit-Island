@@ -14,6 +14,7 @@ dist-ssr/
 # Tauri / Rust build artifacts
 src-tauri/target/
 src-tauri/gen/
+/release/
 
 # Logs & temp files
 *.log

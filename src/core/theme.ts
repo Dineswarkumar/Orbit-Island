@@ -18,6 +18,8 @@ export interface ThemeMeta {
   text: string; // Primary high-contrast text
   muted: string; // Secondary / caption text
   swatches: [string, string, string]; // [canvas, accent, secondary/highlight]
+  glassTint?: string; // High-contrast adaptive tint for Theme-Tinted Glass (smoked)
+  glassBorder?: string; // High-contrast border highlight for glass modes
 }
 
 export const THEMES: ThemeMeta[] = [
@@ -39,6 +41,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#f5f5f7",
     muted: "#86868b",
     swatches: ["#000000", "#0a84ff", "#ffffff"],
+    glassTint: "#0a84ff",
+    glassBorder: "rgba(10, 132, 255, 0.65)",
   },
   {
     id: "black",
@@ -58,6 +62,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#f5f5f7",
     muted: "#86868b",
     swatches: ["#000000", "#0a84ff", "#30d158"],
+    glassTint: "#0a84ff",
+    glassBorder: "rgba(10, 132, 255, 0.65)",
   },
   {
     id: "obsidian",
@@ -77,6 +83,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#f8fafc",
     muted: "#94a3b8",
     swatches: ["#070a12", "#38bdf8", "#2563eb"],
+    glassTint: "#38bdf8",
+    glassBorder: "rgba(56, 189, 248, 0.65)",
   },
   {
     id: "dynamic",
@@ -96,6 +104,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#f8fafc",
     muted: "#a5b4fc",
     swatches: ["#0b0d16", "#6366f1", "#a855f7"],
+    glassTint: "#6366f1",
+    glassBorder: "rgba(99, 102, 241, 0.65)",
   },
   {
     id: "dark",
@@ -115,6 +125,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#ffffff",
     muted: "#cbd5e1",
     swatches: ["#0f172a", "#2dd4bf", "#38bdf8"],
+    glassTint: "#2dd4bf",
+    glassBorder: "rgba(45, 212, 191, 0.65)",
   },
   {
     id: "catppuccin",
@@ -134,6 +146,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#cdd6f4",
     muted: "#a6adc8",
     swatches: ["#181825", "#cba6f7", "#fab387"],
+    glassTint: "#cba6f7",
+    glassBorder: "rgba(203, 166, 247, 0.65)",
   },
   {
     id: "cyber",
@@ -153,6 +167,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#ffffff",
     muted: "#67e8f9",
     swatches: ["#030306", "#00f0ff", "#ff007f"],
+    glassTint: "#00f0ff",
+    glassBorder: "rgba(0, 240, 255, 0.70)",
   },
   {
     id: "espresso",
@@ -172,6 +188,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#fff1f2",
     muted: "#fda4af",
     swatches: ["#12070c", "#f43f5e", "#f59e0b"],
+    glassTint: "#f43f5e",
+    glassBorder: "rgba(244, 63, 94, 0.65)",
   },
   {
     id: "evergreen",
@@ -191,6 +209,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#ecfdf5",
     muted: "#6ee7b7",
     swatches: ["#06120e", "#10b981", "#34d399"],
+    glassTint: "#10b981",
+    glassBorder: "rgba(16, 185, 129, 0.65)",
   },
   {
     id: "nord",
@@ -210,6 +230,8 @@ export const THEMES: ThemeMeta[] = [
     text: "#f0f9ff",
     muted: "#93c5fd",
     swatches: ["#0a1220", "#fbbf24", "#38bdf8"],
+    glassTint: "#fbbf24",
+    glassBorder: "rgba(251, 191, 36, 0.65)",
   },
   {
     id: "light",
@@ -229,17 +251,31 @@ export const THEMES: ThemeMeta[] = [
     text: "#0f172a",
     muted: "#64748b",
     swatches: ["#f1f5f9", "#0066cc", "#ffffff"],
+    glassTint: "#0066cc",
+    glassBorder: "rgba(0, 102, 204, 0.65)",
   },
 ];
 
-export const getThemeMeta = (id: string): ThemeMeta => {
-  if (id === "system") {
+export type ThemeOption = ThemeMeta;
+export const ORBIT_THEMES: ThemeMeta[] = THEMES;
+
+export const resolveEffectiveTheme = (themeId: string | undefined): string => {
+  if (!themeId || themeId === "system") {
     const isLight =
       typeof window !== "undefined" &&
       window.matchMedia &&
       window.matchMedia("(prefers-color-scheme: light)").matches;
-    const targetId = isLight ? "light" : "black";
-    return THEMES.find((t) => t.id === targetId) || THEMES[1];
+    return isLight ? "light" : "black";
   }
-  return THEMES.find((t) => t.id === id) || THEMES[1];
+  return themeId;
+};
+
+export const getThemeClassName = (themeId: string | undefined): string => {
+  const resolved = resolveEffectiveTheme(themeId);
+  return `theme-${resolved}`;
+};
+
+export const getThemeMeta = (id: string): ThemeMeta => {
+  const effectiveId = resolveEffectiveTheme(id);
+  return THEMES.find((t) => t.id === effectiveId) || THEMES.find((t) => t.id === id) || THEMES[1];
 };

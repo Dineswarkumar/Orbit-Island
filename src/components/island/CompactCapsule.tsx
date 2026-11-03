@@ -373,7 +373,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
         ) {
           return (
             <div
-              className="flex items-center space-x-1 text-[11px] font-bold leading-none shrink-0 border-l border-white/15 pl-1.5"
+              className="flex items-center space-x-1 text-[11px] font-bold leading-none shrink-0 border-l border-white/20 pl-1.5"
               title={`${weatherInfo.label} (${weatherInfo.tempC}°C / ${weatherInfo.tempF}°F)`}
               style={{ color: "var(--island-muted)" }}
             >
@@ -454,7 +454,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                   />
                 </svg>
               )}
-              <span>
+              <span className="font-bold tabular-nums" style={{ color: "var(--island-text)" }}>
                 {config.weatherUnit === "F" ? `${weatherInfo.tempF}°` : `${weatherInfo.tempC}°`}
               </span>
             </div>
@@ -466,7 +466,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
 
   return (
     <div
-      className="absolute inset-0 flex items-center justify-between"
+      className="absolute inset-0 flex items-center justify-between z-[3]"
       style={{
         opacity: isExpanded ? 0 : 1,
         transform: isExpanded
@@ -563,7 +563,8 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                     <span
                       className={`${
                         isNotifHovered ? "text-[14.5px]" : "text-[11px]"
-                      } font-bold text-white truncate transition-all duration-150`}
+                      } font-bold truncate transition-all duration-150`}
+                      style={{ color: "var(--island-text)" }}
                     >
                       {transientNotif.title || transientNotif.appName}
                     </span>
@@ -573,7 +574,8 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                         <span
                           className={`${
                             isNotifHovered ? "text-[12px]" : "text-[9.5px]"
-                          } text-white/55 truncate font-medium shrink-0 max-w-[115px] transition-all duration-150`}
+                          } truncate font-medium shrink-0 max-w-[115px] transition-all duration-150`}
+                          style={{ color: "var(--island-muted)" }}
                         >
                           · {transientNotif.appName}
                         </span>
@@ -599,9 +601,10 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                   <span
                     className={`${
                       isNotifHovered
-                        ? "text-[13px] text-slate-100 line-clamp-2 whitespace-normal leading-snug mt-0.5 pb-0.5"
-                        : "text-[10.5px] text-slate-300 truncate mt-0.5"
+                        ? "text-[13px] line-clamp-2 whitespace-normal leading-snug mt-0.5 pb-0.5"
+                        : "text-[10.5px] truncate mt-0.5"
                     } font-medium transition-all duration-150`}
+                    style={{ color: "var(--island-muted)" }}
                   >
                     {transientNotif.body || transientNotif.title}
                   </span>
@@ -610,14 +613,14 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
 
               {/* Resting Progress Bar */}
               {!isNotifHovered && (
-                <div className="w-full h-[2.5px] rounded-full bg-white/10 mt-1.5 overflow-hidden">
+                <div className="w-full h-[2.5px] rounded-full bg-black/15 dark:bg-white/20 orbit-well-3d mt-1.5 overflow-hidden">
                   <div
                     key={transientNotif.id}
                     className="h-full rounded-full notification-progress-bar"
                     style={
                       {
-                        backgroundColor: isIncomingCall ? "#10b981" : activeThemeMeta.accent,
-                        opacity: 0.85,
+                        backgroundColor: isIncomingCall ? "#10b981" : (activeThemeMeta.accent || "var(--theme-accent)"),
+                        opacity: 0.95,
                         animationPlayState: "running",
                         "--notif-duration": `${
                           notificationRemainingMs ||
@@ -659,11 +662,11 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                       .catch(() => {});
                     onDismissNotification(transientNotif.id);
                   }}
-                  className={`px-3.5 py-1 rounded-lg text-[11.5px] font-bold ${
+                  className={`px-3.5 py-1 rounded-lg text-[11.5px] font-bold orbit-keep-white transition-all cursor-pointer ${
                     isIncomingCall
-                      ? "bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 hover:bg-emerald-500/40"
-                      : "bg-cyan-500/20 text-cyan-200 border border-cyan-400/35 hover:bg-cyan-500/35"
-                  } transition-colors cursor-pointer`}
+                      ? "bg-gradient-to-b from-emerald-500 to-emerald-600 text-white border border-white/80 shadow-[0_2px_8px_rgba(16,185,129,0.4),inset_0_1px_1px_rgba(255,255,255,0.6)] hover:brightness-110"
+                      : "bg-gradient-to-b from-blue-500 to-blue-600 text-white border border-white/80 shadow-[0_2px_8px_rgba(37,99,235,0.4),inset_0_1px_1px_rgba(255,255,255,0.6)] hover:brightness-110"
+                  }`}
                   title={isIncomingCall ? "Answer / Open Call window" : `Open ${transientNotif.appName}`}
                 >
                   {isIncomingCall ? "Answer / Open Call" : "Open"}
@@ -675,7 +678,8 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                     e.stopPropagation();
                     onViewNotification?.(transientNotif);
                   }}
-                  className="px-2.5 py-1 rounded-lg text-[11.5px] font-medium bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg text-[11.5px] font-bold orbit-pill-badge-3d hover:brightness-110 transition-all cursor-pointer"
+                  style={{ color: "var(--island-text)" }}
                   title="View full details inside ORBIT"
                 >
                   View
@@ -688,7 +692,8 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                   e.stopPropagation();
                   onDismissNotification(transientNotif.id);
                 }}
-                className="px-3.5 py-1 rounded-lg text-[11.5px] font-medium bg-white/10 text-white/80 hover:bg-rose-500/25 hover:text-rose-200 transition-colors cursor-pointer"
+                className="px-3.5 py-1 rounded-lg text-[11.5px] font-bold orbit-pill-badge-3d hover:!bg-rose-500/25 hover:!text-rose-200 transition-all cursor-pointer"
+                style={{ color: "var(--island-text)" }}
                 title="Dismiss from ORBIT"
               >
                 Dismiss
@@ -774,7 +779,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
             </div>
 
             {/* 6-Second Auto-Revert Progress Bar */}
-            <div className="w-full h-[2.5px] rounded-full bg-white/10 mt-1 overflow-hidden shrink-0">
+            <div className="w-full h-[2.5px] rounded-full bg-black/15 dark:bg-white/20 orbit-well-3d mt-1 overflow-hidden shrink-0">
               <div
                 className="h-full rounded-full notification-progress-bar"
                 style={
@@ -987,14 +992,11 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
             <div className="w-[1px] h-4 bg-white/15 shrink-0" />
 
             {/* Right: Spacious Media Module */}
-            <div className="flex items-center space-x-1.5 min-w-0 flex-1 justify-between pl-1">
+            <div className="orbit-media-surface flex items-center space-x-1.5 min-w-0 flex-1 justify-between pl-1">
               <div
-                className="w-5 h-5 rounded-full overflow-hidden shrink-0 flex items-center justify-center orbit-well-3d"
-                style={{
-                  boxShadow: `0 1px 4px rgba(0,0,0,0.5), 0 0 6px ${activeThemeMeta.borderGlow}`,
-                }}
+                className="w-5 h-5 rounded-md overflow-hidden shrink-0 flex items-center justify-center border border-white/30 shadow-md bg-black/40"
               >
-                {mediaSession.track.thumbnail_base64 ? (
+                {config.mediaShowCoverArt && mediaSession.track.thumbnail_base64 ? (
                   <img
                     src={mediaSession.track.thumbnail_base64}
                     alt="Album Art"
@@ -1002,8 +1004,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                   />
                 ) : (
                   <svg
-                    className="w-3 h-3"
-                    style={{ color: activeThemeMeta.color }}
+                    className="w-3 h-3 text-[#93c5fd]"
                     viewBox="0 0 24 24"
                     fill="currentColor"
                   >
@@ -1013,34 +1014,40 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
               </div>
               <div className="flex flex-col min-w-0 flex-1 text-left px-1 overflow-hidden leading-tight max-w-[78px]">
                 <span
-                  className="text-[9.5px] font-semibold truncate text-white leading-tight"
+                  className="text-[9.5px] font-semibold truncate text-white orbit-keep-white leading-tight"
                   title={mediaSession.track.title}
                 >
                   {mediaSession.track.title || "Media"}
                 </span>
-                <span className="text-[8px] font-medium truncate text-white/50 leading-tight">
+                <span className="text-[8px] font-medium truncate text-[#93c5fd] leading-tight">
                   {mediaSession.track.artist || mediaSession.source_title || "Playing"}
                 </span>
               </div>
               <div className="flex items-center space-x-[2px] h-3.5 shrink-0">
-                {[1, 2, 3].map((idx) => {
+                {config.mediaVisualizerMode !== "off" && [0, 1, 2].map((idx) => {
                   const isPlaying = mediaSession.playback_status === "playing";
-                  const barVal = isPlaying ? (audioSpectrum?.compactBars?.[idx - 1] ?? 0) : 0;
+                  const barVal = isPlaying
+                    ? config.mediaVisualizerMode === "beats"
+                      ? audioSpectrum?.compactBars?.[0] ?? 0
+                      : audioSpectrum?.compactBars?.[idx] ?? 0
+                    : 0;
                   const hasFreq = isPlaying && (audioSpectrum?.peak ?? 0) >= 0.005 && barVal > 0.005;
+                  const fallbackBars = [0.45, 0.85, 0.55];
                   const scaleY = hasFreq
                     ? Math.max(0.18, Math.min(1, 0.12 + barVal * 0.88))
-                    : 0.02;
+                    : isPlaying
+                    ? fallbackBars[idx]
+                    : 0.15;
                   return (
                     <div
                       key={idx}
-                      className="eq-bar"
+                      className="w-[2px] h-full rounded-full origin-bottom"
                       style={{
-                        backgroundColor: activeThemeMeta.color,
-                        width: "2px",
-                        height: "100%",
                         transform: `scaleY(${scaleY.toFixed(2)})`,
                         transition: "transform 95ms ease-out",
-                        opacity: hasFreq ? 0.95 : 0.0,
+                        background: "linear-gradient(180deg, color-mix(in srgb, var(--theme-accent) 55%, white) 0%, var(--theme-accent) 60%, var(--theme-accent-secondary) 100%)",
+                        boxShadow: "0 0 6px color-mix(in srgb, var(--theme-accent) 80%, transparent)",
+                        opacity: isPlaying ? 0.95 : 0.35,
                       }}
                     />
                   );
@@ -1163,7 +1170,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
       )
     ) : isMediaActive && mediaSession ? (
         /* Compact 3D Media Pill (140x40 px) */
-        <div className="flex items-center justify-center w-full h-full px-2.5 relative select-none">
+        <div className="orbit-media-surface flex items-center justify-center w-full h-full px-2.5 relative select-none">
           <div
             ref={compactContentRef}
             className="inline-flex items-center justify-between space-x-1.5 shrink-0 min-w-0"
@@ -1191,18 +1198,13 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
               title="Click to open Home"
             >
               <span
-                className="font-bold tracking-tight leading-none orbit-clock-3d text-[12px]"
-                style={{ color: "var(--island-text)" }}
+                className="font-extrabold tracking-tight leading-none orbit-clock-3d text-[12px] text-white orbit-keep-white"
               >
                 {timeDisplay.timeStr}
               </span>
               {timeDisplay.ampm && (
                 <span
-                  className="text-[8px] font-bold leading-none uppercase tracking-wider"
-                  style={{
-                    color: activeThemeMeta.color,
-                    textShadow: `0 0 6px ${activeThemeMeta.borderGlow}`,
-                  }}
+                  className="text-[8px] font-extrabold leading-none uppercase tracking-wider text-[#818cf8]"
                 >
                   {timeDisplay.ampm}
                 </span>
@@ -1210,76 +1212,84 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
             </div>
 
             <div
-              className="w-6 h-6 rounded-full overflow-hidden shrink-0 flex items-center justify-center orbit-well-3d"
-            style={{
-              boxShadow: `0 2px 6px rgba(0,0,0,0.65), 0 0 8px ${activeThemeMeta.borderGlow}`,
-            }}
-          >
-            {mediaSession.track.thumbnail_base64 ? (
-              <img
-                src={mediaSession.track.thumbnail_base64}
-                alt="Album Art"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <svg
-                className="w-3.5 h-3.5"
-                style={{ color: activeThemeMeta.color }}
-                viewBox="0 0 24 24"
-                fill="currentColor"
+              className="w-6 h-6 rounded-md overflow-hidden shrink-0 flex items-center justify-center border border-white/30 shadow-md bg-black/40"
+            >
+              {config.mediaShowCoverArt && mediaSession.track.thumbnail_base64 ? (
+                <img
+                  src={mediaSession.track.thumbnail_base64}
+                  alt="Album Art"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <svg
+                  className="w-3.5 h-3.5 text-[#93c5fd]"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                </svg>
+              )}
+            </div>
+
+            <div className="flex flex-col min-w-0 flex-1 overflow-hidden leading-tight text-left pr-1 max-w-[96px]">
+              <span
+                className="font-extrabold text-[9.5px] truncate tracking-tight text-white orbit-keep-white"
+                title={mediaSession.track.title}
               >
-                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-              </svg>
+                {mediaSession.track.title || "Unknown Track"}
+              </span>
+              <span className="text-[8px] font-bold truncate text-[#93c5fd]">
+                {mediaSession.track.artist || mediaSession.source_title || "Media"}
+              </span>
+            </div>
+
+            {/* 3D Glowing Blue/Indigo Frequency-Reactive Equalizer Bars (6 bars) */}
+            {config.mediaVisualizerMode !== "off" && (
+            <div className="flex items-center space-x-[2px] h-4 shrink-0 pr-1">
+              {[0, 1, 2, 3, 4, 5].map((idx) => {
+                const isPlaying = mediaSession.playback_status === "playing";
+                const waveBars = audioSpectrum?.waveBars ?? [];
+                let scaleY = 0.15;
+                if (isPlaying) {
+                  if ((audioSpectrum?.peak ?? 0) >= 0.005 && waveBars.length > 0) {
+                    const mirroredIndex = Math.min(idx, 5 - idx);
+                    const srcIdx = Math.floor((mirroredIndex / 2) * ((waveBars.length - 1) / 2));
+                    const val = config.mediaVisualizerMode === "beats"
+                      ? audioSpectrum?.compactBars?.[0] ?? 0
+                      : waveBars[srcIdx] ?? 0;
+                    scaleY = Math.max(0.2, Math.min(1, 0.15 + val * 1.5));
+                  } else {
+                    const fallbackBars = [0.35, 0.75, 0.52, 0.9, 0.65, 0.42];
+                    scaleY = fallbackBars[idx];
+                  }
+                }
+                return (
+                  <div
+                    key={idx}
+                    className="w-[2px] h-full rounded-full origin-bottom"
+                    style={{
+                      transform: `scaleY(${scaleY.toFixed(2)})`,
+                      transition: "transform 95ms ease-out",
+                      background: "linear-gradient(180deg, color-mix(in srgb, var(--theme-accent) 55%, white) 0%, var(--theme-accent) 60%, var(--theme-accent-secondary) 100%)",
+                      boxShadow: "0 0 6px color-mix(in srgb, var(--theme-accent) 80%, transparent)",
+                      opacity: isPlaying ? 0.95 : 0.35,
+                    }}
+                  />
+                );
+              })}
+            </div>
+            )}
+
+            {privacyLight && (
+              <div
+                className="flex items-center justify-center shrink-0 pl-1.5 border-l border-white/15"
+                title="Camera/Microphone Active"
+              >
+                {privacyLight}
+              </div>
             )}
           </div>
-
-          <div className="flex flex-col min-w-0 flex-1 overflow-hidden leading-tight text-left pr-1 max-w-[96px]">
-            <span
-              className="font-semibold text-[9.5px] truncate tracking-tight"
-              style={{ color: "var(--island-text)" }}
-              title={mediaSession.track.title}
-            >
-              {mediaSession.track.title || "Unknown Track"}
-            </span>
-            <span className="text-[8px] font-medium truncate text-white/55">
-              {mediaSession.track.artist || mediaSession.source_title || "Media"}
-            </span>
-          </div>
-
-          {/* 3D Glowing Frequency-Reactive Equalizer Bars */}
-          <div className="flex items-center space-x-[2px] h-4 shrink-0 pr-1">
-            {[1, 2, 3, 4].map((idx) => {
-              const isPlaying = mediaSession.playback_status === "playing";
-              const barVal = isPlaying ? (audioSpectrum?.compactBars?.[idx - 1] ?? 0) : 0;
-              const hasFreq = isPlaying && (audioSpectrum?.peak ?? 0) >= 0.005 && barVal > 0.005;
-              const scaleY = hasFreq
-                ? Math.max(0.18, Math.min(1, 0.12 + barVal * 0.88))
-                : 0.02;
-              return (
-                <div
-                  key={idx}
-                  className="eq-bar"
-                  style={{
-                    backgroundColor: activeThemeMeta.color,
-                    transform: `scaleY(${scaleY.toFixed(2)})`,
-                    transition: "transform 95ms ease-out",
-                    opacity: hasFreq ? 0.95 : 0.0,
-                  }}
-                />
-              );
-            })}
-          </div>
-
-          {privacyLight && (
-            <div
-              className="flex items-center justify-center shrink-0 pl-1.5 border-l border-white/15"
-              title="Camera/Microphone Active"
-            >
-              {privacyLight}
-            </div>
-          )}
         </div>
-      </div>
     ) : (
       /* Compact 3D Clock Pill with Right Slot & Live Upload/Download Activity */
       <div className="flex items-center justify-center w-full h-full relative select-none px-3">
@@ -1336,7 +1346,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
           /* Standard Compact Clock + Right Slot (or Single Transfer Speed Flip) */
           <div
             ref={compactContentRef}
-            className="inline-flex items-center space-x-2 tabular-nums min-w-0 shrink-0"
+            className="inline-flex items-center space-x-2 tabular-nums min-w-0 shrink-0 relative z-10"
           >
             {/* Screen Recording Active Dot */}
             {hardwareMetrics?.screenRecordingActive && (
@@ -1363,7 +1373,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                 <span
                   className="text-[9px] font-bold leading-none uppercase tracking-wider"
                   style={{
-                    color: activeThemeMeta.color,
+                    color: activeThemeMeta.accent || activeThemeMeta.color,
                     textShadow: `0 0 8px ${activeThemeMeta.borderGlow}`,
                   }}
                 >

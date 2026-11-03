@@ -26,14 +26,17 @@ import {
   GraduationCap,
   Briefcase,
   Palette,
+  Music,
 } from "lucide-react";
 import { useConfigStore } from "../core/stores/useConfigStore";
 import { ipc } from "../core/ipc/client";
 import { MemoryReport } from "../core/types/telemetry";
-import { AppConfig } from "../core/types/config";
+import { AppConfig, normalizeGlassPreset } from "../core/types/config";
+import { HardwareMetrics } from "../core/types/hardware";
 import { PrivacyState } from "../core/types/notifications";
 import { THEMES, getThemeMeta } from "../core/theme";
 import packageJson from "../../package.json";
+import { GlassLayers } from "./island/GlassLayers";
 
 const FONT_PRESETS: {
   id: AppConfig["fontFamily"];
@@ -86,6 +89,48 @@ const FONT_PRESETS: {
   },
 ];
 
+const GLASS_STYLES: {
+  id: "normal" | "realistic" | "blurred" | "opaque";
+  mode: "glass" | "smoked" | "frosted" | "solid";
+  opacity: 20 | 50 | 80 | 100;
+  name: string;
+  description: string;
+  sample: string;
+}[] = [
+  {
+    id: "normal",
+    mode: "glass",
+    opacity: 20,
+    name: "Normal",
+    description: "Clear surface · very light blur",
+    sample: "from-cyan-100 via-white to-slate-200",
+  },
+  {
+    id: "realistic",
+    mode: "smoked",
+    opacity: 50,
+    name: "Realistic",
+    description: "Soft depth · natural tint",
+    sample: "from-sky-200 via-indigo-100 to-slate-300",
+  },
+  {
+    id: "blurred",
+    mode: "frosted",
+    opacity: 80,
+    name: "Blurred",
+    description: "Frosted surface · stronger blur",
+    sample: "from-slate-300 via-slate-100 to-cyan-100",
+  },
+  {
+    id: "opaque",
+    mode: "solid",
+    opacity: 100,
+    name: "Opaque",
+    description: "No live capture or blur · lowest performance cost",
+    sample: "from-slate-700 via-slate-800 to-slate-950",
+  },
+];
+
 export const SettingsApp: React.FC = () => {
   const { config, loadConfig, updateConfig, isLoading, isSaving } =
     useConfigStore();
@@ -108,6 +153,7 @@ export const SettingsApp: React.FC = () => {
   );
 
   const [telemetry, setTelemetry] = useState<MemoryReport | null>(null);
+  const [hardwareStatus, setHardwareStatus] = useState<HardwareMetrics | null>(null);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
   const [privacyState, setPrivacyState] = useState<PrivacyState | null>(null);
   const [isTestingPrivacy, setIsTestingPrivacy] = useState(false);
@@ -152,6 +198,10 @@ export const SettingsApp: React.FC = () => {
   useEffect(() => {
     loadConfig();
     ipc
+      .getHardwareMetrics()
+      .then(setHardwareStatus)
+      .catch((err) => console.error("Failed to load hardware status in settings:", err));
+    ipc
       .getMemoryMetrics()
       .then((report) => {
         setTelemetry(report);
@@ -192,8 +242,9 @@ export const SettingsApp: React.FC = () => {
     );
 
     const unlistenConfig = listen<AppConfig>("config-changed", (event) => {
-      useConfigStore.setState({ config: event.payload });
-      setFormData(event.payload);
+      const normalizedConfig = normalizeGlassPreset(event.payload);
+      useConfigStore.setState({ config: normalizedConfig });
+      setFormData(normalizedConfig);
     });
 
     return () => {
@@ -319,7 +370,7 @@ export const SettingsApp: React.FC = () => {
       notificationPreviewDurationSec: 4,
       showPrivacyIndicators: true,
       blockedApps: [],
-      surfaceOpacity: 80,
+      surfaceOpacity: 20,
       showWeather: false,
       weatherUnit: "C",
       adaptiveAlbumAccent: true,
@@ -336,6 +387,11 @@ export const SettingsApp: React.FC = () => {
       shortcutsEnabled: true,
       autoHideInMeetings: true,
       networkActivityMode: "speed_only",
+      onlineWeatherEnabled: false,
+      mediaBackgroundMode: "cover",
+      mediaVisualizerMode: "spectrum",
+      mediaShowCoverArt: true,
+      mediaCompactMode: false,
     });
     setResetMessage("Settings reset to defaults. Click 'Save Preferences' to persist.");
     setTimeout(() => setResetMessage(null), 4000);
@@ -409,7 +465,7 @@ export const SettingsApp: React.FC = () => {
         notificationPreviewDurationSec: 4,
         showPrivacyIndicators: true,
         blockedApps: [],
-        surfaceOpacity: 80,
+        surfaceOpacity: 20,
         showWeather: false,
         weatherUnit: "C",
         adaptiveAlbumAccent: true,
@@ -426,6 +482,11 @@ export const SettingsApp: React.FC = () => {
         shortcutsEnabled: true,
         autoHideInMeetings: true,
         networkActivityMode: "speed_only",
+        onlineWeatherEnabled: false,
+        mediaBackgroundMode: "cover",
+        mediaVisualizerMode: "spectrum",
+        mediaShowCoverArt: true,
+        mediaCompactMode: false,
       };
       setFormData(defaultCfg);
       await updateConfig(defaultCfg);
@@ -503,6 +564,10 @@ export const SettingsApp: React.FC = () => {
   const cardHeaderColor = isOrbitTheme ? "settings-orbit-muted" : isLight ? "text-slate-600" : "text-slate-400";
   const labelColor = isOrbitTheme ? "settings-orbit-text" : isLight ? "text-slate-700" : "text-slate-300";
   const subtextColor = isOrbitTheme ? "settings-orbit-muted" : isLight ? "text-slate-500" : "text-slate-400";
+  const glassFallbackReasons = [
+    hardwareStatus?.batterySaverActive ? "Battery Saver is on" : null,
+    hardwareStatus?.osTransparencyEnabled === false ? "Windows transparency effects are off" : null,
+  ].filter((reason): reason is string => reason !== null);
   const inputBg = isOrbitTheme
     ? "settings-orbit-input"
     : isLight
@@ -589,9 +654,9 @@ export const SettingsApp: React.FC = () => {
         onSubmit={handleSave}
         className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 focus:outline-none"
       >
-        <div className="max-w-5xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="max-w-5xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Bento Card 0: 3D Curated Theme Showcase Gallery (Full Width) */}
-          <div className={`rounded-2xl p-5 border space-y-4 lg:col-span-2 ${cardBg}`}>
+          <div className={`rounded-2xl p-5 border space-y-4 md:col-span-2 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <Palette className="w-4 h-4 text-cyan-500" />
@@ -707,7 +772,7 @@ export const SettingsApp: React.FC = () => {
             </div>
           </div>
 
-          {/* Bento Card 1: 3D Appearance, Material & Placement (Cyan Accent) */}
+          {/* Bento Card 1: Glass Style & Placement */}
           <div className={`rounded-2xl p-5 border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
@@ -715,34 +780,11 @@ export const SettingsApp: React.FC = () => {
                 <span>3D Glass & Placement</span>
               </h2>
               <span className="text-[10px] text-cyan-500 bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded font-mono font-semibold">
-                3D Shell
+                Island style
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3.5">
-
-              <div>
-                <label className={`block text-xs font-semibold mb-1 ${labelColor}`}>
-                  3D Glass Material
-                </label>
-                <select
-                  value={formData.transparencyMode}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      transparencyMode: e.target
-                        .value as AppConfig["transparencyMode"],
-                    })
-                  }
-                  className={`w-full rounded-xl px-3 py-2 text-xs border focus:outline-none cursor-pointer ${inputBg}`}
-                >
-                  <option value="glass" className={optionCls}>Glossy 3D Lens (Specular)</option>
-                  <option value="frosted" className={optionCls}>Frosted Acrylic (Satin)</option>
-                  <option value="smoked" className={optionCls}>Smoked Obsidian (Deep)</option>
-                  <option value="solid" className={optionCls}>Anodized Carbon (Opaque)</option>
-                </select>
-              </div>
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
                 <label className={`block text-xs font-semibold mb-1 ${labelColor}`}>
                   Screen Position
@@ -782,46 +824,75 @@ export const SettingsApp: React.FC = () => {
                 </select>
               </div>
 
-              {/* Surface Opacity Presets */}
-              <div className="col-span-2">
-                <div className="flex items-center justify-between mb-1.5">
+              <div className="sm:col-span-2 space-y-2">
+                <div className="flex items-center justify-between gap-2">
                   <label className={`block text-xs font-semibold ${labelColor}`}>
-                    Surface Opacity Preset
+                    Glass style
                   </label>
-                  <span className="text-[11px] font-mono text-cyan-500 font-bold">
-                    {formData.surfaceOpacity ?? 80}%
+                  <span className={`text-[10px] ${subtextColor}`}>
+                    Choose how much of the desktop shows through
                   </span>
                 </div>
-                <div className="grid grid-cols-4 gap-1.5 p-1 rounded-xl border bg-black/10">
-                  {([20, 50, 80, 100] as const).map((preset) => {
-                    const isSelected = (formData.surfaceOpacity ?? 80) === preset;
+                <div role="radiogroup" aria-label="Glass style" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                  {GLASS_STYLES.map((style) => {
+                    const isSelected = formData.transparencyMode === style.mode
+                      && (formData.surfaceOpacity ?? 20) === style.opacity;
                     return (
                       <button
-                        key={preset}
+                        key={style.id}
                         type="button"
-                        onClick={() =>
-                          setFormData({ ...formData, surfaceOpacity: preset })
-                        }
-                        className={`py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => setFormData((prev) => ({
+                          ...prev,
+                          transparencyMode: style.mode,
+                          surfaceOpacity: style.opacity,
+                        }))}
+                        className={`rounded-xl border p-2 text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
                           isSelected
-                            ? "bg-cyan-500 text-slate-950 shadow-sm"
+                            ? "border-cyan-400 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(34,211,238,0.22)]"
                             : isLight
-                            ? "text-slate-600 hover:text-slate-900 hover:bg-slate-200"
-                            : "text-slate-400 hover:text-slate-200 hover:bg-white/10"
+                            ? "border-slate-200 bg-white/70 hover:border-cyan-300 hover:bg-cyan-50/60"
+                            : "border-slate-700 bg-slate-950/40 hover:border-cyan-700 hover:bg-cyan-950/20"
                         }`}
                       >
-                        {preset}%
+                        <span className={`relative mb-2 block h-9 overflow-hidden rounded-lg border ${isLight ? "border-slate-200" : "border-white/10"}`}>
+                          <span className={`absolute inset-0 bg-gradient-to-br ${style.sample}`} />
+                          <span className={`absolute inset-x-3 top-2 h-5 rounded-full border shadow-sm ${style.mode === "solid" ? "border-white/30 bg-slate-900" : `backdrop-blur-[2px] ${isLight ? "border-white/90 bg-white/45" : "border-white/35 bg-slate-900/45"}`}`} />
+                          <span className="absolute left-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]" />
+                        </span>
+                        <span className={`block text-xs font-bold ${labelColor}`}>{style.name}</span>
+                        <span className={`mt-0.5 block text-[10px] leading-snug ${subtextColor}`}>{style.description}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
+              <p className={`sm:col-span-2 rounded-xl border px-3 py-2 text-[11px] leading-relaxed ${isLight ? "border-cyan-200 bg-cyan-50 text-slate-700" : "border-cyan-900/70 bg-cyan-950/30 text-slate-300"}`}>
+                Performance: Opaque is best for low-end PCs. Normal uses the least live glass processing; Realistic and Blurred use more desktop rendering, with Blurred the heaviest.
+              </p>
+
+              {glassFallbackReasons.length > 0 && (
+                <p
+                  role="status"
+                  className={`sm:col-span-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
+                    isLight
+                      ? "border-amber-300 bg-amber-50 text-amber-900"
+                      : "border-amber-500/25 bg-amber-500/10 text-amber-200"
+                  }`}
+                >
+                  Glass is temporarily disabled on the island because {glassFallbackReasons.join(" and ")}. Turn those off to use the selected material.
+                </p>
+              )}
+
               {/* Live 3D Theme & Volumetric Preview Card */}
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 {(() => {
                   const previewMeta = getThemeMeta(formData.theme);
-                  const opacity = (formData.surfaceOpacity ?? 80) / 100;
+                  const opacity = (formData.surfaceOpacity ?? 20) / 100;
+                  const modeClass = `transparency-${formData.transparencyMode}`;
+                  const themeClass = `theme-${previewMeta.id}`;
                   return (
                     <div
                       className={`rounded-2xl p-3.5 border space-y-2.5 ${
@@ -840,44 +911,82 @@ export const SettingsApp: React.FC = () => {
                           <span>{previewMeta.label}</span>
                         </span>
                         <span className="font-mono text-[10px] opacity-60">
-                          {formData.transparencyMode.toUpperCase()} ·{" "}
-                          {formData.surfaceOpacity ?? 80}%
+                          {GLASS_STYLES.find((style) => style.mode === formData.transparencyMode)?.name ?? "Glass"}
                         </span>
                       </div>
 
-                      <div
-                        className="rounded-2xl px-5 py-3 border flex items-center justify-between relative overflow-hidden transition-all duration-300"
-                        style={{
-                          backgroundColor: `rgba(${previewMeta.surfaceBase}, ${opacity})`,
-                          borderColor: previewMeta.borderGlow,
-                          color: previewMeta.text,
-                          boxShadow: `0 10px 24px -4px rgba(0,0,0,0.8), inset 0 1.5px 1px ${previewMeta.rimHighlight}`,
-                        }}
-                      >
-                        <div
-                          className="absolute inset-0 pointer-events-none"
-                          style={{
-                            background: `radial-gradient(ellipse 55% 70% at 30% 50%, ${previewMeta.coreGlow} 0%, transparent 75%)`,
-                          }}
-                        />
-                        <div className="relative z-10 flex items-baseline space-x-2">
-                          <span className="text-xl font-bold tracking-tight tabular-nums">
-                            12:28
-                          </span>
-                          <span
-                            className="text-xs font-bold uppercase tracking-wider"
-                            style={{ color: previewMeta.accent }}
-                          >
-                            AM
+                      {/* Split Light & Dark Desktop Simulation Backdrop */}
+                      <div className="relative rounded-2xl overflow-hidden p-4 border border-white/10 shadow-inner flex items-center justify-center min-h-[116px]">
+                        {/* Light Half (Day Desktop) */}
+                        <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-br from-sky-100 via-white to-slate-200 flex items-start justify-start p-2">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-600 bg-white/80 backdrop-blur-xs px-1.5 py-0.5 rounded shadow-xs">
+                            Light Desktop
                           </span>
                         </div>
-                        <div className="relative z-10 flex items-center space-x-2">
-                          <span
-                            className="text-[11px] truncate max-w-[200px] font-medium"
-                            style={{ color: previewMeta.muted }}
-                          >
-                            {previewMeta.description}
+                        {/* Dark Half (Night Desktop) */}
+                        <div className="absolute inset-y-0 right-0 w-1/2 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex items-start justify-end p-2 border-l border-white/20">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-300 bg-slate-900/80 backdrop-blur-xs px-1.5 py-0.5 rounded shadow-xs">
+                            Dark Desktop
                           </span>
+                        </div>
+
+                        {/* Centered Dynamic Island Glass Capsule bridging both backdrops */}
+                        <div className="orbit-stage-3d relative z-10 w-full max-w-[340px]">
+                          <div
+                            className={`orbit-shell-3d ${modeClass} ${themeClass} ${
+                              formData.transparencyMode === "solid"
+                                ? ""
+                                : previewMeta.id === "light"
+                                ? "glass-tone-light"
+                                : "glass-tone-dark"
+                            } rounded-[24px] px-4 py-2.5 border flex items-center justify-between transition-all duration-300 relative overflow-hidden`}
+                            style={
+                              {
+                                "--surface-alpha": opacity,
+                                "--theme-accent": previewMeta.accent,
+                                "--theme-accent-secondary": previewMeta.accentSecondary,
+                              } as React.CSSProperties
+                            }
+                          >
+                            {/* Full liquid-glass stack; the preview window is opaque, so it can blur natively */}
+                            {formData.transparencyMode !== "solid" && (
+                              <GlassLayers
+                                mode={formData.transparencyMode as "glass" | "frosted" | "smoked"}
+                                tone={previewMeta.id === "light" ? "light" : "dark"}
+                                width={340}
+                                height={46}
+                                backdropUrl={null}
+                                offsetX={0}
+                                offsetY={0}
+                                nativeBackdrop
+                              />
+                            )}
+
+                            <div className="relative z-10 flex items-baseline space-x-2">
+                              <span className="orbit-clock-3d text-lg font-bold tracking-tight tabular-nums">
+                                10:08
+                              </span>
+                              <span
+                                className="text-xs font-bold uppercase tracking-wider"
+                                style={{ color: previewMeta.accent }}
+                              >
+                                AM
+                              </span>
+                            </div>
+
+                            <div className="relative z-10 flex items-center space-x-2">
+                              <div className="orbit-pill-badge-3d px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center space-x-1">
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full"
+                                  style={{ backgroundColor: previewMeta.accent }}
+                                />
+                                <span>Preview</span>
+                              </div>
+                              <span className="text-[11px] font-medium truncate max-w-[110px] opacity-80">
+                                {`${formData.surfaceOpacity ?? 20}% surface`}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -940,6 +1049,21 @@ export const SettingsApp: React.FC = () => {
                 </div>
               </div>
 
+              <label className={`flex items-start gap-3 rounded-xl border p-3 text-xs ${isLight ? "border-amber-200 bg-amber-50/70" : "border-amber-500/20 bg-amber-500/5"}`}>
+                <input
+                  type="checkbox"
+                  checked={formData.onlineWeatherEnabled}
+                  onChange={(e) => setFormData({ ...formData, onlineWeatherEnabled: e.target.checked })}
+                  className="mt-0.5 accent-cyan-500"
+                />
+                <span>
+                  <span className={`block font-semibold ${labelColor}`}>Allow online weather (optional)</span>
+                  <span className={`mt-0.5 block text-[11px] leading-relaxed ${subtextColor}`}>
+                    Weather is requested from wttr.in. That service receives the request and can see your network IP. Turn this off to keep ORBIT’s features offline.
+                  </span>
+                </span>
+              </label>
+
               {/* Always on top */}
               <div className="flex items-center justify-between">
                 <div>
@@ -979,32 +1103,6 @@ export const SettingsApp: React.FC = () => {
                     checked={formData.showSystemTrayIcon}
                     onChange={(e) =>
                       setFormData({ ...formData, showSystemTrayIcon: e.target.checked })
-                    }
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-600"></div>
-                </label>
-              </div>
-
-              {/* Adaptive Album Accent */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className={`text-xs font-semibold ${labelColor}`}>
-                    Adaptive Album Art Accent
-                  </span>
-                  <p className={`text-[11px] ${subtextColor}`}>
-                    Extract ambient color from artwork for waveforms & glowing borders
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.adaptiveAlbumAccent ?? true}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        adaptiveAlbumAccent: e.target.checked,
-                      })
                     }
                     className="sr-only peer"
                   />
@@ -1297,6 +1395,85 @@ export const SettingsApp: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Dedicated media player controls */}
+          <div className={`rounded-2xl p-5 border space-y-4 ${cardBg}`}>
+            <div className="flex items-center justify-between pb-1 border-b border-white/10">
+              <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${cardHeaderColor}`}>
+                <Music className="w-4 h-4 text-blue-400" />
+                <span>Media Player</span>
+              </h2>
+              <span className="text-[10px] text-blue-400 bg-blue-500/10 border border-blue-500/25 px-2 py-0.5 rounded font-mono font-semibold">Personalize</span>
+            </div>
+            <p className={`text-xs leading-relaxed ${subtextColor}`}>
+              Choose how the player uses artwork, theme color, and live system-audio visualization. ORBIT reads playback details from Windows; it does not record microphone audio.
+            </p>
+
+            <div>
+              <span className={`block text-xs font-semibold mb-2 ${labelColor}`}>Player background</span>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  ["cover", "Cover art", "Soft artwork backdrop"],
+                  ["theme", "Theme", "Use the active theme"],
+                  ["solid", "Solid", "No artwork backdrop"],
+                ] as const).map(([mode, title, description]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={formData.mediaBackgroundMode === mode}
+                    onClick={() => setFormData({ ...formData, mediaBackgroundMode: mode })}
+                    className={`rounded-xl border p-2 text-left transition-colors cursor-pointer ${
+                      formData.mediaBackgroundMode === mode
+                        ? "border-blue-400 bg-blue-500/10"
+                        : isLight ? "border-slate-200 bg-white/70 hover:border-blue-300" : "border-slate-700 bg-slate-950/40 hover:border-blue-700"
+                    }`}
+                  >
+                    <span className={`block text-[11px] font-bold ${labelColor}`}>{title}</span>
+                    <span className={`mt-0.5 block text-[10px] leading-snug ${subtextColor}`}>{description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className={`block text-xs font-semibold mb-2 ${labelColor}`}>Audio visualization</span>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  ["spectrum", "Spectrum", "20 frequency bands"],
+                  ["beats", "Bass pulse", "Follow low frequencies"],
+                  ["off", "Off", "Hide visualizer"],
+                ] as const).map(([mode, title, description]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={formData.mediaVisualizerMode === mode}
+                    onClick={() => setFormData({ ...formData, mediaVisualizerMode: mode })}
+                    className={`rounded-xl border p-2 text-left transition-colors cursor-pointer ${
+                      formData.mediaVisualizerMode === mode
+                        ? "border-blue-400 bg-blue-500/10"
+                        : isLight ? "border-slate-200 bg-white/70 hover:border-blue-300" : "border-slate-700 bg-slate-950/40 hover:border-blue-700"
+                    }`}
+                  >
+                    <span className={`block text-[11px] font-bold ${labelColor}`}>{title}</span>
+                    <span className={`mt-0.5 block text-[10px] leading-snug ${subtextColor}`}>{description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="flex items-start gap-3 text-xs cursor-pointer">
+              <input type="checkbox" checked={formData.mediaShowCoverArt} onChange={(e) => setFormData({ ...formData, mediaShowCoverArt: e.target.checked })} className="mt-0.5 accent-blue-500" />
+              <span><span className={`block font-semibold ${labelColor}`}>Show cover art</span><span className={`block text-[11px] ${subtextColor}`}>Show artwork in the player and compact capsule.</span></span>
+            </label>
+            <label className="flex items-start gap-3 text-xs cursor-pointer">
+              <input type="checkbox" checked={formData.mediaCompactMode} onChange={(e) => setFormData({ ...formData, mediaCompactMode: e.target.checked })} className="mt-0.5 accent-blue-500" />
+              <span><span className={`block font-semibold ${labelColor}`}>Compact expanded player</span><span className={`block text-[11px] ${subtextColor}`}>Use a tighter layout when the island is expanded.</span></span>
+            </label>
+            <label className="flex items-start gap-3 text-xs cursor-pointer">
+              <input type="checkbox" checked={formData.adaptiveAlbumAccent} onChange={(e) => setFormData({ ...formData, adaptiveAlbumAccent: e.target.checked })} className="mt-0.5 accent-blue-500" />
+              <span><span className={`block font-semibold ${labelColor}`}>Match accent to artwork</span><span className={`block text-[11px] ${subtextColor}`}>Use cover-art color for the player glow and controls.</span></span>
+            </label>
           </div>
 
           {/* Bento Card 2: Typography & Font Engine (Sub-Phase 7.4b - Violet Accent) */}
@@ -1889,7 +2066,7 @@ export const SettingsApp: React.FC = () => {
           </div>
 
           {/* Bento Card: Academic & Office Schedule Sync (Cyan/Sky Accent) */}
-          <div className={`col-span-1 lg:col-span-2 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
+          <div className={`col-span-1 md:col-span-2 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <Calendar className="w-4 h-4 text-sky-400" />
@@ -1972,7 +2149,7 @@ export const SettingsApp: React.FC = () => {
           </div>
 
           {/* Bento Card 5: System, Onboarding & 3-Tier Reset (Sub-Phase 8.2 - Rose/Indigo Accent) */}
-          <div className={`col-span-1 lg:col-span-2 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
+          <div className={`col-span-1 md:col-span-2 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <HelpCircle className="w-4 h-4 text-rose-500" />
