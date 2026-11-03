@@ -5,7 +5,6 @@ import { MediaSessionSnapshot, AudioSpectrumState } from "../../core/types/media
 import { NotificationItem } from "../../core/types/notifications";
 import { HardwareMetrics } from "../../core/types/hardware";
 import { NotificationBrandIcon } from "./NotificationBrandIcon";
-import { ClockDisplay } from "./ClockDisplay";
 import { ipc } from "../../core/ipc/client";
 
 export interface WeatherGlance {
@@ -84,7 +83,7 @@ const formatTransferByteSpeed = (bps: number): string => {
   return `${Math.max(1, Math.round(bps / 1024))} KB/s`;
 };
 
-export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
+export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
   isExpanded,
   prefersReducedMotion,
   config,
@@ -200,7 +199,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
           config.customRightText.trim() !== "" &&
           config.customRightText.trim() !== "ORBIT"
           ? "custom_text"
-          : config.showWeather || weatherInfo
+          : weatherInfo
           ? "weather"
           : "orbit_logo"
         : config.compactRightSlot;
@@ -367,127 +366,99 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
       case "weather":
       default:
         if (
-          config.showWeather ||
-          config.compactRightSlot === "weather" ||
-          config.compactRightSlot === "smart"
+          (config.showWeather ||
+            config.compactRightSlot === "weather" ||
+            config.compactRightSlot === "smart") &&
+          weatherInfo
         ) {
-          if (weatherInfo) {
-            return (
-              <div
-                className="flex items-center space-x-1 text-[11px] font-bold leading-none shrink-0 border-l border-white/20 pl-1.5"
-                title={`${weatherInfo.label} (${weatherInfo.tempC}°C / ${weatherInfo.tempF}°F)`}
-                style={{ color: "var(--island-muted)" }}
-              >
-                {weatherInfo.conditionCode === "rain" ||
-                weatherInfo.conditionCode === "storm" ? (
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
-                      fill="#ffffff"
-                    />
-                    {weatherInfo.conditionCode === "storm" ? (
-                      <path d="M11 15h3l-2 5 4-3h-3l2-4h-4z" fill="#fbbf24" />
-                    ) : (
-                      <>
-                        <line
-                          x1="8"
-                          y1="21"
-                          x2="7"
-                          y2="23"
-                          stroke="#38bdf8"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                        <line
-                          x1="12"
-                          y1="21"
-                          x2="11"
-                          y2="23"
-                          stroke="#38bdf8"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                        <line
-                          x1="16"
-                          y1="21"
-                          x2="15"
-                          y2="23"
-                          stroke="#38bdf8"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                      </>
-                    )}
-                  </svg>
-                ) : weatherInfo.conditionCode === "snow" ? (
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
-                      fill="#ffffff"
-                    />
-                    <circle cx="8" cy="22" r="1" fill="#bae6fd" />
-                    <circle cx="12" cy="22" r="1" fill="#bae6fd" />
-                    <circle cx="16" cy="22" r="1" fill="#bae6fd" />
-                  </svg>
-                ) : weatherInfo.conditionCode === "partly_cloudy" ? (
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                    <circle cx="15.5" cy="8.5" r="4.5" fill="#fbbf24" />
-                    <path
-                      d="M17.5 13c-.34 0-.67.04-.98.11C15.63 10.74 13.52 9 11 9c-2.9 0-5.3 2.1-5.87 4.9C3.15 14.34 1.5 16.2 1.5 18.5 1.5 21 3.5 23 6 23h11.5c2.49 0 4.5-2.01 4.5-4.5S19.99 13 17.5 13z"
-                      fill="#ffffff"
-                    />
-                  </svg>
-                ) : weatherInfo.conditionCode === "cloudy" ? (
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
-                      fill="#ffffff"
-                    />
-                  </svg>
-                ) : (
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="5" fill="#fde047" stroke="#fbbf24" strokeWidth="1" />
-                    <path
-                      d="M12 2v2.5m0 15V22M4.22 4.22l1.77 1.77m12.02 12.02l1.77 1.77M2 12h2.5m15 0H22M4.22 19.78l1.77-1.77m12.02-12.02l1.77-1.77"
-                      stroke="#fbbf24"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                )}
-                <span className="font-bold tabular-nums" style={{ color: "var(--island-text)" }}>
-                  {config.weatherUnit === "F" ? `${weatherInfo.tempF}°` : `${weatherInfo.tempC}°`}
-                </span>
-              </div>
-            );
-          } else {
-            return (
-              <div
-                className="flex items-center space-x-1 text-[11px] font-bold leading-none shrink-0 border-l border-white/20 pl-1.5 opacity-60"
-                title="Weather offline or unavailable"
-                style={{ color: "var(--island-muted)" }}
-              >
-                <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none">
+          return (
+            <div
+              className="flex items-center space-x-1 text-[11px] font-bold leading-none shrink-0 border-l border-white/20 pl-1.5"
+              title={`${weatherInfo.label} (${weatherInfo.tempC}°C / ${weatherInfo.tempF}°F)`}
+              style={{ color: "var(--island-muted)" }}
+            >
+              {weatherInfo.conditionCode === "rain" ||
+              weatherInfo.conditionCode === "storm" ? (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
                   <path
                     d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
-                    fill="currentColor"
+                    fill="#ffffff"
                   />
-                  <line
-                    x1="2"
-                    y1="2"
-                    x2="22"
-                    y2="22"
-                    stroke="currentColor"
+                  {weatherInfo.conditionCode === "storm" ? (
+                    <path d="M11 15h3l-2 5 4-3h-3l2-4h-4z" fill="#fbbf24" />
+                  ) : (
+                    <>
+                      <line
+                        x1="8"
+                        y1="21"
+                        x2="7"
+                        y2="23"
+                        stroke="#38bdf8"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      <line
+                        x1="12"
+                        y1="21"
+                        x2="11"
+                        y2="23"
+                        stroke="#38bdf8"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      <line
+                        x1="16"
+                        y1="21"
+                        x2="15"
+                        y2="23"
+                        stroke="#38bdf8"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                    </>
+                  )}
+                </svg>
+              ) : weatherInfo.conditionCode === "snow" ? (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
+                    fill="#ffffff"
+                  />
+                  <circle cx="8" cy="22" r="1" fill="#bae6fd" />
+                  <circle cx="12" cy="22" r="1" fill="#bae6fd" />
+                  <circle cx="16" cy="22" r="1" fill="#bae6fd" />
+                </svg>
+              ) : weatherInfo.conditionCode === "partly_cloudy" ? (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                  <circle cx="15.5" cy="8.5" r="4.5" fill="#fbbf24" />
+                  <path
+                    d="M17.5 13c-.34 0-.67.04-.98.11C15.63 10.74 13.52 9 11 9c-2.9 0-5.3 2.1-5.87 4.9C3.15 14.34 1.5 16.2 1.5 18.5 1.5 21 3.5 23 6 23h11.5c2.49 0 4.5-2.01 4.5-4.5S19.99 13 17.5 13z"
+                    fill="#ffffff"
+                  />
+                </svg>
+              ) : weatherInfo.conditionCode === "cloudy" ? (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
+                    fill="#ffffff"
+                  />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="5" fill="#fde047" stroke="#fbbf24" strokeWidth="1" />
+                  <path
+                    d="M12 2v2.5m0 15V22M4.22 4.22l1.77 1.77m12.02 12.02l1.77 1.77M2 12h2.5m15 0H22M4.22 19.78l1.77-1.77m12.02-12.02l1.77-1.77"
+                    stroke="#fbbf24"
                     strokeWidth="2"
                     strokeLinecap="round"
                   />
                 </svg>
-                <span className="font-bold tabular-nums" style={{ color: "var(--island-text)" }}>
-                  --°
-                </span>
-              </div>
-            );
-          }
+              )}
+              <span className="font-bold tabular-nums" style={{ color: "var(--island-text)" }}>
+                {config.weatherUnit === "F" ? `${weatherInfo.tempF}°` : `${weatherInfo.tempC}°`}
+              </span>
+            </div>
+          );
         }
         return null;
     }
@@ -1214,16 +1185,27 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
             )}
 
             {/* Direct Time Display (clicking opens Expanded Island Home) */}
-            <ClockDisplay
-              className="flex items-baseline space-x-0.5 shrink-0 pr-1.5 border-r border-white/15 cursor-pointer hover:opacity-80 transition-opacity"
-              title="Click to open Home"
-              timeClassName="font-extrabold tracking-tight leading-none orbit-clock-3d text-[12px] text-white orbit-keep-white"
-              ampmClassName="text-[8px] font-extrabold leading-none uppercase tracking-wider text-[#818cf8]"
+            <div
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenHome?.();
               }}
-            />
+              className="flex items-baseline space-x-0.5 shrink-0 pr-1.5 border-r border-white/15 cursor-pointer hover:opacity-80 transition-opacity"
+              title="Click to open Home"
+            >
+              <span
+                className="font-extrabold tracking-tight leading-none orbit-clock-3d text-[12px] text-white orbit-keep-white"
+              >
+                {timeDisplay.timeStr}
+              </span>
+              {timeDisplay.ampm && (
+                <span
+                  className="text-[8px] font-extrabold leading-none uppercase tracking-wider text-[#818cf8]"
+                >
+                  {timeDisplay.ampm}
+                </span>
+              )}
+            </div>
 
             <div
               className="w-6 h-6 rounded-md overflow-hidden shrink-0 flex items-center justify-center border border-white/30 shadow-md bg-black/40"
@@ -1320,8 +1302,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
               </div>
             )}
             <div
-              className="flex items-center space-x-1"
-              style={{ color: "var(--orbit-info-ink)" }}
+              className="flex items-center space-x-1 text-emerald-400"
               title="Download speed"
             >
               <span className="animate-bounce text-[9.5px]">⬇</span>
@@ -1333,8 +1314,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
             </div>
             <div className="w-[1px] h-3 bg-white/20 shrink-0" />
             <div
-              className="flex items-center space-x-1"
-              style={{ color: "var(--orbit-success-ink)" }}
+              className="flex items-center space-x-1 text-sky-400"
               title="Upload speed"
             >
               <span className="animate-bounce text-[9.5px]">⬆</span>
@@ -1373,24 +1353,32 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
             )}
 
             {/* Clock on Left */}
-            <ClockDisplay
-              className="flex items-baseline space-x-1 shrink-0"
-              timeClassName="font-bold tracking-tight leading-none orbit-clock-3d text-[13.5px]"
-              timeStyle={{ color: "var(--island-text)" }}
-              ampmClassName="text-[9px] font-bold leading-none uppercase tracking-wider"
-              ampmStyle={{
-                color: activeThemeMeta.accent || activeThemeMeta.color,
-                textShadow: `0 0 8px ${activeThemeMeta.borderGlow}`,
-              }}
-            />
+            <div className="flex items-baseline space-x-1 shrink-0">
+              <span
+                className="font-bold tracking-tight leading-none orbit-clock-3d text-[13.5px]"
+                style={{ color: "var(--island-text)" }}
+              >
+                {timeDisplay.timeStr}
+              </span>
+              {timeDisplay.ampm && (
+                <span
+                  className="text-[9px] font-bold leading-none uppercase tracking-wider"
+                  style={{
+                    color: activeThemeMeta.accent || activeThemeMeta.color,
+                    textShadow: `0 0 8px ${activeThemeMeta.borderGlow}`,
+                  }}
+                >
+                  {timeDisplay.ampm}
+                </span>
+              )}
+            </div>
 
             {/* Single Transfer Active (Download XOR Upload active): Flip only Right Slot */}
             {isDownloading || isUploading ? (
               <div className="flex items-center space-x-1 text-[10px] font-bold tabular-nums border-l border-white/15 pl-1.5 shrink-0">
                 {isDownloading ? (
                   <div
-                    className="flex items-center space-x-1"
-                    style={{ color: "var(--orbit-info-ink)" }}
+                    className="flex items-center space-x-1 text-emerald-400"
                     title="Downloading"
                   >
                     <span className="animate-pulse">⬇</span>
@@ -1402,8 +1390,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
                   </div>
                 ) : (
                   <div
-                    className="flex items-center space-x-1"
-                    style={{ color: "var(--orbit-success-ink)" }}
+                    className="flex items-center space-x-1 text-sky-400"
                     title="Uploading"
                   >
                     <span className="animate-pulse">⬆</span>
@@ -1435,6 +1422,4 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = React.memo(({
       )}
     </div>
   );
-});
-
-CompactCapsule.displayName = "CompactCapsule";
+};

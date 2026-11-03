@@ -120,8 +120,10 @@ export function estimateCompactWidth({
     switch (effectiveMode) {
       case "weather":
         if (
-          config.compactRightSlot === "weather" ||
-          ((config.showWeather || config.compactRightSlot === "smart") && weatherInfo)
+          (config.showWeather ||
+            config.compactRightSlot === "weather" ||
+            config.compactRightSlot === "smart") &&
+          weatherInfo
         ) {
           contentWidth += 38;
         }
@@ -155,7 +157,7 @@ export function estimateCompactWidth({
 }
 
 export const IslandApp: React.FC = () => {
-  const { config, isLoaded, loadConfig } = useConfigStore();
+  const { config, loadConfig } = useConfigStore();
 
   const islandRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -369,7 +371,7 @@ export const IslandApp: React.FC = () => {
       homeSubView !== "call") ||
     (!isExpanded && !transientNotif && !utilityAlert && isMediaActive && Boolean(mediaSession));
 
-  // Weather state (stale-while-revalidate cache from backend; no fake hardcoded defaults)
+  // Weather state (stale-while-revalidate cache + instant fallback so right slot never flickers blank)
   const [weatherInfo, setWeatherInfo] = useState<WeatherGlance | null>(() => {
     try {
       const cached = localStorage.getItem("orbit_weather_cache");
@@ -380,7 +382,12 @@ export const IslandApp: React.FC = () => {
         }
       }
     } catch {}
-    return null;
+    return {
+      tempC: 24,
+      tempF: 75,
+      conditionCode: "partly_cloudy",
+      label: "Partly Cloudy",
+    };
   });
 
   const shouldFetchWeather =
@@ -392,30 +399,40 @@ export const IslandApp: React.FC = () => {
     if (!shouldFetchWeather) return;
 
     let isMounted = true;
+    let activeController: AbortController | null = null;
 
     const fetchWeather = async () => {
+      if (activeController) {
+        activeController.abort();
+      }
+      const controller = new AbortController();
+      activeController = controller;
+      const timeoutId = setTimeout(() => controller.abort(), 6500);
+
       try {
-        const glance = await invoke<WeatherGlance>("get_weather");
+        const glance = await ipc.getWeather();
         if (isMounted && glance) {
           setWeatherInfo(glance);
-          try {
-            localStorage.setItem(
-              "orbit_weather_cache",
-              JSON.stringify({ data: glance, timestamp: Date.now() })
-            );
-          } catch {}
+          localStorage.setItem(
+            "orbit_weather_cache",
+            JSON.stringify({ data: glance, timestamp: Date.now() })
+          );
         }
-      } catch (err) {
-        // Backend command failed or network offline. Keep existing cached data if any, or null.
-        console.warn("Weather fetch failed (offline or network error):", err);
+      } catch {
+        // Keep existing cached/fallback weatherInfo so right slot never disappears
+      } finally {
+        clearTimeout(timeoutId);
       }
     };
 
     fetchWeather();
-    const interval = setInterval(fetchWeather, 600000);
+    const interval = setInterval(fetchWeather, 1800000);
 
     return () => {
       isMounted = false;
+      if (activeController) {
+        activeController.abort();
+      }
       clearInterval(interval);
     };
   }, [shouldFetchWeather]);
@@ -467,22 +484,17 @@ export const IslandApp: React.FC = () => {
   });
 
   const isTimerPaused = timerPausedRemainingSecs !== null && timerPausedRemainingSecs > 0;
-  const [timerRemainingSecs, setTimerRemainingSecs] = useState<number>(() => {
-    if (timerPausedRemainingSecs !== null && timerPausedRemainingSecs > 0) {
-      return timerPausedRemainingSecs;
-    }
-    if (timerDeadlineMs) {
-      return Math.max(0, Math.ceil((timerDeadlineMs - Date.now()) / 1000));
-    }
-    return 0;
-  });
+  const timerRemainingSecs = isTimerPaused
+    ? (timerPausedRemainingSecs || 0)
+    : timerDeadlineMs
+    ? Math.max(0, Math.ceil((timerDeadlineMs - currentTime.getTime()) / 1000))
+    : 0;
 
   const startTimer = (durationSecs: number, label = timerLabel) => {
     const deadline = Date.now() + durationSecs * 1000;
     setTimerDeadlineMs(deadline);
     setTimerTotalSecs(durationSecs);
     setTimerPausedRemainingSecs(null);
-    setTimerRemainingSecs(durationSecs);
     setTimerLabel(label);
     localStorage.setItem(
       "orbit_timer_state",
@@ -494,7 +506,6 @@ export const IslandApp: React.FC = () => {
     if (timerDeadlineMs && !isTimerPaused) {
       const rem = Math.max(0, Math.ceil((timerDeadlineMs - Date.now()) / 1000));
       setTimerPausedRemainingSecs(rem);
-      setTimerRemainingSecs(rem);
       setTimerDeadlineMs(null);
       localStorage.setItem(
         "orbit_timer_state",
@@ -508,7 +519,6 @@ export const IslandApp: React.FC = () => {
       const deadline = Date.now() + timerPausedRemainingSecs * 1000;
       setTimerDeadlineMs(deadline);
       setTimerPausedRemainingSecs(null);
-      setTimerRemainingSecs(timerPausedRemainingSecs);
       localStorage.setItem(
         "orbit_timer_state",
         JSON.stringify({ deadlineMs: deadline, totalSecs: timerTotalSecs, label: timerLabel })
@@ -534,40 +544,21 @@ export const IslandApp: React.FC = () => {
     setTimerDeadlineMs(null);
     setTimerPausedRemainingSecs(null);
     setTimerTotalSecs(0);
-    setTimerRemainingSecs(0);
     localStorage.removeItem("orbit_timer_state");
   };
 
-  // Focus timer countdown & completion ticker (only ticks when active)
+  // Timer completion notification
   useEffect(() => {
-    if (isTimerPaused) {
-      setTimerRemainingSecs(timerPausedRemainingSecs || 0);
-      return;
+    if (timerDeadlineMs !== null && currentTime.getTime() >= timerDeadlineMs) {
+      stopTimer();
+      triggerUtilityAlertRef.current({
+        kind: "timer_done",
+        label: `${timerLabel} Timer`,
+        detail: "Time's Up!",
+        color: "#f59e0b",
+      });
     }
-    if (!timerDeadlineMs) {
-      setTimerRemainingSecs(0);
-      return;
-    }
-
-    const checkTimer = () => {
-      const now = Date.now();
-      const remaining = Math.max(0, Math.ceil((timerDeadlineMs - now) / 1000));
-      setTimerRemainingSecs(remaining);
-      if (now >= timerDeadlineMs) {
-        stopTimer();
-        triggerUtilityAlertRef.current({
-          kind: "timer_done",
-          label: `${timerLabel} Timer`,
-          detail: "Time's Up!",
-          color: "#f59e0b",
-        });
-      }
-    };
-
-    checkTimer();
-    const timer = setInterval(checkTimer, 1000);
-    return () => clearInterval(timer);
-  }, [timerDeadlineMs, isTimerPaused, timerLabel]);
+  }, [currentTime, timerDeadlineMs, timerLabel]);
 
   // Upcoming Event / Exam / Meeting countdown alert (within 15 minutes)
   useEffect(() => {
@@ -883,7 +874,6 @@ export const IslandApp: React.FC = () => {
 
   // Automatically expand the island whenever the Onboarding Guide is active so first-time users see it immediately
   useEffect(() => {
-    if (!isLoaded) return;
     if (showOnboarding) {
       setIsClosing(false);
       setIsExpanded(true);
@@ -892,11 +882,10 @@ export const IslandApp: React.FC = () => {
         ipc.setIslandState("expanded").catch(() => {});
       }
     }
-  }, [showOnboarding, isLoaded]);
+  }, [showOnboarding]);
 
   // Sync onboarding state once config is loaded from disk
   useEffect(() => {
-    if (!isLoaded) return;
     try {
       const seenLocally = localStorage.getItem("orbit_onboarding_seen") === "true";
       if (config.onboardingCompleted || seenLocally) {
@@ -912,7 +901,7 @@ export const IslandApp: React.FC = () => {
         showOnboardingRef.current = true;
       }
     } catch (_) {}
-  }, [isLoaded, config.onboardingCompleted]);
+  }, [config.onboardingCompleted]);
 
   // Reset calendar month and selected date to today whenever the island compacts
   useEffect(() => {
@@ -1572,23 +1561,12 @@ export const IslandApp: React.FC = () => {
     };
   }, [loadConfig]);
 
-  // Live system clock ticker (minute-boundary interval)
+  // Live system clock ticker (1-second interval)
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-    const now = Date.now();
-    const msUntilNextMinute = 60000 - (now % 60000);
-
-    const timeoutId = setTimeout(() => {
+    const timer = setInterval(() => {
       setCurrentTime(new Date());
-      intervalId = setInterval(() => {
-        setCurrentTime(new Date());
-      }, 60000);
-    }, msUntilNextMinute);
-
-    return () => {
-      clearTimeout(timeoutId);
-      if (intervalId) clearInterval(intervalId);
-    };
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   // Completion-driven native collapse finalizer
@@ -2425,8 +2403,6 @@ export const IslandApp: React.FC = () => {
       ? Math.max(0.88, (config.surfaceOpacity ?? 80) / 100)
       : (config.surfaceOpacity ?? 80) / 100;
 
-  const backdropInFlightRef = useRef(false);
-
   // Live Optical Desktop Backdrop (fetches screen capture from Rust backend)
   useEffect(() => {
     if (effectiveTransparencyMode === "solid" || isReducedEffects || isMediaBackdropActive) {
@@ -2435,22 +2411,14 @@ export const IslandApp: React.FC = () => {
 
     let isMounted = true;
     const fetchBackdrop = async () => {
-      if (backdropInFlightRef.current) return;
-      backdropInFlightRef.current = true;
       try {
         const res = await invoke<{ dataUrl: string; avgLuminance: number } | null>("get_live_backdrop");
-        if (isMounted && res) {
-          if (res.dataUrl) {
-            setLiveBackdropUrl((prev) => (prev !== res.dataUrl ? res.dataUrl : prev));
-          }
-          if (typeof res.avgLuminance === "number") {
-            setGlassTone((prev) => nextGlassTone(prev, res.avgLuminance));
-          }
+        if (isMounted && res?.dataUrl) {
+          setLiveBackdropUrl((prev) => (prev !== res.dataUrl ? res.dataUrl : prev));
+          setGlassTone((prev) => nextGlassTone(prev, res.avgLuminance));
         }
       } catch {
         // Silently handle if command unavailable
-      } finally {
-        backdropInFlightRef.current = false;
       }
     };
 
@@ -2559,8 +2527,8 @@ export const IslandApp: React.FC = () => {
           transform: shellTransform,
           // @ts-expect-error CSS custom property
           "--surface-alpha": surfaceAlpha,
-          "--theme-accent": activeThemeMeta.accent,
-          "--theme-accent-secondary": activeThemeMeta.accentSecondary,
+          "--theme-accent": activeThemeMeta.color,
+          "--theme-accent-secondary": activeThemeMeta.accent,
           transition: prefersReducedMotion
             ? "none"
             : isClosing

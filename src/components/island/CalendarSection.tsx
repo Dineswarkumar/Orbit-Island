@@ -174,7 +174,7 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
           <div
             className="text-[12px] font-extrabold tracking-tight truncate cursor-pointer hover:opacity-80 transition-opacity"
             style={{
-              color: selectedDayStyle ? selectedDayStyle.hex : "var(--island-text)",
+              color: selectedDayStyle ? selectedDayStyle.hex : activeThemeMeta.color,
             }}
             onClick={(e) => {
               e.stopPropagation();
@@ -186,10 +186,7 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
           >
             {monthName}
           </div>
-          <div
-            className="text-[10px] font-semibold tabular-nums"
-            style={{ color: "var(--island-muted)" }}
-          >
+          <div className="text-[10px] font-semibold text-white/70 tabular-nums">
             {selectedYear}
           </div>
         </div>

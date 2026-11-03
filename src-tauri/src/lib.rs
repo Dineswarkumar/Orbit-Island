@@ -111,8 +111,15 @@ where
 pub fn run() {
     #[cfg(target_os = "windows")]
     {
-        use windows_sys::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
-        use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, ShowWindow, SW_SHOW};
+        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+            PROCESS_TERMINATE,
+        };
 
         #[link(name = "kernel32")]
         unsafe extern "system" {
@@ -128,14 +135,45 @@ pub fn run() {
             .collect();
         let handle = unsafe { CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr()) };
         if !handle.is_null() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-            let win_title: Vec<u16> = "ORBIT\0".encode_utf16().collect();
-            let existing_hwnd = unsafe { FindWindowW(std::ptr::null(), win_title.as_ptr()) };
-            if !existing_hwnd.is_null() {
-                unsafe {
-                    ShowWindow(existing_hwnd, SW_SHOW);
+            unsafe {
+                let _ = CloseHandle(handle);
+                let my_pid = std::process::id();
+                let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+                if !snap.is_null() && (snap as isize) != -1 {
+                    let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+                    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+                    if Process32FirstW(snap, &mut entry) != 0 {
+                        loop {
+                            if entry.th32ProcessID != my_pid {
+                                let len = entry
+                                    .szExeFile
+                                    .iter()
+                                    .position(|&c| c == 0)
+                                    .unwrap_or(entry.szExeFile.len());
+                                let exe_name =
+                                    String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase();
+                                if exe_name == "orbit.exe" {
+                                    let proc_handle = OpenProcess(
+                                        PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
+                                        0,
+                                        entry.th32ProcessID,
+                                    );
+                                    if !proc_handle.is_null() {
+                                        let _ = TerminateProcess(proc_handle, 0);
+                                        let _ = WaitForSingleObject(proc_handle, 1000);
+                                        let _ = CloseHandle(proc_handle);
+                                    }
+                                }
+                            }
+                            if Process32NextW(snap, &mut entry) == 0 {
+                                break;
+                            }
+                        }
+                    }
+                    let _ = CloseHandle(snap);
                 }
+                let _ = CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr());
             }
-            return;
         }
     }
 
@@ -290,7 +328,12 @@ pub fn run() {
                 "window_event",
                 &format!("label: {}, event: {:?}", window.label(), event),
             );
-            if window.label() == "main" {
+            if window.label() == "settings" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            } else if window.label() == "main" {
                 if let tauri::WindowEvent::ScaleFactorChanged { .. } = event {
                     let app = window.app_handle();
                     let cfg = load_config(app);

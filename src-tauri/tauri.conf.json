@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ORBIT",
-  "version": "2.1.2",
+  "version": "3.0.1",
   "identifier": "com.orbit.island",
   "build": {
     "frontendDist": "../dist",
@@ -23,6 +23,17 @@
         "skipTaskbar": true,
         "shadow": false,
         "visible": true
+      },
+      {
+        "label": "settings",
+        "title": "ORBIT Settings",
+        "width": 640,
+        "height": 520,
+        "resizable": true,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "visible": false
       }
     ],
     "security": {

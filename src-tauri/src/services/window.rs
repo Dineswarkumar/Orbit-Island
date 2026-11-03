@@ -981,8 +981,7 @@ pub fn capture_live_backdrop(
 
     let old_comp = unsafe { SelectObject(hdc_comp, dib_comp as HGDIOBJ) };
 
-    // Hold the affinity lock for the whole sample so the stealth setting cannot race the
-    // temporary exclusion below.
+    // Hold the affinity lock for the sample to serialize with stealth mode updates.
     let _affinity_guard = CAPTURE_AFFINITY_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -990,29 +989,11 @@ pub fn capture_live_backdrop(
     let mut affinity: u32 = 0;
     let has_affinity = unsafe { GetWindowDisplayAffinity(island_hwnd, &mut affinity) } != 0;
     const WDA_EXCLUDEFROMCAPTURE: u32 = 0x00000011;
-    let prior_affinity = if has_affinity { affinity } else { 0 };
     let already_excluded = has_affinity && affinity == WDA_EXCLUDEFROMCAPTURE;
 
-    // The island is a transparent window, so a plain screen blit would photograph itself.
-    // Excluding it from capture for a few milliseconds makes DWM hand us exactly what is
-    // *behind* it (browsers, videos, wallpaper - all GPU composited) with the island removed.
-    // The exclusion only affects capture APIs; the island stays visible on the monitor.
-    let temporarily_excluded = if already_excluded {
-        false
-    } else {
-        unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::SetWindowDisplayAffinity(
-                island_hwnd,
-                WDA_EXCLUDEFROMCAPTURE,
-            ) != 0
-        }
-    };
-    if temporarily_excluded {
-        // DWM applies the flag on its next composition pass.
-        std::thread::sleep(std::time::Duration::from_millis(34));
-    }
-
-    if already_excluded || temporarily_excluded {
+    if already_excluded {
+        // Window is already excluded from capture (stealth mode enabled), so DWM has already
+        // omitted the island from the desktop surface and we can sample hdc_screen directly.
         unsafe {
             SetStretchBltMode(hdc_comp, HALFTONE);
             StretchBlt(
@@ -1023,17 +1004,10 @@ pub fn capture_live_backdrop(
                 SRCCOPY,
             );
         }
-        if temporarily_excluded {
-            unsafe {
-                windows_sys::Win32::UI::WindowsAndMessaging::SetWindowDisplayAffinity(
-                    island_hwnd,
-                    prior_affinity,
-                );
-            }
-        }
     } else {
-        // Fallback for Windows builds without WDA_EXCLUDEFROMCAPTURE: rebuild the backdrop
-        // from the wallpaper and the visible windows stacked beneath the island.
+        // Rebuild the backdrop from the cached desktop wallpaper crop and any visible windows
+        // stacked strictly beneath the island. This never photographs the island itself (zero
+        // self-capture of clock/text) and never stalls on a 34ms DWM sleep.
         let wp_pixels = get_wallpaper_crop(
             mon_left, mon_top, mon_w, mon_h,
             win_rect.left, win_rect.top, win_w, win_h,
@@ -1070,7 +1044,20 @@ pub fn capture_live_backdrop(
                 let mut cls = [0u16; 64];
                 let len = unsafe { GetClassNameW(curr, cls.as_mut_ptr(), cls.len() as i32) };
                 let cls_name = if len > 0 { String::from_utf16_lossy(&cls[..len as usize]) } else { String::new() };
-                if cls_name == "Progman" || cls_name == "WorkerW" || cls_name == "Shell_TrayWnd" {
+                if cls_name == "Progman" || cls_name == "WorkerW" {
+                    break;
+                }
+                if cls_name == "Shell_TrayWnd" || cls_name == "Shell_SecondaryTrayWnd" {
+                    curr = unsafe { GetWindow(curr, GW_HWNDNEXT) };
+                    continue;
+                }
+                let ex_style = unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::GetWindowLongW(
+                        curr,
+                        windows_sys::Win32::UI::WindowsAndMessaging::GWL_EXSTYLE,
+                    ) as u32
+                };
+                if (ex_style & windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_TRANSPARENT) != 0 {
                     curr = unsafe { GetWindow(curr, GW_HWNDNEXT) };
                     continue;
                 }

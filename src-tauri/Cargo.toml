@@ -1,6 +1,6 @@
 [package]
 name = "orbit"
-version = "2.1.2"
+version = "3.0.1"
 description = "ORBIT Dynamic Island"
 authors = ["User"]
 edition = "2024"

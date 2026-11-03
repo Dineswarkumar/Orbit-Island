@@ -218,7 +218,11 @@ pub fn save_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
 
     sync_startup_registry(config.launch_at_startup);
 
-    atomic_write(&path, content.as_bytes())
+    atomic_write(&path, content.as_bytes())?;
+    if let Some(store) = app.try_state::<std::sync::Arc<crate::ConfigStore>>() {
+        store.update(config.clone());
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]

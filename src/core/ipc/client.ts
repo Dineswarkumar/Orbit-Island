@@ -226,4 +226,13 @@ export const ipc = {
   getLiveBackdrop: async (): Promise<LiveBackdropSnapshot | null> => {
     return invoke<LiveBackdropSnapshot | null>("get_live_backdrop");
   },
+
+  getWeather: async (): Promise<{
+    tempC: number;
+    tempF: number;
+    conditionCode: "clear" | "partly_cloudy" | "cloudy" | "rain" | "snow" | "storm";
+    label: string;
+  }> => {
+    return invoke("get_weather");
+  },
 };

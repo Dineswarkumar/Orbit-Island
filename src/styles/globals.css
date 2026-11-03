@@ -351,13 +351,21 @@ body {
   background-image: none !important;
   --glass-d: var(--surface-alpha, 0.8);
   border-color: rgba(0, 0, 0, 0.32) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.26) !important;
+}
+
+.orbit-shell-3d.glass-tone-light:is(.transparency-glass, .transparency-frosted, .transparency-smoked):not(.orbit-media-active) {
+  border-color: rgba(15, 23, 42, 0.22) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.16) !important;
+}
+
+.settings-preview-pill.orbit-shell-3d:is(.transparency-glass, .transparency-frosted, .transparency-smoked):not(.orbit-media-active) {
   box-shadow:
     0 7px 18px -7px rgba(0, 0, 0, 0.52),
     0 1px 3px rgba(0, 0, 0, 0.28) !important;
 }
 
-.orbit-shell-3d.glass-tone-light:is(.transparency-glass, .transparency-frosted, .transparency-smoked):not(.orbit-media-active) {
-  border-color: rgba(15, 23, 42, 0.22) !important;
+.settings-preview-pill.orbit-shell-3d.glass-tone-light:is(.transparency-glass, .transparency-frosted, .transparency-smoked):not(.orbit-media-active) {
   box-shadow:
     0 7px 18px -7px rgba(15, 23, 42, 0.40),
     0 1px 3px rgba(15, 23, 42, 0.20) !important;
