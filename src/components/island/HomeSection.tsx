@@ -467,7 +467,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
       (audioSpectrum?.peak ?? 0) >= 0.005;
 
     return (
-      <div className="orbit-media-surface flex flex-col h-full min-h-0 select-none px-1.5 py-0.5 relative overflow-hidden rounded-2xl gap-1">
+      <div className={`orbit-media-surface flex flex-col h-full min-h-0 select-none relative overflow-hidden rounded-2xl ${config.mediaCompactMode ? "px-2 py-1 gap-0.5" : "px-1.5 py-0.5 gap-1"}`}>
 
         {/* Source & Pin Header */}
         <div className="flex items-center justify-between w-full min-h-[20px] shrink-0 overflow-hidden relative z-10">
@@ -482,7 +482,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   mediaSession.track.title || mediaSession.source_title
                 );
               }}
-              className="px-3 py-0.5 rounded-full bg-indigo-950/55 border border-indigo-400/45 text-[10px] font-extrabold uppercase tracking-wider text-[#93c5fd] shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] truncate max-w-[110px] inline-block shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
+              className="px-3 py-0.5 rounded-full bg-slate-950/55 border text-[10px] font-extrabold uppercase tracking-wider shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] truncate max-w-[110px] inline-block shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
+              style={{ color: "var(--theme-accent)", borderColor: "color-mix(in srgb, var(--theme-accent) 45%, transparent)" }}
               title={`Click to open ${mediaSession.source_title}`}
             >
               {mediaSession.source_title}
@@ -717,8 +718,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
           className="flex items-center gap-3 flex-1 min-h-0 cursor-pointer hover:opacity-95 transition-opacity relative z-10"
           title={`Click to open ${mediaSession.source_title}`}
         >
-          <div className="w-[52px] h-[52px] rounded-xl overflow-hidden shrink-0 border border-white/25 shadow-[0_6px_16px_rgba(0,0,0,0.65)] flex items-center justify-center bg-black/40">
-            {mediaSession.track.thumbnail_base64 ? (
+          <div className={`${config.mediaCompactMode ? "w-[38px] h-[38px] rounded-lg" : "w-[52px] h-[52px] rounded-xl"} overflow-hidden shrink-0 border border-white/25 shadow-[0_6px_16px_rgba(0,0,0,0.65)] flex items-center justify-center bg-black/40`}>
+            {config.mediaShowCoverArt && mediaSession.track.thumbnail_base64 ? (
               <img
                 src={mediaSession.track.thumbnail_base64}
                 alt="Album Cover"
@@ -742,17 +743,18 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               {mediaSession.track.title || "Unknown Track"}
             </span>
             <span
-              className="text-[12px] font-bold text-[#93c5fd] leading-tight truncate mt-0.5"
+              className="text-[12px] font-bold leading-tight truncate mt-0.5"
+              style={{ color: "var(--theme-accent)" }}
               title={mediaSession.track.artist}
             >
               {mediaSession.track.artist || "Unknown Artist"}
             </span>
-            <span
+            {!config.mediaCompactMode && <span
               className="text-[9.5px] font-bold uppercase tracking-wider text-slate-300/75 leading-tight truncate mt-0.5"
               title={mediaSession.track.album || mediaSession.source_title}
             >
               {mediaSession.track.album || mediaSession.source_title}
-            </span>
+            </span>}
           </div>
         </div>
 
@@ -766,25 +768,8 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             <div className="w-full h-[3.5px] rounded-full bg-white/25 relative overflow-visible">
               {/* Filled Blue Bar */}
               <div
-                className="h-full rounded-full bg-gradient-to-r from-blue-600 via-blue-500 to-sky-400 shadow-[0_0_10px_rgba(59,130,246,0.85)]"
-                style={{ width: `${progressPercent}%` }}
-              />
-              {/* Sleek Elongated Blue Liquid-Glass Wave around Thumb */}
-              <div
-                style={{
-                  position: "absolute",
-                  left: `${progressPercent}%`,
-                  top: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: "110px",
-                  height: "14px",
-                  borderRadius: "9999px",
-                  background:
-                    "radial-gradient(ellipse at center, rgba(59, 130, 246, 0.55) 0%, rgba(59, 130, 246, 0.20) 55%, transparent 85%)",
-                  boxShadow:
-                    "inset 0 1px 1px rgba(255, 255, 255, 0.6), inset 0 -1px 1px rgba(147, 197, 253, 0.4)",
-                  pointerEvents: "none",
-                }}
+                className="h-full rounded-full"
+                style={{ width: `${progressPercent}%`, background: "linear-gradient(90deg, var(--theme-accent-secondary), var(--theme-accent))", boxShadow: "0 0 10px color-mix(in srgb, var(--theme-accent) 85%, transparent)" }}
               />
               {/* Glowing White Circular Thumb with Translucent Blue Halo Ring */}
               <div
@@ -798,7 +783,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   borderRadius: "9999px",
                   background: "#ffffff",
                   boxShadow:
-                    "0 0 0 4.5px rgba(59, 130, 246, 0.38), 0 0 12px rgba(96, 165, 250, 0.95)",
+                    "0 0 0 4.5px color-mix(in srgb, var(--theme-accent) 38%, transparent), 0 0 12px color-mix(in srgb, var(--theme-accent) 95%, transparent)",
                   pointerEvents: "none",
                 }}
               />
@@ -808,13 +793,14 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               type="range"
               min={0}
               max={duration || 100}
-              step={1}
+              step={0.1}
               disabled={!canSeek || !isTimelineReliable}
               value={displayPos}
               onPointerDown={onSeekPointerDown}
               onChange={onSeekChange}
               onPointerUp={onSeekPointerUp}
               onPointerCancel={onSeekPointerCancel}
+              onClick={(e) => e.stopPropagation()}
               onKeyUp={onSeekKeyUp}
               aria-label="Track progress"
               aria-valuemin={0}
@@ -832,30 +818,24 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         </div>
 
         {/* Bottom Row — Full-Width Music Frequency Waves + Increased Gap Transport Controls */}
-        <div className="relative flex items-center justify-center h-[38px] w-full shrink-0">
+        <div className={`relative flex items-center justify-center w-full shrink-0 ${config.mediaCompactMode ? "h-[31px]" : "h-[38px]"}`}>
           {/* Full-Width Music Frequency Waves */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[34px] flex items-end justify-between px-0.5 z-0">
+          {config.mediaVisualizerMode !== "off" && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[34px] flex items-end justify-between px-0.5 z-0">
             {Array.from({ length: 40 }).map((_, idx) => {
               const isPlaying = mediaSession.playback_status === "playing";
               const isCenter = idx >= 12 && idx <= 27;
-
-              // Natural 40-bar alternating peak-and-valley musical envelope
-              const waveEnvelope = [
-                0.42, 0.88, 0.54, 0.96, 0.48, 0.78, 0.38, 0.84, 0.62, 0.92, 0.44, 0.72,
-                0.36, 0.52, 0.30, 0.45, 0.26, 0.38, 0.24, 0.34, 0.26, 0.40, 0.28, 0.46,
-                0.32, 0.54, 0.38, 0.68, 0.46, 0.86, 0.52, 0.94, 0.44, 0.76, 0.58, 0.88,
-                0.42, 0.74, 0.50, 0.36
-              ];
-
+              const mirroredIndex = Math.min(idx, 39 - idx);
+              const envelope = 0.92 - (mirroredIndex / 19) * 0.45;
               let height = 0.12;
               if (isPlaying) {
                 if (hasAudioSignal && audioSpectrum?.waveBars && audioSpectrum.waveBars.length > 0) {
-                  const sourceIdx = Math.floor((idx / 39) * (audioSpectrum.waveBars.length - 1));
-                  const val = audioSpectrum.waveBars[sourceIdx] ?? 0;
-                  const baseFactor = 0.35 + val * 0.75;
-                  height = Math.max(0.20, Math.min(0.96, baseFactor * waveEnvelope[idx]));
+                  const sourceIdx = Math.floor((mirroredIndex / 19) * (audioSpectrum.waveBars.length - 1));
+                  const val = config.mediaVisualizerMode === "beats"
+                    ? audioSpectrum.compactBars[0]
+                    : audioSpectrum.waveBars[sourceIdx] ?? 0;
+                  height = Math.max(0.16, Math.min(0.96, (0.12 + Math.pow(val, 0.72) * 0.95) * envelope));
                 } else {
-                  height = waveEnvelope[idx];
+                  height = envelope;
                 }
               }
 
@@ -872,14 +852,13 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                   style={{
                     transform: `scaleY(${height.toFixed(2)})`,
                     opacity,
-                    background:
-                      "linear-gradient(180deg, #93c5fd 0%, #3b82f6 55%, rgba(30, 58, 138, 0.2) 100%)",
-                    boxShadow: "0 0 6px rgba(59, 130, 246, 0.65)",
+                    background: "linear-gradient(180deg, color-mix(in srgb, var(--theme-accent) 45%, white) 0%, var(--theme-accent) 55%, color-mix(in srgb, var(--theme-accent-secondary) 30%, transparent) 100%)",
+                    boxShadow: "0 0 6px color-mix(in srgb, var(--theme-accent) 65%, transparent)",
                   }}
                 />
               );
             })}
-          </div>
+          </div>}
 
           {/* Center Transport Buttons with Increased Gap (gap-6 = 24px) */}
           <div className="relative z-10 flex items-center justify-center gap-6">
@@ -894,9 +873,10 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onMediaCommand("previous");
               }}
-              className={`w-8 h-8 rounded-full bg-indigo-950/65 hover:bg-indigo-900/80 border border-indigo-300/40 shadow-[0_2px_8px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.28)] flex items-center justify-center text-white orbit-keep-white transition-transform active:scale-90 cursor-pointer disabled:opacity-35 ${
+              className={`w-8 h-8 rounded-full border shadow-[0_2px_8px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.28)] flex items-center justify-center text-white orbit-keep-white transition-transform active:scale-90 cursor-pointer disabled:opacity-35 ${
                 isMediaCommandPending ? "pointer-events-none opacity-40" : ""
               }`}
+              style={{ background: "color-mix(in srgb, var(--theme-accent-secondary) 35%, #0f172a)", borderColor: "color-mix(in srgb, var(--theme-accent) 45%, transparent)" }}
             >
               <svg
                 className="w-4 h-4"
@@ -932,11 +912,12 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onMediaCommand("toggle");
               }}
-              className={`w-10 h-10 rounded-full bg-gradient-to-b from-blue-500/55 to-indigo-600/70 hover:from-blue-400/65 hover:to-indigo-500/80 border-[1.5px] border-blue-300/90 shadow-[0_0_18px_rgba(59,130,246,0.85),inset_0_1.5px_2px_rgba(255,255,255,0.65)] flex items-center justify-center text-white orbit-keep-white transition-all active:scale-90 cursor-pointer disabled:opacity-35 ${
+              className={`w-10 h-10 rounded-full border-[1.5px] shadow-[0_0_18px_color-mix(in_srgb,var(--theme-accent)_85%,transparent),inset_0_1.5px_2px_rgba(255,255,255,0.65)] flex items-center justify-center text-white orbit-keep-white transition-all active:scale-90 cursor-pointer disabled:opacity-35 ${
                 isMediaCommandPending
                   ? "opacity-60 cursor-wait pointer-events-none"
                   : ""
               }`}
+              style={{ background: "linear-gradient(180deg, color-mix(in srgb, var(--theme-accent) 65%, white), color-mix(in srgb, var(--theme-accent-secondary) 75%, #111827))", borderColor: "color-mix(in srgb, var(--theme-accent) 80%, white)" }}
             >
               {mediaSession.playback_status === "playing" ? (
                 <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -961,9 +942,10 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 e.stopPropagation();
                 onMediaCommand("next");
               }}
-              className={`w-8 h-8 rounded-full bg-indigo-950/65 hover:bg-indigo-900/80 border border-indigo-300/40 shadow-[0_2px_8px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.28)] flex items-center justify-center text-white orbit-keep-white transition-transform active:scale-90 cursor-pointer disabled:opacity-35 ${
+              className={`w-8 h-8 rounded-full border shadow-[0_2px_8px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.28)] flex items-center justify-center text-white orbit-keep-white transition-transform active:scale-90 cursor-pointer disabled:opacity-35 ${
                 isMediaCommandPending ? "pointer-events-none opacity-40" : ""
               }`}
+              style={{ background: "color-mix(in srgb, var(--theme-accent-secondary) 35%, #0f172a)", borderColor: "color-mix(in srgb, var(--theme-accent) 45%, transparent)" }}
             >
               <svg
                 className="w-4 h-4"

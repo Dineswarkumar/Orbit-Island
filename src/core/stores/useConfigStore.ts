@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { AppConfig, createDefaultAppConfig, mergeWithDefaultConfig } from "../types/config";
+import { AppConfig, createDefaultAppConfig, mergeWithDefaultConfig, normalizeGlassPreset } from "../types/config";
 import { ipc } from "../ipc/client";
 
 interface ConfigStore {
@@ -22,7 +22,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   loadConfig: async () => {
     set({ isLoading: true, error: null });
     try {
-      const config = await ipc.getConfig();
+      const config = normalizeGlassPreset(await ipc.getConfig());
       set({ config, isLoaded: true, isLoading: false });
     } catch (err) {
       set({ error: String(err), isLoading: false });
@@ -31,11 +31,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   updateConfig: async (patch: Partial<AppConfig>): Promise<boolean> => {
     const current = get().config;
-    const merged = mergeWithDefaultConfig({ ...current, ...patch });
+    const merged = normalizeGlassPreset(mergeWithDefaultConfig({ ...current, ...patch }));
     
     set({ isSaving: true, error: null });
     try {
-      const saved = await ipc.saveConfig(merged);
+      const saved = normalizeGlassPreset(await ipc.saveConfig(merged));
       set({ config: saved, isSaving: false, error: null });
       return true;
     } catch (err) {

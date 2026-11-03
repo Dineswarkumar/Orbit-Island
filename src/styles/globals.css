@@ -429,8 +429,8 @@ body {
   background:
     linear-gradient(
       180deg,
-      rgba(16, 21, 34, calc(0.10 + var(--glass-d, 0.8) * 0.30)) 0%,
-      rgba(8, 11, 20, calc(0.20 + var(--glass-d, 0.8) * 0.38)) 100%
+      rgba(16, 21, 34, calc(0.03 + var(--glass-d, 0.8) * 0.22)) 0%,
+      rgba(8, 11, 20, calc(0.05 + var(--glass-d, 0.8) * 0.28)) 100%
     );
 }
 
@@ -438,8 +438,8 @@ body {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, calc(0.20 + var(--glass-d, 0.8) * 0.34)) 0%,
-      rgba(238, 245, 255, calc(0.14 + var(--glass-d, 0.8) * 0.36)) 100%
+      rgba(255, 255, 255, calc(0.10 + var(--glass-d, 0.8) * 0.24)) 0%,
+      rgba(238, 245, 255, calc(0.08 + var(--glass-d, 0.8) * 0.26)) 100%
     );
 }
 
@@ -448,8 +448,8 @@ body {
   background:
     linear-gradient(
       180deg,
-      rgba(20, 26, 40, calc(0.16 + var(--glass-d, 0.8) * 0.30)) 0%,
-      rgba(12, 16, 28, calc(0.24 + var(--glass-d, 0.8) * 0.36)) 100%
+      rgba(20, 26, 40, calc(0.08 + var(--glass-d, 0.8) * 0.22)) 0%,
+      rgba(12, 16, 28, calc(0.12 + var(--glass-d, 0.8) * 0.28)) 100%
     );
 }
 
@@ -457,8 +457,8 @@ body {
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, calc(0.28 + var(--glass-d, 0.8) * 0.34)) 0%,
-      rgba(244, 248, 255, calc(0.22 + var(--glass-d, 0.8) * 0.36)) 100%
+      rgba(255, 255, 255, calc(0.16 + var(--glass-d, 0.8) * 0.25)) 0%,
+      rgba(244, 248, 255, calc(0.12 + var(--glass-d, 0.8) * 0.28)) 100%
     );
 }
 
@@ -467,13 +467,13 @@ body {
   background:
     linear-gradient(
       155deg,
-      color-mix(in srgb, var(--theme-accent, #38bdf8) 40%, transparent) 0%,
-      color-mix(in srgb, var(--theme-accent-secondary, #2563eb) 24%, transparent) 100%
+      color-mix(in srgb, var(--theme-accent, #38bdf8) 34%, transparent) 0%,
+      color-mix(in srgb, var(--theme-accent-secondary, #2563eb) 20%, transparent) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(10, 14, 26, calc(0.10 + var(--glass-d, 0.8) * 0.28)) 0%,
-      rgba(6, 9, 18, calc(0.18 + var(--glass-d, 0.8) * 0.34)) 100%
+      rgba(10, 14, 26, calc(0.03 + var(--glass-d, 0.8) * 0.18)) 0%,
+      rgba(6, 9, 18, calc(0.05 + var(--glass-d, 0.8) * 0.24)) 100%
     );
 }
 
@@ -481,13 +481,13 @@ body {
   background:
     linear-gradient(
       155deg,
-      color-mix(in srgb, var(--theme-accent, #2563eb) 30%, transparent) 0%,
-      color-mix(in srgb, var(--theme-accent-secondary, #4f46e5) 18%, transparent) 100%
+      color-mix(in srgb, var(--theme-accent, #2563eb) 26%, transparent) 0%,
+      color-mix(in srgb, var(--theme-accent-secondary, #4f46e5) 16%, transparent) 100%
     ),
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, calc(0.18 + var(--glass-d, 0.8) * 0.30)) 0%,
-      rgba(238, 245, 255, calc(0.12 + var(--glass-d, 0.8) * 0.32)) 100%
+      rgba(255, 255, 255, calc(0.08 + var(--glass-d, 0.8) * 0.20)) 0%,
+      rgba(238, 245, 255, calc(0.06 + var(--glass-d, 0.8) * 0.23)) 100%
     );
 }
 

@@ -41,6 +41,11 @@ pub struct AppConfig {
     pub shortcuts_enabled: bool,
     pub auto_hide_in_meetings: bool,
     pub network_activity_mode: String,
+    pub online_weather_enabled: bool,
+    pub media_background_mode: String,
+    pub media_visualizer_mode: String,
+    pub media_show_cover_art: bool,
+    pub media_compact_mode: bool,
 }
 
 impl AppConfig {
@@ -123,6 +128,12 @@ impl AppConfig {
         if !["off", "speed_only", "full"].contains(&self.network_activity_mode.as_str()) {
             return Err("Unsupported network activity mode. Must be off, speed_only, or full".to_string());
         }
+        if !["cover", "theme", "solid"].contains(&self.media_background_mode.as_str()) {
+            return Err("Unsupported media background mode".to_string());
+        }
+        if !["spectrum", "beats", "off"].contains(&self.media_visualizer_mode.as_str()) {
+            return Err("Unsupported media visualizer mode".to_string());
+        }
         Ok(())
     }
 }
@@ -144,7 +155,7 @@ impl Default for AppConfig {
             notification_preview_duration_sec: 4,
             show_privacy_indicators: true,
             blocked_apps: Vec::new(),
-            surface_opacity: 80,
+            surface_opacity: 20,
             show_weather: false,
             weather_unit: "C".to_string(),
             adaptive_album_accent: true,
@@ -161,6 +172,11 @@ impl Default for AppConfig {
             shortcuts_enabled: true,
             auto_hide_in_meetings: true,
             network_activity_mode: "speed_only".to_string(),
+            online_weather_enabled: false,
+            media_background_mode: "cover".to_string(),
+            media_visualizer_mode: "spectrum".to_string(),
+            media_show_cover_art: true,
+            media_compact_mode: false,
         }
     }
 }
@@ -460,10 +476,10 @@ mod tests {
 
     #[test]
     fn surface_opacity_presets_validated_and_backward_compatible() {
-        // Backward-compatible: missing surfaceOpacity in old JSON defaults to 80
+        // Backward-compatible: missing surfaceOpacity in old JSON defaults to 20
         let old_json = r#"{"theme":"obsidian","position":"top-center"}"#;
         let config: AppConfig = serde_json::from_str(old_json).unwrap();
-        assert_eq!(config.surface_opacity, 80);
+        assert_eq!(config.surface_opacity, 20);
         assert!(config.validate().is_ok());
 
         // Valid presets: 20, 50, 80, 100

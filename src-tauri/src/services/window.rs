@@ -199,10 +199,23 @@ pub fn position_island_window<R: tauri::Runtime>(window: &WebviewWindow<R>, posi
         "top-right" => (screen_width - 400.0 - 24.0).max(0.0),
         _ => (screen_width - 400.0) / 2.0,
     };
-    let y = 10.0;
+    // Keep the island below a taskbar docked to the top edge. The old fixed 10px
+    // offset placed it directly over the taskbar and made its controls hard to reach.
+    let mut y_px = (10.0 * scale).round() as i32;
+    unsafe {
+        use windows_sys::Win32::Foundation::RECT;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowRect};
+        let class_name: Vec<u16> = "Shell_TrayWnd".encode_utf16().chain(std::iter::once(0)).collect();
+        let taskbar = FindWindowW(class_name.as_ptr(), std::ptr::null());
+        if !taskbar.is_null() {
+            let mut rect: RECT = std::mem::zeroed();
+            if GetWindowRect(taskbar, &mut rect) != 0 && rect.top <= 2 && rect.bottom > 0 {
+                y_px = rect.bottom.saturating_add((10.0 * scale).round() as i32);
+            }
+        }
+    }
 
     let x_px = (x * scale).round() as i32;
-    let y_px = (y * scale).round() as i32;
     let width_px = (400.0 * scale).round() as i32;
     let height_px = (188.0 * scale).round() as i32;
 
@@ -285,7 +298,7 @@ pub fn apply_island_region_sized(
 
     use windows_sys::Win32::Foundation::HWND;
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateRoundRectRgn, DeleteObject, HGDIOBJ, HRGN, SetWindowRgn,
+        CreateRectRgn, CreateRoundRectRgn, DeleteObject, HGDIOBJ, HRGN, SetWindowRgn,
     };
 
     let hwnd = window.hwnd().map_err(|e| e.to_string())?;
@@ -311,7 +324,9 @@ pub fn apply_island_region_sized(
         "compact" | "compact_alert" => dynamic_compact.unwrap_or((110.0, 0.0, 290.0, 48.0, 46.0)),
         "compact_dual" => dynamic_compact.unwrap_or((68.0, 0.0, 332.0, 48.0, 46.0)),
         "notification" => (36.0, 0.0, 364.0, 74.0, 56.0),
-        "notification_hover" => (10.0, 0.0, 390.0, 132.0, 56.0),
+        // Use a square-ended hit region for the notification action row. A large rounded
+        // corner here clips the lower-right Dismiss button on Windows, especially at scaled DPI.
+        "notification_hover" => (8.0, 0.0, 392.0, 150.0, 0.0),
         "expanded" => (16.0, 0.0, 384.0, 180.0, 56.0),
         _ => return Err(format!("Unsupported island state for region: {state}")),
     };
@@ -329,14 +344,18 @@ pub fn apply_island_region_sized(
     };
 
     let region = unsafe {
-        CreateRoundRectRgn(
-            x1,
-            y1,
-            x2,
-            y2,
-            corner_diameter,
-            corner_diameter,
-        )
+        if state == "notification_hover" {
+            CreateRectRgn(x1, y1, x2, y2)
+        } else {
+            CreateRoundRectRgn(
+                x1,
+                y1,
+                x2,
+                y2,
+                corner_diameter,
+                corner_diameter,
+            )
+        }
     };
     if region.is_null() {
         return Err("Windows failed to create the island window region".to_string());
@@ -624,6 +643,10 @@ unsafe extern "system" {
     fn GetWindowDisplayAffinity(
         hwnd: windows_sys::Win32::Foundation::HWND,
         paffinity: *mut u32,
+    ) -> windows_sys::Win32::Foundation::BOOL;
+    fn SetWindowDisplayAffinity(
+        hwnd: windows_sys::Win32::Foundation::HWND,
+        affinity: u32,
     ) -> windows_sys::Win32::Foundation::BOOL;
     fn GetWindowDC(
         hwnd: windows_sys::Win32::Foundation::HWND,
@@ -991,20 +1014,34 @@ pub fn capture_live_backdrop(
     const WDA_EXCLUDEFROMCAPTURE: u32 = 0x00000011;
     let already_excluded = has_affinity && affinity == WDA_EXCLUDEFROMCAPTURE;
 
-    if already_excluded {
-        // Window is already excluded from capture (stealth mode enabled), so DWM has already
-        // omitted the island from the desktop surface and we can sample hdc_screen directly.
+    // Prefer the compositor's actual desktop pixels. This captures DirectComposition and
+    // accelerated app surfaces (PowerPoint, browsers, video) that GetWindowDC cannot read.
+    // Temporarily exclude only this island from capture, then restore the user's setting.
+    let direct_capture_ok = if already_excluded {
         unsafe {
             SetStretchBltMode(hdc_comp, HALFTONE);
             StretchBlt(
-                hdc_comp,
-                0, 0, BACKDROP_WIDTH, BACKDROP_HEIGHT,
-                hdc_screen,
-                win_rect.left, win_rect.top, win_w, win_h,
-                SRCCOPY,
-            );
+                hdc_comp, 0, 0, BACKDROP_WIDTH, BACKDROP_HEIGHT,
+                hdc_screen, win_rect.left, win_rect.top, win_w, win_h, SRCCOPY,
+            ) != 0
         }
+    } else if has_affinity
+        && unsafe { SetWindowDisplayAffinity(island_hwnd, WDA_EXCLUDEFROMCAPTURE) } != 0
+    {
+        let copied = unsafe {
+            SetStretchBltMode(hdc_comp, HALFTONE);
+            StretchBlt(
+                hdc_comp, 0, 0, BACKDROP_WIDTH, BACKDROP_HEIGHT,
+                hdc_screen, win_rect.left, win_rect.top, win_w, win_h, SRCCOPY,
+            ) != 0
+        };
+        unsafe { SetWindowDisplayAffinity(island_hwnd, affinity); }
+        copied
     } else {
+        false
+    };
+
+    if !direct_capture_ok {
         // Rebuild the backdrop from the cached desktop wallpaper crop and any visible windows
         // stacked strictly beneath the island. This never photographs the island itself (zero
         // self-capture of clock/text) and never stalls on a 34ms DWM sleep.

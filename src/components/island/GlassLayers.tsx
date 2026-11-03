@@ -26,12 +26,12 @@ interface LensProfile {
 }
 
 const LENS: Record<GlassMode, LensProfile> = {
-  // Liquid Glass: clear, strongly refractive rim, vivid colour.
-  glass: { scale: 44, blur: 5.5, saturate: 1.85, brightness: 1.04 },
-  // Clear Glass: calmer crystal, heavier frost.
-  frosted: { scale: 16, blur: 15, saturate: 1.35, brightness: 1.03 },
-  // Theme-Tinted Glass: medium refraction, tint does the talking.
-  smoked: { scale: 28, blur: 10, saturate: 1.6, brightness: 1.02 },
+  // Normal: mostly clear with a restrained optical edge.
+  glass: { scale: 6, blur: 0.5, saturate: 1.06, brightness: 1.01 },
+  // Blurred: a soft privacy frost without obscuring the desktop.
+  frosted: { scale: 2, blur: 3, saturate: 1.04, brightness: 1.02 },
+  // Realistic: a subtle natural tint with moderate background softness.
+  smoked: { scale: 4, blur: 1, saturate: 1.1, brightness: 1.01 },
 };
 
 const profile = (t: number) => Math.pow(1 - t, 2.2);
@@ -225,8 +225,8 @@ export const GlassLayers: React.FC<GlassLayersProps> = React.memo(({
           className="orbit-glass-native"
           aria-hidden="true"
           style={{
-            backdropFilter: `blur(${Math.max(8, lens.blur * 1.6)}px) saturate(${lens.saturate})`,
-            WebkitBackdropFilter: `blur(${Math.max(8, lens.blur * 1.6)}px) saturate(${lens.saturate})`,
+            backdropFilter: `blur(${Math.max(1, lens.blur * 1.6)}px) saturate(${lens.saturate})`,
+            WebkitBackdropFilter: `blur(${Math.max(1, lens.blur * 1.6)}px) saturate(${lens.saturate})`,
           }}
         />
       )}

@@ -996,7 +996,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
               <div
                 className="w-5 h-5 rounded-md overflow-hidden shrink-0 flex items-center justify-center border border-white/30 shadow-md bg-black/40"
               >
-                {mediaSession.track.thumbnail_base64 ? (
+                {config.mediaShowCoverArt && mediaSession.track.thumbnail_base64 ? (
                   <img
                     src={mediaSession.track.thumbnail_base64}
                     alt="Album Art"
@@ -1024,9 +1024,13 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                 </span>
               </div>
               <div className="flex items-center space-x-[2px] h-3.5 shrink-0">
-                {[0, 1, 2].map((idx) => {
+                {config.mediaVisualizerMode !== "off" && [0, 1, 2].map((idx) => {
                   const isPlaying = mediaSession.playback_status === "playing";
-                  const barVal = isPlaying ? (audioSpectrum?.compactBars?.[idx] ?? 0) : 0;
+                  const barVal = isPlaying
+                    ? config.mediaVisualizerMode === "beats"
+                      ? audioSpectrum?.compactBars?.[0] ?? 0
+                      : audioSpectrum?.compactBars?.[idx] ?? 0
+                    : 0;
                   const hasFreq = isPlaying && (audioSpectrum?.peak ?? 0) >= 0.005 && barVal > 0.005;
                   const fallbackBars = [0.45, 0.85, 0.55];
                   const scaleY = hasFreq
@@ -1041,8 +1045,8 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                       style={{
                         transform: `scaleY(${scaleY.toFixed(2)})`,
                         transition: "transform 95ms ease-out",
-                        background: "linear-gradient(180deg, #93c5fd 0%, #3b82f6 60%, #1d4ed8 100%)",
-                        boxShadow: "0 0 6px rgba(59, 130, 246, 0.8)",
+                        background: "linear-gradient(180deg, color-mix(in srgb, var(--theme-accent) 55%, white) 0%, var(--theme-accent) 60%, var(--theme-accent-secondary) 100%)",
+                        boxShadow: "0 0 6px color-mix(in srgb, var(--theme-accent) 80%, transparent)",
                         opacity: isPlaying ? 0.95 : 0.35,
                       }}
                     />
@@ -1210,7 +1214,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
             <div
               className="w-6 h-6 rounded-md overflow-hidden shrink-0 flex items-center justify-center border border-white/30 shadow-md bg-black/40"
             >
-              {mediaSession.track.thumbnail_base64 ? (
+              {config.mediaShowCoverArt && mediaSession.track.thumbnail_base64 ? (
                 <img
                   src={mediaSession.track.thumbnail_base64}
                   alt="Album Art"
@@ -1240,6 +1244,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
             </div>
 
             {/* 3D Glowing Blue/Indigo Frequency-Reactive Equalizer Bars (6 bars) */}
+            {config.mediaVisualizerMode !== "off" && (
             <div className="flex items-center space-x-[2px] h-4 shrink-0 pr-1">
               {[0, 1, 2, 3, 4, 5].map((idx) => {
                 const isPlaying = mediaSession.playback_status === "playing";
@@ -1247,8 +1252,11 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                 let scaleY = 0.15;
                 if (isPlaying) {
                   if ((audioSpectrum?.peak ?? 0) >= 0.005 && waveBars.length > 0) {
-                    const srcIdx = Math.floor((idx / 5) * (waveBars.length - 1));
-                    const val = waveBars[srcIdx] ?? 0;
+                    const mirroredIndex = Math.min(idx, 5 - idx);
+                    const srcIdx = Math.floor((mirroredIndex / 2) * ((waveBars.length - 1) / 2));
+                    const val = config.mediaVisualizerMode === "beats"
+                      ? audioSpectrum?.compactBars?.[0] ?? 0
+                      : waveBars[srcIdx] ?? 0;
                     scaleY = Math.max(0.2, Math.min(1, 0.15 + val * 1.5));
                   } else {
                     const fallbackBars = [0.35, 0.75, 0.52, 0.9, 0.65, 0.42];
@@ -1262,14 +1270,15 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                     style={{
                       transform: `scaleY(${scaleY.toFixed(2)})`,
                       transition: "transform 95ms ease-out",
-                      background: "linear-gradient(180deg, #93c5fd 0%, #3b82f6 60%, #1d4ed8 100%)",
-                      boxShadow: "0 0 6px rgba(59, 130, 246, 0.8)",
+                      background: "linear-gradient(180deg, color-mix(in srgb, var(--theme-accent) 55%, white) 0%, var(--theme-accent) 60%, var(--theme-accent-secondary) 100%)",
+                      boxShadow: "0 0 6px color-mix(in srgb, var(--theme-accent) 80%, transparent)",
                       opacity: isPlaying ? 0.95 : 0.35,
                     }}
                   />
                 );
               })}
             </div>
+            )}
 
             {privacyLight && (
               <div

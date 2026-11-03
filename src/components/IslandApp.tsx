@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { ipc, setCompactWidthHint } from "../core/ipc/client";
 import { useConfigStore } from "../core/stores/useConfigStore";
-import { AppConfig } from "../core/types/config";
+import { AppConfig, normalizeGlassPreset } from "../core/types/config";
 import { getThemeMeta } from "../core/theme";
 import { MediaSessionSnapshot, AudioSpectrumState } from "../core/types/media";
 import {
@@ -360,7 +360,7 @@ export const IslandApp: React.FC = () => {
           mediaSession.track.title.trim().length > 0))
   );
 
-  const isMediaBackdropActive =
+  const isMediaBackdropActive = config.mediaBackgroundMode === "cover" && (
     (isExpanded &&
       activeSection === 0 &&
       isMediaActive &&
@@ -369,7 +369,8 @@ export const IslandApp: React.FC = () => {
       homeSubView !== "clock" &&
       !showHomeNotifications &&
       homeSubView !== "call") ||
-    (!isExpanded && !transientNotif && !utilityAlert && isMediaActive && Boolean(mediaSession));
+    (!isExpanded && !transientNotif && !utilityAlert && isMediaActive && Boolean(mediaSession))
+  );
 
   // Weather state (stale-while-revalidate cache + instant fallback so right slot never flickers blank)
   const [weatherInfo, setWeatherInfo] = useState<WeatherGlance | null>(() => {
@@ -382,21 +383,21 @@ export const IslandApp: React.FC = () => {
         }
       }
     } catch {}
-    return {
-      tempC: 24,
-      tempF: 75,
-      conditionCode: "partly_cloudy",
-      label: "Partly Cloudy",
-    };
+    return null;
   });
 
   const shouldFetchWeather =
-    config.showWeather ||
-    config.compactRightSlot === "weather" ||
-    config.compactRightSlot === "smart";
+    config.onlineWeatherEnabled && (
+      config.showWeather ||
+      config.compactRightSlot === "weather" ||
+      config.compactRightSlot === "smart"
+    );
 
   useEffect(() => {
-    if (!shouldFetchWeather) return;
+    if (!shouldFetchWeather) {
+      setWeatherInfo(null);
+      return;
+    }
 
     let isMounted = true;
     let activeController: AbortController | null = null;
@@ -912,12 +913,19 @@ export const IslandApp: React.FC = () => {
     }
   }, [isExpanded]);
 
-  const handleCompleteOnboarding = async (openSettings = false) => {
+  const handleCompleteOnboarding = async (openSettings = false, onlineWeatherEnabled?: boolean) => {
     try {
       localStorage.setItem("orbit_onboarding_seen", "true");
       showOnboardingRef.current = false;
       setShowOnboarding(false);
-      await useConfigStore.getState().updateConfig({ onboardingCompleted: true });
+      await useConfigStore.getState().updateConfig({
+        onboardingCompleted: true,
+        ...(onlineWeatherEnabled === undefined ? {} : { onlineWeatherEnabled }),
+      });
+      if (onlineWeatherEnabled === false) {
+        setWeatherInfo(null);
+        localStorage.removeItem("orbit_weather_cache");
+      }
       if (openSettings) {
         await ipc.openSettingsWindow();
       }
@@ -1314,7 +1322,7 @@ export const IslandApp: React.FC = () => {
     );
 
     const unlistenConfig = listen<AppConfig>("config-changed", (event) => {
-      useConfigStore.setState({ config: event.payload });
+      useConfigStore.setState({ config: normalizeGlassPreset(event.payload) });
     });
 
     const unlistenCollapse = listen("collapse-island", () => {
@@ -1989,13 +1997,9 @@ export const IslandApp: React.FC = () => {
   };
 
   const handleSeekPointerDown = (e: React.PointerEvent<HTMLInputElement>) => {
+    e.stopPropagation();
     const duration = mediaSession?.timeline?.duration_secs ?? 0;
     if (!mediaSession?.controls.can_seek || duration <= 0) return;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore
-    }
     isDraggingRef.current = true;
     setIsDragging(true);
     const val = parseFloat(e.currentTarget.value);
@@ -2056,25 +2060,13 @@ export const IslandApp: React.FC = () => {
   };
 
   const handleSeekPointerUp = (e: React.PointerEvent<HTMLInputElement>) => {
-    try {
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-      // Ignore
-    }
+    e.stopPropagation();
     if (!isDraggingRef.current) return;
     handleSeekCommit(parseFloat(e.currentTarget.value));
   };
 
   const handleSeekPointerCancel = (e: React.PointerEvent<HTMLInputElement>) => {
-    try {
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-      // Ignore
-    }
+    e.stopPropagation();
     isDraggingRef.current = false;
     setIsDragging(false);
     pendingSeekPosRef.current = null;
@@ -2342,9 +2334,12 @@ export const IslandApp: React.FC = () => {
   const handleFreeMemory = async () => {
     try {
       const result = await ipc.freeUpMemory();
-      return { freedMb: result.freedMb };
+      return {
+        freedMb: result.freedMb,
+        trimmedProcesses: result.trimmedProcesses,
+      };
     } catch (err) {
-      console.error("Failed to free up working set memory:", err);
+      console.error("Failed to boost available memory:", err);
       throw err;
     }
   };
@@ -2423,8 +2418,9 @@ export const IslandApp: React.FC = () => {
     };
 
     fetchBackdrop();
-    // Each sample briefly flags the island as capture-excluded, so keep the cadence calm.
-    const intervalTime = isExpanded || transientNotif ? 700 : 1800;
+    // Keep desktop changes responsive after an app closes without continuously pushing
+    // large screen-capture payloads through the webview.
+    const intervalTime = isExpanded || transientNotif ? 900 : 1100;
     const timer = setInterval(fetchBackdrop, intervalTime);
     return () => {
       isMounted = false;
@@ -2519,6 +2515,8 @@ export const IslandApp: React.FC = () => {
               : undefined,
           backgroundColor: isMediaBackdropActive
             ? "#080b18"
+            : isMediaActive && config.mediaBackgroundMode === "solid"
+            ? "#11151d"
             : isExpanded
             ? "var(--island-panel)"
             : "var(--island-pill)",
@@ -2546,7 +2544,7 @@ export const IslandApp: React.FC = () => {
         }`}
       >
         {/* Liquid glass: live refracted desktop + tone-aware scrim, sheen and specular rim */}
-        {isGlassMode && (
+        {isGlassMode && (!isMediaActive || config.mediaBackgroundMode === "cover") && (
           <GlassLayers
             mode={effectiveTransparencyMode as "glass" | "frosted" | "smoked"}
             tone={activeGlassTone}
@@ -2565,7 +2563,7 @@ export const IslandApp: React.FC = () => {
               <img
                 src={mediaSession.track.thumbnail_base64}
                 alt=""
-                className="w-full h-full object-cover scale-125 blur-[14px] saturate-[2.4] contrast-[1.15] brightness-[1.08]"
+                className="w-full h-full object-cover scale-110 blur-[8px] saturate-[1.7] contrast-[1.05] brightness-[1.03]"
               />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950" />
@@ -2575,7 +2573,7 @@ export const IslandApp: React.FC = () => {
               className="absolute inset-0 pointer-events-none"
               style={{
                 background:
-                  "radial-gradient(ellipse 80% 75% at 65% 45%, rgba(236, 72, 153, 0.22) 0%, rgba(99, 102, 241, 0.22) 50%, transparent 80%)",
+                  "radial-gradient(ellipse 80% 75% at 65% 45%, color-mix(in srgb, var(--theme-accent) 24%, transparent) 0%, color-mix(in srgb, var(--theme-accent-secondary) 22%, transparent) 50%, transparent 80%)",
               }}
             />
             <div
@@ -2643,6 +2641,7 @@ export const IslandApp: React.FC = () => {
           {showOnboarding && (
             <OnboardingOverlay
               activeThemeMeta={activeThemeMeta}
+              firstRun={!config.onboardingCompleted}
               onComplete={handleCompleteOnboarding}
             />
           )}

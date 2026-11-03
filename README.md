@@ -8,7 +8,7 @@
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.90%2B-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Version](https://img.shields.io/badge/Version-2.1.2-emerald)](#)
+[![Version](https://img.shields.io/badge/Version-3.1.2-emerald)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
@@ -21,16 +21,29 @@ ORBIT Island brings Apple's glanceable, tactile Dynamic Island UX to Windows 11.
 
 ## Download & Setup
 
-Download the official standalone Windows installer from the [Releases page](https://github.com/Dineswarkumar/Orbit-Island/releases):
-
-- **Installer**: [`ORBIT_2.1.2_x64-setup.exe`](https://github.com/Dineswarkumar/Orbit-Island/releases/download/v2.1.2/ORBIT_2.1.2_x64-setup.exe) (~3.4 MB)
-- **Standalone Binary**: `orbit.exe` (~13.0 MB)
-- **Architecture**: Windows 11 x64 (Native binary with embedded WebView2 runtime)
-- **Installation**: Run `ORBIT_2.1.2_x64-setup.exe` and follow the setup wizard. ORBIT launches automatically at the top of your primary display.
+Windows installers and standalone builds are published on the [GitHub Releases page](https://github.com/Dineswarkumar/Orbit-Island/releases). Compiled binaries, local build outputs, and installer staging files are kept out of this source repository.
 
 ---
 
-## Visual Tour & Experience (Version 2.1.2)
+## Latest UI · Version 3.1.2 Liquid Glass
+
+The latest screenshots show ORBIT's light and dark Liquid Glass themes, notification surfaces, and expanded calendar.
+
+| Liquid Glass home · light | Notification · expanded |
+| :---: | :---: |
+| <img src="docs/screenshots/liquid-glass-home-light.png" width="420" alt="ORBIT 3.1.2 light Liquid Glass home island" /> | <img src="docs/screenshots/liquid-glass-notification-expanded.png" width="420" alt="ORBIT 3.1.2 expanded notification in Liquid Glass" /> |
+
+| Notification · compact | Calendar |
+| :---: | :---: |
+| <img src="docs/screenshots/liquid-glass-notification-compact.png" width="420" alt="ORBIT 3.1.2 compact Liquid Glass notification" /> | <img src="docs/screenshots/liquid-glass-calendar.png" width="420" alt="ORBIT 3.1.2 Liquid Glass calendar" /> |
+
+| Liquid Glass home · dark |
+| :---: |
+| <img src="docs/screenshots/liquid-glass-home-dark.png" width="520" alt="ORBIT 3.1.2 dark Liquid Glass home island" /> |
+
+---
+
+## Earlier UI · Version 2.1.2
 
 <div align="center">
 
@@ -184,7 +197,7 @@ A full monthly calendar overview powered by an embedded SQLite database:
 ### 5. Hardware Telemetry & One-Click RAM Boost
 - **CPU**: Real-time multi-core processor utilization.
 - **GPU**: Direct Windows Performance Data Helper (PDH) GPU engine load tracking.
-- **RAM**: Memory usage percentage with physical GB tracking and a one-click **Free RAM** cleaner calling Win32 `EmptyWorkingSet`.
+- **RAM**: System memory usage with physical GB tracking, plus a one-click boost that asks Windows to trim working sets for apps in the current sign-in session. ORBIT reports the observed change in available system RAM and how many app processes were trimmed. Windows can make those pages available to other apps; applications may use them again as they run.
 - **Storage**: C: drive capacity and usage percentage with remaining free gigabytes.
 - **Horizontal Network Cards**: Real-time bandwidth throughput distributed horizontally with dedicated emerald upload arrow (`↑`) on the left and cyan download arrow (`↓`) on the right.
 - **Radiant 3-Column Battery Pill**:
@@ -266,7 +279,7 @@ ORBIT Island is deeply indebted to pioneering work in glanceable interaction des
    npm run tauri build
    ```
    The installer will be generated at:
-   `src-tauri/target/release/bundle/nsis/ORBIT_2.1.2_x64-setup.exe`
+   `src-tauri/target/release/bundle/nsis/ORBIT_3.1.2_x64-setup.exe`
 
 ---
 

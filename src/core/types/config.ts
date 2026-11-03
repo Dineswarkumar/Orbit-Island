@@ -32,6 +32,8 @@ export type CompactRightSlot =
   | "smart";
 export type CustomRightTextStyle = "neon_glow" | "cyber_badge" | "aurora_pill" | "liquid_gold";
 export type NetworkActivityMode = "off" | "speed_only" | "full";
+export type MediaBackgroundMode = "cover" | "theme" | "solid";
+export type MediaVisualizerMode = "spectrum" | "beats" | "off";
 
 export interface AppConfig {
   theme: AppTheme;
@@ -65,6 +67,32 @@ export interface AppConfig {
   shortcutsEnabled: boolean;
   autoHideInMeetings: boolean;
   networkActivityMode: NetworkActivityMode;
+  onlineWeatherEnabled: boolean;
+  mediaBackgroundMode: MediaBackgroundMode;
+  mediaVisualizerMode: MediaVisualizerMode;
+  mediaShowCoverArt: boolean;
+  mediaCompactMode: boolean;
+}
+
+/** Normalize saved material + opacity combinations while retaining the opaque low-cost surface. */
+export function normalizeGlassPreset(config: AppConfig): AppConfig {
+  if (config.transparencyMode === "smoked") {
+    return { ...config, transparencyMode: "smoked", surfaceOpacity: 50 };
+  }
+  if (config.transparencyMode === "frosted") {
+    return { ...config, transparencyMode: "frosted", surfaceOpacity: 80 };
+  }
+  if (config.transparencyMode === "solid") {
+    return { ...config, transparencyMode: "solid", surfaceOpacity: 100 };
+  }
+
+  if (config.surfaceOpacity <= 35) {
+    return { ...config, transparencyMode: "glass", surfaceOpacity: 20 };
+  }
+  if (config.surfaceOpacity <= 65) {
+    return { ...config, transparencyMode: "smoked", surfaceOpacity: 50 };
+  }
+  return { ...config, transparencyMode: "frosted", surfaceOpacity: 80 };
 }
 
 export const DEFAULT_APP_CONFIG: Readonly<AppConfig> = {
@@ -82,7 +110,7 @@ export const DEFAULT_APP_CONFIG: Readonly<AppConfig> = {
   notificationPreviewDurationSec: 4,
   showPrivacyIndicators: true,
   blockedApps: [],
-  surfaceOpacity: 80,
+  surfaceOpacity: 20,
   showWeather: false,
   weatherUnit: "C",
   adaptiveAlbumAccent: true,
@@ -99,6 +127,11 @@ export const DEFAULT_APP_CONFIG: Readonly<AppConfig> = {
   shortcutsEnabled: true,
   autoHideInMeetings: true,
   networkActivityMode: "speed_only",
+  onlineWeatherEnabled: false,
+  mediaBackgroundMode: "cover",
+  mediaVisualizerMode: "spectrum",
+  mediaShowCoverArt: true,
+  mediaCompactMode: false,
 };
 
 export function createDefaultAppConfig(): AppConfig {
@@ -147,6 +180,11 @@ export function mergeWithDefaultConfig(partial?: unknown): AppConfig {
     shortcutsEnabled: typeof obj.shortcutsEnabled === "boolean" ? obj.shortcutsEnabled : base.shortcutsEnabled,
     autoHideInMeetings: typeof obj.autoHideInMeetings === "boolean" ? obj.autoHideInMeetings : base.autoHideInMeetings,
     networkActivityMode: typeof obj.networkActivityMode === "string" ? (obj.networkActivityMode as NetworkActivityMode) : base.networkActivityMode,
+    onlineWeatherEnabled: typeof obj.onlineWeatherEnabled === "boolean" ? obj.onlineWeatherEnabled : base.onlineWeatherEnabled,
+    mediaBackgroundMode: obj.mediaBackgroundMode === "cover" || obj.mediaBackgroundMode === "theme" || obj.mediaBackgroundMode === "solid" ? obj.mediaBackgroundMode : base.mediaBackgroundMode,
+    mediaVisualizerMode: obj.mediaVisualizerMode === "spectrum" || obj.mediaVisualizerMode === "beats" || obj.mediaVisualizerMode === "off" ? obj.mediaVisualizerMode : base.mediaVisualizerMode,
+    mediaShowCoverArt: typeof obj.mediaShowCoverArt === "boolean" ? obj.mediaShowCoverArt : base.mediaShowCoverArt,
+    mediaCompactMode: typeof obj.mediaCompactMode === "boolean" ? obj.mediaCompactMode : base.mediaCompactMode,
   };
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "orbit"
-version = "3.0.1"
+version = "3.1.2"
 description = "ORBIT Dynamic Island"
 authors = ["User"]
 edition = "2024"
@@ -33,6 +33,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_SystemInformation",
     "Win32_System_Power",
+    "Win32_System_RemoteDesktop",
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
     "Win32_UI_Shell",

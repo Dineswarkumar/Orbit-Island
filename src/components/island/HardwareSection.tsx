@@ -6,7 +6,7 @@ interface HardwareSectionProps {
   activeThemeMeta: ThemeMeta;
   hardwareMetrics: HardwareMetrics | null;
   formatNetworkSpeed: (bps: number) => string;
-  onFreeMemory?: () => Promise<{ freedMb: number } | void>;
+  onFreeMemory?: () => Promise<{ freedMb: number; trimmedProcesses: number } | void>;
 }
 
 export const HardwareSection: React.FC<HardwareSectionProps> = ({
@@ -27,7 +27,8 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
   const acPowerConnected = hw?.acPowerConnected ?? null;
 
   const [isCleaning, setIsCleaning] = useState(false);
-  const [freedResult, setFreedResult] = useState<number | null>(null);
+  const [boostResult, setBoostResult] = useState<{ freedMb: number; trimmedProcesses: number } | null>(null);
+  const [trimError, setTrimError] = useState(false);
 
   const handleFreeMemory = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -35,16 +36,16 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
     setIsCleaning(true);
     try {
       const res = await onFreeMemory();
-      if (res && typeof res.freedMb === "number") {
-        setFreedResult(res.freedMb);
-      } else {
-        setFreedResult(0);
-      }
+      setTrimError(false);
+      setBoostResult(res ?? { freedMb: 0, trimmedProcesses: 0 });
       setTimeout(() => {
-        setFreedResult(null);
+        setBoostResult(null);
       }, 2500);
     } catch (err) {
-      console.error("Failed to free memory:", err);
+      setTrimError(true);
+      setBoostResult(null);
+      setTimeout(() => setTrimError(false), 2500);
+      console.error("Failed to boost available memory:", err);
     } finally {
       setIsCleaning(false);
     }
@@ -211,17 +212,25 @@ export const HardwareSection: React.FC<HardwareSectionProps> = ({
                     type="button"
                     onClick={handleFreeMemory}
                     disabled={isCleaning}
-                    title="MSI-Center Quick Memory Cleaner"
-                    className="px-1 py-0.5 text-[7.5px] font-bold tracking-tight rounded orbit-card-3d hover:brightness-125 transition-all active:scale-95 leading-none cursor-pointer"
+                    title={trimError
+                      ? "Could not boost available memory."
+                      : boostResult === null
+                      ? "Ask Windows to trim app working sets in this sign-in session so their pages can become available for other apps."
+                      : `Windows trimmed ${boostResult.trimmedProcesses} app working set${boostResult.trimmedProcesses === 1 ? "" : "s"}; available RAM changed by ${boostResult.freedMb.toFixed(1)} MB.`}
+                    className="px-1 py-0.5 text-[7.5px] font-bold tracking-tight whitespace-nowrap rounded orbit-card-3d hover:brightness-125 transition-all active:scale-95 leading-none cursor-pointer"
                     style={{
-                      color: freedResult !== null ? "#16a34a" : "#c4b5fd",
+                      color: trimError ? "#fb7185" : boostResult !== null ? "#4ade80" : "#c4b5fd",
                       border: "1px solid rgba(167, 139, 250, 0.45)",
                     }}
                   >
                     {isCleaning
                       ? "..."
-                      : freedResult !== null
-                      ? `-${freedResult.toFixed(0)}M`
+                      : trimError
+                      ? "Error"
+                      : boostResult !== null
+                      ? boostResult.freedMb > 0
+                        ? `-${boostResult.freedMb.toFixed(0)}M`
+                        : "Done"
                       : "Boost"}
                   </button>
                 )}

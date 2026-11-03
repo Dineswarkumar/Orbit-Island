@@ -102,22 +102,18 @@ impl HardwareManager {
     pub fn free_up_memory(&self) -> MemoryCleanResult {
         let (before_used, _, _) = get_ram_metrics();
         let trimmed_processes = clean_working_sets();
-        let (after_used, _, after_pct) = get_ram_metrics();
-
-        let freed_bytes = before_used.saturating_sub(after_used);
-        let freed_mb = round_one_decimal(freed_bytes as f32 / (1024.0 * 1024.0));
-
-        {
-            let mut guard = self.last_metrics.lock().unwrap();
-            guard.ram_used_bytes = after_used;
-            guard.ram_percentage = after_pct;
-        }
+        std::thread::sleep(Duration::from_millis(100));
+        let (ram_used_bytes, _, ram_percentage) = get_ram_metrics();
+        let freed_bytes = system_memory_freed(before_used, ram_used_bytes);
+        let mut metrics = self.last_metrics.lock().unwrap();
+        metrics.ram_used_bytes = ram_used_bytes;
+        metrics.ram_percentage = ram_percentage;
 
         MemoryCleanResult {
             freed_bytes,
-            freed_mb,
-            ram_used_bytes: after_used,
-            ram_percentage: after_pct,
+            freed_mb: round_one_decimal(freed_bytes as f32 / (1024.0 * 1024.0)),
+            ram_used_bytes,
+            ram_percentage,
             trimmed_processes,
         }
     }
@@ -268,81 +264,85 @@ fn round_one_decimal(val: f32) -> f32 {
     (val * 10.0).round() / 10.0
 }
 
+fn system_memory_freed(before_used: u64, after_used: u64) -> u64 {
+    before_used.saturating_sub(after_used)
+}
+
+#[cfg(target_os = "windows")]
+fn trim_process_in_session(pid: u32, current_session: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, FALSE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::ProcessStatus::K32EmptyWorkingSet;
+    use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
+    };
+
+    if pid <= 4 {
+        return false;
+    }
+
+    unsafe {
+        let mut process_session = 0u32;
+        if ProcessIdToSessionId(pid, &mut process_session) == FALSE
+            || process_session != current_session
+        {
+            return false;
+        }
+
+        let handle = OpenProcess(
+            PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA,
+            FALSE,
+            pid,
+        );
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return false;
+        }
+
+        let trimmed = K32EmptyWorkingSet(handle) != 0;
+        CloseHandle(handle);
+        trimmed
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn clean_working_sets() -> u32 {
-    use std::collections::HashSet;
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
-    use windows_sys::Win32::System::ProcessStatus::K32EmptyWorkingSet;
-    use windows_sys::Win32::System::Threading::{
-        GetCurrentProcess, GetCurrentProcessId, OpenProcess, PROCESS_QUERY_INFORMATION,
-        PROCESS_SET_QUOTA,
-    };
+    use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 
     let mut trimmed_count = 0u32;
+    let current_pid = unsafe { GetCurrentProcessId() };
+    let mut current_session = 0u32;
 
-    // 1. Trim ORBIT's primary process working set
     unsafe {
-        let current_proc = GetCurrentProcess();
-        if K32EmptyWorkingSet(current_proc) != 0 {
-            trimmed_count += 1;
+        if ProcessIdToSessionId(current_pid, &mut current_session) == FALSE {
+            return 0;
         }
-    }
 
-    // 2. Discover and trim child processes belonging strictly to ORBIT's process tree (e.g. WebView2 renderers)
-    let my_pid = unsafe { GetCurrentProcessId() };
-    let mut child_pids = Vec::new();
-
-    unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snapshot != INVALID_HANDLE_VALUE {
-            let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-
-            let mut all_processes = Vec::new();
-            if Process32FirstW(snapshot, &mut entry) != FALSE {
-                loop {
-                    all_processes.push((entry.th32ProcessID, entry.th32ParentProcessID));
-                    if Process32NextW(snapshot, &mut entry) == FALSE {
-                        break;
-                    }
-                }
-            }
-            CloseHandle(snapshot);
-
-            // Traverse descendant tree rooted at my_pid
-            let mut pending = vec![my_pid];
-            let mut seen = HashSet::from([my_pid]);
-
-            while let Some(parent) = pending.pop() {
-                for &(pid, parent_pid) in &all_processes {
-                    if parent_pid == parent && seen.insert(pid) {
-                        child_pids.push(pid);
-                        pending.push(pid);
-                    }
-                }
-            }
+        if snapshot == INVALID_HANDLE_VALUE {
+            return 0;
         }
-    }
 
-    // 3. Trim each discovered child process
-    for pid in child_pids {
-        unsafe {
-            let handle = OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA,
-                FALSE,
-                pid,
-            );
-            if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
-                if K32EmptyWorkingSet(handle) != 0 {
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        if Process32FirstW(snapshot, &mut entry) != FALSE {
+            loop {
+                // Limit trimming to apps in ORBIT's sign-in session, not Windows services.
+                if trim_process_in_session(entry.th32ProcessID, current_session) {
                     trimmed_count += 1;
                 }
-                CloseHandle(handle);
+
+                if Process32NextW(snapshot, &mut entry) == FALSE {
+                    break;
+                }
             }
         }
+        CloseHandle(snapshot);
     }
 
     trimmed_count
@@ -957,14 +957,22 @@ mod tests {
     }
 
     #[test]
-    fn free_up_memory_executes_safely_and_returns_valid_metrics() {
-        let hw = HardwareManager::new();
-        let result = hw.free_up_memory();
-        assert!(result.ram_percentage >= 0.0 && result.ram_percentage <= 100.0);
-        assert!(result.freed_mb >= 0.0);
-        let current = hw.get_metrics();
-        assert_eq!(current.ram_used_bytes, result.ram_used_bytes);
-        assert_eq!(current.ram_percentage, result.ram_percentage);
+    fn system_memory_delta_never_reports_more_freed_than_observed() {
+        assert_eq!(system_memory_freed(800, 500), 300);
+        assert_eq!(system_memory_freed(500, 800), 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn working_set_trim_can_target_only_the_current_session_process() {
+        use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+        use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+
+        let current_pid = unsafe { GetCurrentProcessId() };
+        let mut current_session = 0u32;
+        assert_ne!(unsafe { ProcessIdToSessionId(current_pid, &mut current_session) }, 0);
+        assert!(!trim_process_in_session(4, current_session));
+        assert!(trim_process_in_session(current_pid, current_session));
     }
 
     #[test]
