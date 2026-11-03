@@ -187,8 +187,17 @@ pub fn show_context_menu(app: AppHandle, window: tauri::Window) -> Result<bool, 
     Ok(false)
 }
 
+pub fn verify_settings_window(label: &str) -> Result<(), String> {
+    if label != "settings" {
+        Err("Access denied: command only permitted from settings window".into())
+    } else {
+        Ok(())
+    }
+}
+
 #[tauri::command]
-pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, String> {
+pub fn save_config(app: AppHandle, window: tauri::Window, config: AppConfig) -> Result<AppConfig, String> {
+    verify_settings_window(window.label())?;
     let previous = load_config(&app);
     let main_win = app
         .get_webview_window("main")
@@ -618,7 +627,8 @@ pub fn pick_and_import_calendar(
                 Write-Output $dialog.FileName
             }
         "#;
-        let output = std::process::Command::new("powershell")
+        let powershell_exe = crate::services::db::get_powershell_path();
+        let output = std::process::Command::new(powershell_exe)
             .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
@@ -643,9 +653,11 @@ pub fn pick_and_import_calendar(
 #[tauri::command]
 pub fn clear_imported_calendar(
     app: AppHandle,
+    window: tauri::Window,
     source_filter: Option<String>,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<usize, String> {
+    verify_settings_window(window.label())?;
     let deleted = db.clear_imported_reminders(source_filter.as_deref())?;
     if let Ok(updated) = db.get_reminders() {
         let _ = app.emit("reminders-updated", &updated);
@@ -737,7 +749,8 @@ pub fn pick_shelf_file() -> Result<Option<String>, String> {
                 Write-Output $dialog.FileName
             }
         "#;
-        let output = std::process::Command::new("powershell")
+        let powershell_exe = crate::services::db::get_powershell_path();
+        let output = std::process::Command::new(powershell_exe)
             .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
@@ -764,8 +777,10 @@ pub fn clear_shelf(
 
 #[tauri::command]
 pub fn clear_local_data(
+    window: tauri::Window,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<(), String> {
+    verify_settings_window(window.label())?;
     db.clear_local_data()
 }
 
@@ -790,7 +805,8 @@ pub fn reveal_diagnostic_log() -> Result<String, String> {
     let path_str = log_path.to_string_lossy().to_string();
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("explorer.exe")
+        let explorer_exe = crate::services::db::get_explorer_path();
+        let _ = std::process::Command::new(explorer_exe)
             .arg(format!("/select,{}", path_str))
             .spawn();
     }
@@ -889,7 +905,8 @@ fn fetch_weather_sync() -> Result<WeatherGlance, String> {
     #[cfg(target_os = "windows")]
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    let mut cmd = std::process::Command::new("curl.exe");
+    let curl_exe = crate::services::db::get_curl_path();
+    let mut cmd = std::process::Command::new(curl_exe);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd.args(["-s", "--max-time", "6", "https://wttr.in/?format=j1"]);
@@ -986,5 +1003,35 @@ mod tests {
     fn test_parse_wttr_json_invalid_structure() {
         let bad_json = r#"{"unexpected": 42}"#;
         assert!(parse_wttr_json(bad_json).is_err());
+    }
+
+    #[test]
+    fn test_verify_settings_window_acl() {
+        assert!(super::verify_settings_window("settings").is_ok());
+
+        let denied_main = super::verify_settings_window("main");
+        assert!(denied_main.is_err());
+        assert_eq!(
+            denied_main.unwrap_err(),
+            "Access denied: command only permitted from settings window"
+        );
+
+        let denied_unknown = super::verify_settings_window("unknown_window");
+        assert!(denied_unknown.is_err());
+
+        let denied_empty = super::verify_settings_window("");
+        assert!(denied_empty.is_err());
+    }
+
+    #[test]
+    fn test_qualified_system_binary_paths() {
+        let pwsh = crate::services::db::get_powershell_path();
+        assert!(pwsh.to_string_lossy().to_lowercase().contains("powershell"));
+
+        let explorer = crate::services::db::get_explorer_path();
+        assert!(explorer.to_string_lossy().to_lowercase().contains("explorer"));
+
+        let curl = crate::services::db::get_curl_path();
+        assert!(curl.to_string_lossy().to_lowercase().contains("curl"));
     }
 }
