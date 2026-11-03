@@ -6,6 +6,7 @@ import { NotificationItem } from "../../core/types/notifications";
 import { HardwareMetrics } from "../../core/types/hardware";
 import { NotificationBrandIcon } from "./NotificationBrandIcon";
 import { ipc } from "../../core/ipc/client";
+import { resolveCompactRightSlot } from "../../core/utils/compactSlot";
 
 export interface WeatherGlance {
   tempC: number;
@@ -193,16 +194,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
   ]);
 
   const renderCompactRightSlot = () => {
-    const effectiveMode =
-      config.compactRightSlot === "smart"
-        ? config.customRightText &&
-          config.customRightText.trim() !== "" &&
-          config.customRightText.trim() !== "ORBIT"
-          ? "custom_text"
-          : weatherInfo
-          ? "weather"
-          : "orbit_logo"
-        : config.compactRightSlot;
+    const effectiveMode = resolveCompactRightSlot(config, Boolean(weatherInfo));
 
     switch (effectiveMode) {
       case "orbit_logo":

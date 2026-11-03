@@ -5,6 +5,14 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Manager};
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnedDestination {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+}
+
 static TEMP_FILE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +39,7 @@ pub struct AppConfig {
     pub expand_trigger: String,
     pub pause_in_fullscreen: bool,
     pub shelf_storage_mode: String,
+    pub drag_drop_enabled: bool,
     pub font_family: String,
     pub onboarding_completed: bool,
     pub compact_right_slot: String,
@@ -46,10 +55,22 @@ pub struct AppConfig {
     pub media_visualizer_mode: String,
     pub media_show_cover_art: bool,
     pub media_compact_mode: bool,
+    pub pinned_destinations: Vec<PinnedDestination>,
 }
 
 impl AppConfig {
     fn validate(&self) -> Result<(), String> {
+        if self.pinned_destinations.len() > 6 {
+            return Err("You can pin at most six web destinations".to_string());
+        }
+        for item in &self.pinned_destinations {
+            if item.name.trim().is_empty() || item.name.chars().count() > 32 {
+                return Err("Pinned destination names must be 1–32 characters".to_string());
+            }
+            if !item.url.starts_with("https://") || item.url.chars().any(char::is_control) {
+                return Err("Pinned destination URLs must be secure https links".to_string());
+            }
+        }
         let valid = [
             self.theme.as_str(),
             self.position.as_str(),
@@ -162,6 +183,7 @@ impl Default for AppConfig {
             expand_trigger: "hover".to_string(),
             pause_in_fullscreen: true,
             shelf_storage_mode: "reference".to_string(),
+            drag_drop_enabled: true,
             font_family: "inter".to_string(),
             onboarding_completed: false,
             compact_right_slot: "weather".to_string(),
@@ -177,6 +199,7 @@ impl Default for AppConfig {
             media_visualizer_mode: "spectrum".to_string(),
             media_show_cover_art: true,
             media_compact_mode: false,
+            pinned_destinations: Vec::new(),
         }
     }
 }
@@ -414,7 +437,7 @@ fn atomic_write(path: &Path, content: &[u8]) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{atomic_write, AppConfig};
+    use super::{atomic_write, AppConfig, PinnedDestination};
     use std::fs;
 
     #[test]
@@ -422,6 +445,29 @@ mod tests {
         assert!(AppConfig::default().validate().is_ok());
         let mut config = AppConfig::default();
         config.theme = "unknown".to_string();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn pinned_destinations_are_limited_and_must_use_https() {
+        let mut config = AppConfig::default();
+        config.pinned_destinations.push(PinnedDestination {
+            id: "chatgpt".to_string(),
+            name: "ChatGPT".to_string(),
+            url: "https://chatgpt.com/".to_string(),
+        });
+        assert!(config.validate().is_ok());
+
+        config.pinned_destinations[0].url = "http://chatgpt.com/".to_string();
+        assert!(config.validate().is_err());
+
+        config.pinned_destinations = (0..7)
+            .map(|index| PinnedDestination {
+                id: format!("site-{index}"),
+                name: format!("Site {index}"),
+                url: format!("https://site{index}.example/"),
+            })
+            .collect();
         assert!(config.validate().is_err());
     }
 

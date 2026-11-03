@@ -323,6 +323,7 @@ pub fn set_island_state(
             let should_temp_top = state == "notification"
                 || state == "notification_hover"
                 || state == "expanded"
+                || state == "drag_targets"
                 || state == "compact_alert";
             let _ = main_win.set_always_on_top(should_temp_top);
             crate::services::window::force_window_topmost(&main_win, should_temp_top);
@@ -690,7 +691,7 @@ pub async fn free_up_memory(
     Ok(result)
 }
 
-// File Shelf (Max 10 held references, SQLite persistence)
+// File Shelf (unbounded references, SQLite persistence)
 #[tauri::command]
 pub fn get_shelf_items(
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
@@ -699,13 +700,35 @@ pub fn get_shelf_items(
 }
 
 #[tauri::command]
-pub fn add_shelf_item(
+pub async fn add_shelf_item(
     app: AppHandle,
     file_path: String,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<crate::services::db::ShelfItem, String> {
     let cfg = load_config(&app);
-    db.add_shelf_item_with_mode(&file_path, &cfg.shelf_storage_mode)
+    let storage_mode = cfg.shelf_storage_mode;
+    let db = db.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.add_shelf_item_with_mode(&file_path, &storage_mode)
+    })
+    .await
+    .map_err(|error| format!("Shelf worker stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+pub async fn handle_file_drop(
+    app: AppHandle,
+    paths: Vec<String>,
+    action: String,
+    db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
+) -> Result<Vec<crate::services::db::DropFileResult>, String> {
+    let storage_mode = load_config(&app).shelf_storage_mode;
+    let db = db.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.handle_dropped_files(&paths, &action, &storage_mode)
+    })
+    .await
+    .map_err(|error| format!("File drop worker stopped unexpectedly: {error}"))
 }
 
 #[tauri::command]
@@ -772,6 +795,30 @@ pub fn clear_shelf(
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<(), String> {
     db.clear_shelf()
+}
+
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") || url.chars().any(char::is_control) {
+        return Err("Only secure https links can be opened from a pinned destination.".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let verb: Vec<u16> = "open\0".encode_utf16().collect();
+        let target: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+        let result = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), target.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL as i32) };
+        if (result as isize) <= 32 {
+            return Err(format!("Windows could not open that link (code: {result:?})."));
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = url;
+        Err("Pinned web destinations are currently supported on Windows only.".to_string())
+    }
 }
 
 #[tauri::command]

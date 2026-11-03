@@ -27,6 +27,8 @@ import {
   Briefcase,
   Palette,
   Music,
+  ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
 import { useConfigStore } from "../core/stores/useConfigStore";
 import { ipc } from "../core/ipc/client";
@@ -168,6 +170,9 @@ export const SettingsApp: React.FC = () => {
   const [logPathMessage, setLogPathMessage] = useState<string | null>(null);
   const [calendarImportMsg, setCalendarImportMsg] = useState<string | null>(null);
   const [isImportingCalendar, setIsImportingCalendar] = useState(false);
+  const [showPrivacyTerms, setShowPrivacyTerms] = useState(false);
+  const [destinationName, setDestinationName] = useState("");
+  const [destinationUrl, setDestinationUrl] = useState("");
 
   const saveStatusTimer = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -377,6 +382,7 @@ export const SettingsApp: React.FC = () => {
       expandTrigger: "hover",
       pauseInFullscreen: true,
       shelfStorageMode: "reference",
+      dragDropEnabled: true,
       fontFamily: "inter",
       onboardingCompleted: true,
       compactRightSlot: "weather",
@@ -392,6 +398,7 @@ export const SettingsApp: React.FC = () => {
       mediaVisualizerMode: "spectrum",
       mediaShowCoverArt: true,
       mediaCompactMode: false,
+      pinnedDestinations: [],
     });
     setResetMessage("Settings reset to defaults. Click 'Save Preferences' to persist.");
     setTimeout(() => setResetMessage(null), 4000);
@@ -400,7 +407,9 @@ export const SettingsApp: React.FC = () => {
   const handleClearLocalData = async () => {
     try {
       await ipc.clearLocalData();
-      setResetMessage("Local reminders and shelf references cleared.");
+      localStorage.removeItem("orbit_shelf_snippets");
+      sessionStorage.removeItem("orbit_shelf_temporary_snippets");
+      setResetMessage("Local reminders, Shelf entries, and saved snippets cleared.");
       setTimeout(() => setResetMessage(null), 4000);
     } catch (err) {
       setResetMessage(`Failed to clear local data: ${err}`);
@@ -450,6 +459,8 @@ export const SettingsApp: React.FC = () => {
       localStorage.removeItem("orbit_onboarding_seen");
       localStorage.removeItem("orbit_timer_state");
       localStorage.removeItem("orbit_weather_cache");
+      localStorage.removeItem("orbit_shelf_snippets");
+      sessionStorage.removeItem("orbit_shelf_temporary_snippets");
       const defaultCfg: AppConfig = {
         theme: "obsidian",
         position: "top-center",
@@ -472,6 +483,7 @@ export const SettingsApp: React.FC = () => {
         expandTrigger: "hover",
         pauseInFullscreen: true,
         shelfStorageMode: "reference",
+        dragDropEnabled: true,
         fontFamily: "inter",
         onboardingCompleted: false,
         compactRightSlot: "weather",
@@ -487,6 +499,7 @@ export const SettingsApp: React.FC = () => {
         mediaVisualizerMode: "spectrum",
         mediaShowCoverArt: true,
         mediaCompactMode: false,
+        pinnedDestinations: [],
       };
       setFormData(defaultCfg);
       await updateConfig(defaultCfg);
@@ -647,16 +660,24 @@ export const SettingsApp: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Responsive Form (Constrained to max-w-5xl, 2-column Bento Grid on wide monitors) */}
+      {/* Responsive settings form */}
       <form
         id="settings-form"
         aria-label="Settings sections"
         onSubmit={handleSave}
         className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 focus:outline-none"
       >
-        <div className="max-w-5xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="max-w-7xl mx-auto w-full">
+          <nav aria-label="Settings sections" className={`sticky top-0 z-10 mb-4 flex flex-wrap gap-2 rounded-2xl border p-2 backdrop-blur-xl ${cardBg}`}>
+            {[["appearance", "Appearance"], ["media", "Media"], ["privacy", "Privacy & notifications"], ["performance", "Performance"], ["about", "About & privacy"]].map(([id, label]) => (
+              <button key={id} type="button" onClick={() => document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} className={`rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${isLight ? "text-slate-600 hover:bg-cyan-50 hover:text-cyan-800" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
+                {label}
+              </button>
+            ))}
+          </nav>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 items-start gap-4 xl:gap-5">
           {/* Bento Card 0: 3D Curated Theme Showcase Gallery (Full Width) */}
-          <div className={`rounded-2xl p-5 border space-y-4 md:col-span-2 ${cardBg}`}>
+          <div id="settings-appearance" className={`scroll-mt-20 rounded-2xl p-5 border space-y-4 md:col-span-2 xl:col-span-3 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <Palette className="w-4 h-4 text-cyan-500" />
@@ -773,7 +794,7 @@ export const SettingsApp: React.FC = () => {
           </div>
 
           {/* Bento Card 1: Glass Style & Placement */}
-          <div className={`rounded-2xl p-5 border space-y-4 ${cardBg}`}>
+          <div id="settings-placement" className={`scroll-mt-20 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <Sparkles className="w-4 h-4 text-cyan-500" />
@@ -1398,7 +1419,7 @@ export const SettingsApp: React.FC = () => {
           </div>
 
           {/* Dedicated media player controls */}
-          <div className={`rounded-2xl p-5 border space-y-4 ${cardBg}`}>
+          <div id="settings-media" className={`scroll-mt-20 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${cardHeaderColor}`}>
                 <Music className="w-4 h-4 text-blue-400" />
@@ -1557,7 +1578,7 @@ export const SettingsApp: React.FC = () => {
           </div>
 
           {/* Bento Card 3: Notifications & Privacy (Emerald Accent) */}
-          <div className={`rounded-2xl p-5 border space-y-4 ${cardBg}`}>
+          <div id="settings-privacy" className={`scroll-mt-20 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <Bell className="w-4 h-4 text-emerald-500" />
@@ -1974,11 +1995,11 @@ export const SettingsApp: React.FC = () => {
           </div>
 
           {/* Bento Card 4: Process Memory Telemetry (Amber Accent) */}
-          <div className={`rounded-2xl p-5 border space-y-4 ${cardBg}`}>
+          <div id="settings-performance" className={`scroll-mt-20 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <Cpu className="w-4 h-4 text-amber-500" />
-                <span>Process Memory Telemetry</span>
+                <span>Memory used by ORBIT</span>
               </h2>
               <button
                 type="button"
@@ -1998,39 +2019,30 @@ export const SettingsApp: React.FC = () => {
               >
                 <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
                   <span className="opacity-70">
-                    Main Process (PID {telemetry.mainProcess.pid}):
+                    ORBIT app (PID {telemetry.mainProcess.pid}):
                   </span>
                   <span className="font-bold">
-                    {telemetry.mainProcess.privateWorkingSetMb?.toFixed(2) ?? "—"} MB Private WS
+                    {telemetry.mainProcess.privateWorkingSetMb?.toFixed(2) ?? "—"} MB RAM
                   </span>
                 </div>
-                {telemetry.childProcesses.map((child) => (
+                {telemetry.webviewProcesses.map((child) => (
                   <div
                     key={child.pid}
                     className="flex flex-wrap justify-between gap-x-3 gap-y-1 opacity-70 pl-3"
                   >
                     <span>↳ {child.name} (PID {child.pid}):</span>
                     <span>
-                      {child.privateWorkingSetMb?.toFixed(2) ?? "—"} MB
+                      {child.privateWorkingSetMb?.toFixed(2) ?? "—"} MB RAM
                     </span>
                   </div>
                 ))}
                 <div className="pt-2 border-t border-white/10 flex flex-wrap justify-between gap-x-3 gap-y-1 font-bold">
-                  <span>Total Process Tree:</span>
-                  <span className="text-amber-400">
-                    {telemetry.totalPrivateWorkingSetMb?.toFixed(2) ?? "—"} MB Private WS · {telemetry.totalWorkingSetMb.toFixed(2)} MB WS
-                  </span>
+                  <span>Combined app + WebView2 RAM:</span>
+                  <span className="text-amber-400">{telemetry.combinedPrivateWorkingSetMb?.toFixed(2) ?? "Incomplete"} MB</span>
                 </div>
-                <div className="flex justify-between text-[10px] opacity-75">
-                  <span>RAM Goal Budget (&lt; 50 MB target):</span>
-                  <span
-                    className={
-                      telemetry.meetsTarget ? "text-emerald-400 font-bold" : "text-amber-400"
-                    }
-                  >
-                    {telemetry.meetsTarget ? "✓ Within 50 MB Target" : "Under Maximum"}
-                  </span>
-                </div>
+                {telemetry.unmeasuredWebviewCount > 0 && <div className="text-[10px] text-amber-400">{telemetry.unmeasuredWebviewCount} WebView2 process(es) could not be measured.</div>}
+                <div className="text-[10px] opacity-70">Measured {new Date(Number(telemetry.measuredAtUnixMs)).toLocaleTimeString()}</div>
+                <div className="text-[10px] leading-relaxed opacity-70">RAM shown is Private Working Set (resident app memory). It is a live measurement, not a performance target.</div>
               </div>
             ) : (
               <div className="text-xs opacity-60 py-2">
@@ -2169,7 +2181,7 @@ export const SettingsApp: React.FC = () => {
                   File Shelf Storage Mode
                 </span>
                 <p className={`text-[11px] ${subtextColor}`}>
-                  Reference Only links original paths; Managed Copy stores a safe copy (≤ 50 MB)
+                  Reference Only saves a file location. Managed Copy stores a separate copy and uses available disk space.
                 </p>
                 <select
                   value={formData.shelfStorageMode ?? "reference"}
@@ -2182,8 +2194,24 @@ export const SettingsApp: React.FC = () => {
                   className={`w-full rounded-xl px-3 py-2 text-xs border focus:outline-none cursor-pointer mt-1 ${inputBg}`}
                 >
                   <option value="reference" className={optionCls}>Reference Only (Default)</option>
-                  <option value="copy" className={optionCls}>Managed Copy (≤ 50 MB)</option>
+                  <option value="copy" className={optionCls}>Managed Copy (disk space available)</option>
                 </select>
+              </div>
+
+              <div className="space-y-1">
+                <span className={`text-xs font-semibold ${labelColor}`}>Drag-to-expand drop tray</span>
+                <p className={`text-[11px] ${subtextColor}`}>
+                  Drag files onto ORBIT to reveal Shelf, Open, Open with, File Explorer, and Print targets.
+                </p>
+                <label className="flex items-center gap-2.5 pt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.dragDropEnabled}
+                    onChange={(event) => setFormData({ ...formData, dragDropEnabled: event.target.checked })}
+                    className="w-4 h-4 accent-cyan-500"
+                  />
+                  <span className={`text-xs ${labelColor}`}>{formData.dragDropEnabled ? "Enabled" : "Disabled"}</span>
+                </label>
               </div>
 
               {/* Diagnostic Log Reveal */}
@@ -2260,8 +2288,67 @@ export const SettingsApp: React.FC = () => {
               </button>
             </div>
           </div>
+          <section id="settings-about" className={`scroll-mt-20 rounded-2xl p-5 border space-y-4 ${cardBg}`}>
+            <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+              <ShieldCheck className="h-4 w-4 text-cyan-500" />
+              <h2 className={`text-xs font-bold uppercase tracking-wider ${cardHeaderColor}`}>About, terms & privacy</h2>
+            </div>
+            <p className={`text-xs ${subtextColor}`}>ORBIT {packageJson.version}. Your settings, saved Shelf items and media details stay on this device. No account or cloud sync is used.</p>
+            <button type="button" onClick={() => setShowPrivacyTerms(true)} className={`w-full rounded-xl border px-3 py-2.5 text-left text-xs font-semibold ${isLight ? "border-slate-200 hover:bg-cyan-50" : "border-white/10 hover:bg-white/5"}`}>
+              Read Terms & Privacy
+              <span className={`block mt-1 text-[10px] font-normal ${subtextColor}`}>Local storage and optional network behavior.</span>
+            </button>
+            <button type="button" onClick={() => ipc.openExternalUrl("https://github.com/Dineswarkumar/Orbit-Island").catch((error) => setResetMessage(`Could not open GitHub: ${error}`))} className="w-full flex items-center justify-between rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-3 py-2.5 text-xs font-semibold text-cyan-500 hover:bg-cyan-500/10">
+              <span>ORBIT on GitHub</span><ExternalLink className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" onClick={() => ipc.openExternalUrl("https://github.com/Dineswarkumar/Orbit-Island/releases").catch((error) => setResetMessage(`Could not open Releases: ${error}`))} className={`w-full flex items-center justify-between rounded-xl border px-3 py-2.5 text-xs font-semibold ${isLight ? "border-slate-200 hover:bg-slate-50" : "border-white/10 hover:bg-white/5"}`}>
+              <span>Latest releases & updates</span><ExternalLink className="h-3.5 w-3.5" />
+            </button>
+            <div className="border-t border-white/10 pt-3 space-y-2">
+              <div className="flex items-center justify-between"><h3 className={`text-xs font-bold ${labelColor}`}>Pinned drop destinations</h3><span className={`text-[10px] ${subtextColor}`}>{formData.pinnedDestinations.length}/6</span></div>
+              <p className={`text-[10px] leading-relaxed ${subtextColor}`}>Pinned web apps appear in the expanded drop tray. ORBIT saves dropped files to Shelf, opens the site, then you attach them there. Websites do not accept automatic file handoff.</p>
+              <div className="flex gap-2">
+                <input aria-label="Destination name" value={destinationName} onChange={(event) => setDestinationName(event.target.value)} placeholder="Name" maxLength={32} className={`min-w-0 w-1/3 rounded-lg border px-2 py-1.5 text-[10px] ${inputBg}`} />
+                <input aria-label="Destination HTTPS URL" value={destinationUrl} onChange={(event) => setDestinationUrl(event.target.value)} placeholder="https://…" className={`min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[10px] ${inputBg}`} />
+                <button type="button" disabled={formData.pinnedDestinations.length >= 6} onClick={() => {
+                  const name = destinationName.trim();
+                  const url = destinationUrl.trim();
+                  try {
+                    const parsed = new URL(url);
+                    if (!name || parsed.protocol !== "https:") throw new Error();
+                    setFormData({ ...formData, pinnedDestinations: [...formData.pinnedDestinations, { id: crypto.randomUUID(), name, url: parsed.href }] });
+                    setDestinationName(""); setDestinationUrl("");
+                  } catch { setSaveStatus("error"); }
+                }} className="shrink-0 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40">Pin</button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[ ["ChatGPT", "https://chatgpt.com"], ["Gemini", "https://gemini.google.com"], ["Claude", "https://claude.ai"], ["WhatsApp", "https://web.whatsapp.com"], ["Discord", "https://discord.com/app"], ["Instagram", "https://www.instagram.com"] ].map(([name, url]) => (
+                  <button key={name} type="button" disabled={formData.pinnedDestinations.length >= 6 || formData.pinnedDestinations.some((pin) => pin.name === name)} onClick={() => setFormData({ ...formData, pinnedDestinations: [...formData.pinnedDestinations, { id: crypto.randomUUID(), name, url }] })} className={`rounded-full border px-2 py-1 text-[9px] disabled:opacity-35 ${isLight ? "border-slate-200 hover:bg-slate-50" : "border-white/10 hover:bg-white/5"}`}>+ {name}</button>
+                ))}
+              </div>
+              {formData.pinnedDestinations.length > 0 && <div className="space-y-1">{formData.pinnedDestinations.map((pin) => <div key={pin.id} className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 ${isLight ? "bg-slate-50" : "bg-white/5"}`}><span className={`min-w-0 truncate text-[10px] ${labelColor}`}>{pin.name}<span className={`ml-2 ${subtextColor}`}>{pin.url}</span></span><button type="button" aria-label={`Remove ${pin.name}`} onClick={() => setFormData({ ...formData, pinnedDestinations: formData.pinnedDestinations.filter((item) => item.id !== pin.id) })} className="shrink-0 rounded p-1 text-rose-400 hover:bg-rose-500/10">Remove</button></div>)}</div>}
+            </div>
+          </section>
+          </div>
         </div>
       </form>
+
+      {showPrivacyTerms && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowPrivacyTerms(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="orbit-privacy-title" className={`max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-3xl border p-6 shadow-2xl ${isLight ? "border-slate-200 bg-white text-slate-900" : "border-slate-700 bg-slate-900 text-slate-100"}`}>
+            <div className="flex items-start justify-between gap-4">
+              <div><h2 id="orbit-privacy-title" className="text-lg font-bold">ORBIT Terms & Privacy</h2><p className={`mt-1 text-xs ${subtextColor}`}>Version {packageJson.version} · stored locally on this PC</p></div>
+              <button type="button" aria-label="Close Terms & Privacy" onClick={() => setShowPrivacyTerms(false)} className="rounded-lg p-2 hover:bg-white/10"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mt-5 space-y-4 text-sm leading-relaxed">
+              <div><h3 className="font-semibold">Terms of use</h3><p className={`mt-1 ${subtextColor}`}>ORBIT is a local desktop utility provided as-is. Use system controls only when you understand their effect. RAM Boost asks Windows to trim working sets for this session; it cannot guarantee a performance gain or recover memory that applications still need.</p></div>
+              <div><h3 className="font-semibold">Local data</h3><p className={`mt-1 ${subtextColor}`}>Settings, reminders, file references or managed copies, and saved snippets are stored on this PC. ORBIT does not upload them or sync them to a cloud service. Shelf references store paths; managed copies use local disk space. Snippets are saved only when you choose to save them; ORBIT does not monitor the clipboard in the background.</p></div>
+              <div><h3 className="font-semibold">Network and permissions</h3><p className={`mt-1 ${subtextColor}`}>Online weather is optional. When enabled, ORBIT requests weather from wttr.in. Opening GitHub links connects your browser to GitHub. Media and notification details are read from Windows locally. Microphone or camera activity indicators report Windows privacy status; ORBIT does not record audio or video.</p></div>
+              <div><h3 className="font-semibold">Your choices</h3><p className={`mt-1 ${subtextColor}`}>You can remove saved items, clear local data, disable optional features, or uninstall ORBIT. Keep sensitive information such as passwords out of manually saved snippets.</p></div>
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* Pinned Footer Actions */}
       <div

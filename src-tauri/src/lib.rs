@@ -6,8 +6,8 @@ use commands::{
     clear_local_data, clear_shelf, close_settings_window, delete_reminder, dismiss_notification,
     free_up_memory, get_config, get_hardware_metrics, get_live_backdrop, get_media_sources, get_media_state,
     get_memory_metrics, get_notification_access_status, get_notification_state, get_privacy_state,
-    get_reminders, get_shelf_items, get_weather, hide_island_window, media_seek, media_send_command,
-    open_settings_window, open_shelf_file, pick_and_import_calendar, pick_shelf_file,
+    get_reminders, get_shelf_items, get_weather, handle_file_drop, hide_island_window, media_seek, media_send_command,
+    open_external_url, open_settings_window, open_shelf_file, pick_and_import_calendar, pick_shelf_file,
     pin_media_source, remove_shelf_item, request_notification_access, reveal_diagnostic_log,
     save_config, set_island_state, show_context_menu, show_shelf_file_in_folder, toggle_reminder,
     trigger_privacy_test, update_island_region, MediaState,
@@ -109,77 +109,15 @@ where
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(target_os = "windows")]
-    {
-        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
-        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
-            TH32CS_SNAPPROCESS,
-        };
-        use windows_sys::Win32::System::Threading::{
-            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
-            PROCESS_TERMINATE,
-        };
-
-        #[link(name = "kernel32")]
-        unsafe extern "system" {
-            fn CreateMutexW(
-                lp_mutex_attributes: *const std::ffi::c_void,
-                b_initial_owner: i32,
-                lp_name: *const u16,
-            ) -> *mut std::ffi::c_void;
-        }
-
-        let mutex_name: Vec<u16> = "Local\\ORBIT_Island_SingleInstance_Mutex\0"
-            .encode_utf16()
-            .collect();
-        let handle = unsafe { CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr()) };
-        if !handle.is_null() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-            unsafe {
-                let _ = CloseHandle(handle);
-                let my_pid = std::process::id();
-                let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-                if !snap.is_null() && (snap as isize) != -1 {
-                    let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-                    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-                    if Process32FirstW(snap, &mut entry) != 0 {
-                        loop {
-                            if entry.th32ProcessID != my_pid {
-                                let len = entry
-                                    .szExeFile
-                                    .iter()
-                                    .position(|&c| c == 0)
-                                    .unwrap_or(entry.szExeFile.len());
-                                let exe_name =
-                                    String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase();
-                                if exe_name == "orbit.exe" {
-                                    let proc_handle = OpenProcess(
-                                        PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
-                                        0,
-                                        entry.th32ProcessID,
-                                    );
-                                    if !proc_handle.is_null() {
-                                        let _ = TerminateProcess(proc_handle, 0);
-                                        let _ = WaitForSingleObject(proc_handle, 1000);
-                                        let _ = CloseHandle(proc_handle);
-                                    }
-                                }
-                            }
-                            if Process32NextW(snap, &mut entry) == 0 {
-                                break;
-                            }
-                        }
-                    }
-                    let _ = CloseHandle(snap);
-                }
-                let _ = CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr());
-            }
-        }
-    }
-
     services::logger::init_logger();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_log::Builder::new().build())
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
@@ -911,11 +849,13 @@ pub fn run() {
             free_up_memory,
             get_shelf_items,
             add_shelf_item,
+            handle_file_drop,
             remove_shelf_item,
             open_shelf_file,
             show_shelf_file_in_folder,
             pick_shelf_file,
             clear_shelf,
+            open_external_url,
             clear_local_data,
             activate_app_source,
             reveal_diagnostic_log,

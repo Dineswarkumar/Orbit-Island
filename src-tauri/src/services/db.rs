@@ -30,6 +30,15 @@ pub struct ShelfItem {
     pub is_managed_copy: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropFileResult {
+    pub path: String,
+    pub display_name: String,
+    pub error: Option<String>,
+    pub shelf_item: Option<ShelfItem>,
+}
+
 pub struct DatabaseManager {
     conn: Arc<Mutex<Connection>>,
     shelf_storage_dir: PathBuf,
@@ -56,6 +65,53 @@ CREATE TABLE IF NOT EXISTS file_shelf (
     is_managed_copy INTEGER NOT NULL DEFAULT 0
 );
 ";
+
+#[cfg(target_os = "windows")]
+fn dispatch_dropped_file(path: &Path, action: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let path = path.to_string_lossy();
+    if action == "reveal" {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        return std::process::Command::new(get_explorer_path())
+            .arg(format!("/select,{path}"))
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("Could not open File Explorer: {error}"));
+    }
+
+    let verb = match action {
+        "open" => "open",
+        "open_with" => "openas",
+        "print" => "print",
+        _ => return Err("Unsupported drop target.".to_string()),
+    };
+    let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    let wide_verb: Vec<u16> = verb.encode_utf16().chain(std::iter::once(0)).collect();
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            wide_verb.as_ptr(),
+            wide_path.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL as i32,
+        )
+    };
+    if (result as isize) <= 32 {
+        Err(format!("Windows could not run the {action} action (code: {result:?})."))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn dispatch_dropped_file(_path: &Path, _action: &str) -> Result<(), String> {
+    Err("This drop action is supported on Windows only.".to_string())
+}
 
 fn init_connection_pragmas_and_schema(conn: &Connection, is_file: bool) -> Result<(), String> {
     if is_file {
@@ -408,7 +464,7 @@ impl DatabaseManager {
         Ok(inserted_count)
     }
 
-    // File Shelf Operations (Section 5.8: max 10 items, holds references or optional ≤50MB managed copies)
+    // File Shelf Operations (persisted references or managed copies sized by available disk space)
     pub fn get_shelf_items(&self) -> Result<Vec<ShelfItem>, String> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
@@ -461,14 +517,6 @@ impl DatabaseManager {
             return Err("Only regular files may be added to the shelf.".to_string());
         }
 
-        const MAX_COPY_BYTES: u64 = 50 * 1024 * 1024;
-        if mode == "copy" && metadata.len() > MAX_COPY_BYTES {
-            return Err(
-                "File exceeds 50 MB limit for Managed Copy mode. Switch Shelf mode to Reference or pick a smaller file."
-                    .to_string(),
-            );
-        }
-
         let norm_path = canonical.to_string_lossy().to_string();
 
         let conn = self.conn.lock().unwrap();
@@ -501,15 +549,6 @@ impl DatabaseManager {
             return Ok(item);
         }
 
-        // Capacity check: strictly maximum 10 items
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM file_shelf", [], |row| row.get(0))
-            .unwrap_or(0);
-
-        if count >= 10 {
-            return Err("File Shelf is full (maximum 10 items). Remove an item before adding another.".to_string());
-        }
-
         let display_name = path
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
@@ -535,8 +574,15 @@ impl DatabaseManager {
                 .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
                 .collect();
             let dest_path = self.shelf_storage_dir.join(format!("{now_nanos}_{safe_name}"));
-            fs::copy(&canonical, &dest_path)
-                .map_err(|e| format!("Failed to copy file to managed shelf storage: {e}"))?;
+            let temp_path = self.shelf_storage_dir.join(format!(".{now_nanos}.partial"));
+            if let Err(error) = fs::copy(&canonical, &temp_path) {
+                let _ = fs::remove_file(&temp_path);
+                return Err(format!("Failed to copy file to managed shelf storage: {error}"));
+            }
+            if let Err(error) = fs::rename(&temp_path, &dest_path) {
+                let _ = fs::remove_file(&temp_path);
+                return Err(format!("Failed to finish copying file into Shelf storage: {error}"));
+            }
             let dest_canonical = dunce::canonicalize(&dest_path).unwrap_or(dest_path);
             (dest_canonical.to_string_lossy().to_string(), true)
         } else {
@@ -567,9 +613,76 @@ impl DatabaseManager {
                 if item.is_managed_copy { 1 } else { 0 },
             ],
         )
-        .map_err(|e| format!("Failed to insert shelf item: {e}"))?;
+        .map_err(|e| {
+            if item.is_managed_copy {
+                let _ = fs::remove_file(&item.file_path);
+            }
+            format!("Failed to insert shelf item: {e}")
+        })?;
 
         Ok(item)
+    }
+
+    pub fn handle_dropped_files(
+        &self,
+        paths: &[String],
+        action: &str,
+        storage_mode: &str,
+    ) -> Vec<DropFileResult> {
+        paths
+            .iter()
+            .map(|raw_path| {
+                let display_name = Path::new(raw_path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| raw_path.clone());
+                let result = self.handle_dropped_file(raw_path, action, storage_mode);
+                match result {
+                    Ok(shelf_item) => DropFileResult {
+                        path: raw_path.clone(),
+                        display_name,
+                        error: None,
+                        shelf_item,
+                    },
+                    Err(error) => DropFileResult {
+                        path: raw_path.clone(),
+                        display_name,
+                        error: Some(error),
+                        shelf_item: None,
+                    },
+                }
+            })
+            .collect()
+    }
+
+    fn handle_dropped_file(
+        &self,
+        raw_path: &str,
+        action: &str,
+        storage_mode: &str,
+    ) -> Result<Option<ShelfItem>, String> {
+        match action {
+            "shelf" => self
+                .add_shelf_item_with_mode(raw_path, storage_mode)
+                .map(Some),
+            "open" | "open_with" | "print" | "reveal" => {
+                let canonical = validate_local_safe_path(raw_path)?;
+                if !canonical.is_file() {
+                    return Err("Only regular files can be dropped here.".to_string());
+                }
+                let ext = canonical
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if DANGEROUS_EXTENSIONS.contains(&ext.as_str()) {
+                    return Err(format!("This action is blocked for executable or script files (.{ext})."));
+                }
+                dispatch_dropped_file(&canonical, action)?;
+                Ok(None)
+            }
+            _ => Err("Unsupported drop target.".to_string()),
+        }
     }
 
     pub fn remove_shelf_item(&self, id: &str) -> Result<(), String> {
@@ -1269,12 +1382,12 @@ mod tests {
     }
 
     #[test]
-    fn file_shelf_bounds_and_preservation() {
+    fn file_shelf_has_no_fixed_item_limit_and_preserves_originals() {
         let temp_dir = std::env::temp_dir().join(format!("orbit_test_shelf_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let db_path = temp_dir.join("shelf.db");
         let db = DatabaseManager::new(db_path).expect("Failed to create test db");
 
-        // Create 11 temporary test files
+        // Create 11 temporary test files to cover the removed 10-item cap.
         let mut test_files = Vec::new();
         for i in 1..=11 {
             let file_path = temp_dir.join(format!("test_file_{}.txt", i));
@@ -1282,27 +1395,19 @@ mod tests {
             test_files.push(file_path);
         }
 
-        // Add 10 items (must all succeed)
-        for i in 0..10 {
+        // All files should succeed; Reference mode stores paths, not file contents.
+        for i in 0..11 {
             let res = db.add_shelf_item(&test_files[i].to_string_lossy());
             assert!(res.is_ok(), "Item {} must be added successfully", i + 1);
         }
 
         let shelf = db.get_shelf_items().unwrap();
-        assert_eq!(shelf.len(), 10, "Shelf must hold exactly 10 items");
-
-        // 11th item must be rejected per PRD Section 5.8
-        let rejected = db.add_shelf_item(&test_files[10].to_string_lossy());
-        assert!(rejected.is_err(), "11th item must be rejected");
-        assert!(
-            rejected.unwrap_err().contains("File Shelf is full"),
-            "Error message must clearly state full shelf"
-        );
+        assert_eq!(shelf.len(), 11, "Shelf must have no arbitrary item cap");
 
         // Duplicate addition of already held item returns existing without incrementing count
         let duplicate = db.add_shelf_item(&test_files[0].to_string_lossy()).unwrap();
         assert_eq!(duplicate.file_path, dunce::canonicalize(&test_files[0]).unwrap().to_string_lossy().to_string());
-        assert_eq!(db.get_shelf_items().unwrap().len(), 10);
+        assert_eq!(db.get_shelf_items().unwrap().len(), 11);
 
         // Remove item from shelf: MUST NOT delete original file
         let item_to_remove = &shelf[0];
@@ -1310,11 +1415,69 @@ mod tests {
         assert!(original_file_path.exists(), "Original file must exist before shelf removal");
 
         db.remove_shelf_item(&item_to_remove.id).unwrap();
-        assert_eq!(db.get_shelf_items().unwrap().len(), 9);
+        assert_eq!(db.get_shelf_items().unwrap().len(), 10);
         assert!(
             original_file_path.exists(),
             "Original file MUST NOT be deleted when reference is removed from shelf"
         );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn managed_copy_accepts_files_larger_than_fifty_megabytes() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbit_test_shelf_large_copy_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let db = DatabaseManager::new(temp_dir.join("shelf.db")).expect("Failed to create test db");
+        let source = temp_dir.join("large_file.bin");
+        let file = fs::File::create(&source).unwrap();
+        file.set_len(50 * 1024 * 1024 + 1).unwrap();
+
+        let item = db
+            .add_shelf_item_with_mode(&source.to_string_lossy(), "copy")
+            .expect("Managed Copy should use available disk space instead of a hard-coded 50 MB cap");
+        assert!(item.is_managed_copy);
+        assert_eq!(item.file_size, 50 * 1024 * 1024 + 1);
+        assert_eq!(fs::metadata(&item.file_path).unwrap().len(), item.file_size);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn file_drop_reports_each_item_without_aborting_the_batch() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "orbit_test_shelf_drop_batch_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let db = DatabaseManager::new(temp_dir.join("shelf.db")).expect("Failed to create test db");
+        let good_path = temp_dir.join("good.txt");
+        fs::write(&good_path, "shelf me").unwrap();
+        let bad_path = temp_dir.join("missing.txt");
+        let results = db.handle_dropped_files(
+            &[
+                good_path.to_string_lossy().to_string(),
+                bad_path.to_string_lossy().to_string(),
+            ],
+            "shelf",
+            "reference",
+        );
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].error.is_none());
+        assert!(results[0].shelf_item.is_some());
+        assert!(results[1].error.is_some());
+        assert!(results[1].shelf_item.is_none());
+        assert_eq!(db.get_shelf_items().unwrap().len(), 1);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
