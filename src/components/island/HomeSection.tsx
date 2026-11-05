@@ -464,7 +464,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
 
     const hasAudioSignal =
       mediaSession.playback_status === "playing" &&
-      (audioSpectrum?.peak ?? 0) >= 0.005;
+      (audioSpectrum?.peak ?? 0) >= 0.001;
 
     return (
       <div className={`orbit-media-surface flex flex-col h-full min-h-0 select-none relative overflow-hidden rounded-2xl ${config.mediaCompactMode ? "px-2 py-1 gap-0.5" : "px-1.5 py-0.5 gap-1"}`}>
@@ -831,11 +831,11 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                 if (hasAudioSignal && audioSpectrum?.waveBars && audioSpectrum.waveBars.length > 0) {
                   const sourceIdx = Math.floor((mirroredIndex / 19) * (audioSpectrum.waveBars.length - 1));
                   const val = config.mediaVisualizerMode === "beats"
-                    ? audioSpectrum.compactBars[0]
+                    ? audioSpectrum.compactBars[Math.min(3, Math.floor(mirroredIndex / 5))]
                     : audioSpectrum.waveBars[sourceIdx] ?? 0;
                   height = Math.max(0.16, Math.min(0.96, (0.12 + Math.pow(val, 0.72) * 0.95) * envelope));
                 } else {
-                  height = envelope;
+                  height = 0.12;
                 }
               }
 

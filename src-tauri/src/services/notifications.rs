@@ -76,9 +76,7 @@ impl NotificationManager {
         let snapshot_store = self.last_snapshot.clone();
         let dismissed_store = self.dismissed_ids.clone();
 
-        std::thread::Builder::new()
-            .name("orbit-notifications".to_string())
-            .spawn(move || {
+        crate::spawn_supervised_loop("orbit-notifications", move || {
                 #[cfg(target_os = "windows")]
                 unsafe {
                     windows_sys::Win32::System::Com::CoInitializeEx(
@@ -93,7 +91,7 @@ impl NotificationManager {
                     let snapshot = apply_filtering_and_privacy(raw_snapshot, &config);
 
                     let changed = {
-                        let mut guard = snapshot_store.lock().unwrap();
+                        let mut guard = snapshot_store.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                         if *guard != snapshot {
                             *guard = snapshot.clone();
                             true
@@ -114,12 +112,11 @@ impl NotificationManager {
                 unsafe {
                     windows_sys::Win32::System::Com::CoUninitialize();
                 }
-            })
-            .expect("Failed to start notification background worker");
+        });
     }
 
     pub fn get_current_snapshot(&self) -> NotificationSnapshot {
-        self.last_snapshot.lock().unwrap().clone()
+        self.last_snapshot.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
     }
 
     pub fn dismiss_notification(&self, id: u32) {
@@ -128,10 +125,10 @@ impl NotificationManager {
             .unwrap_or_default()
             .as_millis() as u64;
 
-        let mut dismissed = self.dismissed_ids.lock().unwrap();
+        let mut dismissed = self.dismissed_ids.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         dismissed.insert(id, now);
 
-        let snapshot = self.last_snapshot.lock().unwrap();
+        let snapshot = self.last_snapshot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         for item in &snapshot.notifications {
             if item.id == id || item.underlying_ids.contains(&id) {
                 for &uid in &item.underlying_ids {
@@ -147,8 +144,8 @@ impl NotificationManager {
             .unwrap_or_default()
             .as_millis() as u64;
 
-        let current = self.last_snapshot.lock().unwrap();
-        let mut dismissed = self.dismissed_ids.lock().unwrap();
+        let current = self.last_snapshot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut dismissed = self.dismissed_ids.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         for n in &current.notifications {
             dismissed.insert(n.id, now);
             for &uid in &n.underlying_ids {
@@ -279,7 +276,7 @@ fn get_app_icon_base64(
 ) -> Option<String> {
     static APP_ICON_CACHE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
-    let mut cache_guard = APP_ICON_CACHE.lock().unwrap();
+    let mut cache_guard = APP_ICON_CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let cache = cache_guard.get_or_insert_with(HashMap::new);
 
     if let Some(cached) = cache.get(app_key) {
@@ -337,6 +334,21 @@ fn get_app_icon_base64(
         cache.insert(app_key.to_string(), icon_data.clone());
     }
     loaded
+}
+
+fn is_priority_notification(app_name: &str, app_id: &str, title: &str, body: &str) -> bool {
+    let source = format!("{app_name} {app_id}").to_lowercase();
+    let message = format!("{title} {body}").to_lowercase();
+    let is_time_or_reminder_app = source.contains("clock")
+        || source.contains("windowsalarms")
+        || source.contains("calendar")
+        || source.contains("reminder");
+
+    if !is_time_or_reminder_app {
+        return false;
+    }
+
+    ["timer", "alarm", "reminder"].iter().any(|word| message.contains(word))
 }
 
 fn fetch_notifications_internal(
@@ -422,11 +434,11 @@ fn fetch_notifications_internal(
         // Once the user clears it from Windows (or it expires), prune it from dismissed_ids
         // so future notifications from that app or ID are not blocked.
         {
-            let mut dismissed = dismissed_store.lock().unwrap();
+            let mut dismissed = dismissed_store.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             dismissed.retain(|id, _| current_windows_ids.contains(id));
         }
 
-        let dismissed = dismissed_store.lock().unwrap().clone();
+        let dismissed = dismissed_store.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
         let mut items: Vec<NotificationItem> = Vec::new();
 
         for i in 0..count {
@@ -597,15 +609,7 @@ fn fetch_notifications_internal(
                     title = app_name.clone();
                 }
 
-                // Identify critical notifications (alarms, timers, reminders)
-                let is_critical = {
-                    let combined = format!("{app_name} {title} {body}").to_lowercase();
-                    combined.contains("timer")
-                        || combined.contains("alarm")
-                        || combined.contains("reminder")
-                        || combined.contains("critical")
-                        || combined.contains("alert")
-                };
+                let is_critical = is_priority_notification(&app_name, &app_id, &title, &body);
 
                 // Check for action buttons
                 let actions = vec![
@@ -668,9 +672,13 @@ pub fn process_notification_items(
     // Group repeated notifications from the same application
     let mut grouped_items: Vec<NotificationItem> = Vec::new();
     for item in items {
-        if let Some(existing) = grouped_items
-            .iter_mut()
-            .find(|g| g.app_name == item.app_name && g.is_critical == item.is_critical)
+        if let Some(existing) = grouped_items.iter_mut().find(|g| {
+            let same_display_name = g.app_name.eq_ignore_ascii_case(&item.app_name);
+            let same_app_id = g.app_id.is_empty()
+                || item.app_id.is_empty()
+                || g.app_id.eq_ignore_ascii_case(&item.app_id);
+            same_display_name && same_app_id && g.is_critical == item.is_critical
+        })
         {
             existing.count += 1;
             existing.underlying_ids.extend(item.underlying_ids);
@@ -779,6 +787,22 @@ pub fn apply_filtering_and_privacy(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn message_text_cannot_trigger_a_false_alert_badge() {
+        assert!(!is_priority_notification(
+            "ChatGPT",
+            "ChatGPT",
+            "Fix ORBIT sharing behavior",
+            "WhatsApp and alert words are part of this normal message"
+        ));
+        assert!(is_priority_notification(
+            "Windows Clock",
+            "Microsoft.WindowsAlarms!App",
+            "Timer finished",
+            "Your timer is up"
+        ));
+    }
 
     #[test]
     fn groups_repeated_notifications_from_same_app() {
@@ -919,6 +943,36 @@ mod tests {
         assert_eq!(snap.notifications[0].app_name, "Microsoft Edge");
         assert_eq!(snap.notifications[0].app_id, "Microsoft.MicrosoftEdge.Stable");
         assert_eq!(snap.notifications[0].app_icon.as_deref(), Some("data:image/png;base64,edge_logo"));
+    }
+
+    #[test]
+    fn notifications_from_different_apps_with_the_same_name_stay_separate() {
+        let first = NotificationItem {
+            id: 1,
+            app_name: "Mail".to_string(),
+            app_id: "com.example.mail".to_string(),
+            title: "First app".to_string(),
+            body: "First message".to_string(),
+            timestamp_ms: 1000,
+            is_critical: false,
+            count: 1,
+            actions: Vec::new(),
+            app_icon: None,
+            underlying_ids: vec![1],
+        };
+        let second = NotificationItem {
+            id: 2,
+            app_id: "com.other.mail".to_string(),
+            title: "Second app".to_string(),
+            timestamp_ms: 2000,
+            underlying_ids: vec![2],
+            ..first.clone()
+        };
+
+        let snapshot = process_notification_items(vec![first, second], 2500, "allowed".to_string());
+        assert_eq!(snapshot.notifications.len(), 2);
+        assert_eq!(snapshot.notifications[0].app_id, "com.other.mail");
+        assert_eq!(snapshot.notifications[1].app_id, "com.example.mail");
     }
 
     #[test]

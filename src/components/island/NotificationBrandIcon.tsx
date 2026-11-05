@@ -16,7 +16,10 @@ export const NotificationBrandIcon: React.FC<NotificationBrandIconProps> = ({
   const sizeClass = isCompact ? "w-10 h-10" : "w-9 h-9";
   const iconSizeClass = isCompact ? "w-5 h-5" : "w-[18px] h-[18px]";
 
-  const probe = `${notification.appName} ${notification.appId} ${notification.title} ${notification.body}`.toLowerCase();
+  // Brand the icon from the sender identity only. Notification text can mention
+  // another product (for example, a ChatGPT message containing “WhatsApp”) and
+  // must never change which app logo is shown.
+  const probe = `${notification.appName} ${notification.appId}`.toLowerCase();
 
   // 1. WhatsApp
   if (probe.includes("whatsapp")) {

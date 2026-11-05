@@ -4,7 +4,7 @@ export type GlassMode = "glass" | "frosted" | "smoked";
 export type GlassTone = "dark" | "light";
 
 /** Size (in CSS px) of the native window the live desktop capture was taken from. */
-export const CAPTURE_WINDOW_WIDTH = 400;
+export const CAPTURE_WINDOW_WIDTH = 860;
 export const CAPTURE_WINDOW_HEIGHT = 188;
 
 // The SVG filter region is deliberately larger than any island state so the shell can
@@ -89,7 +89,7 @@ interface GlassLayersProps {
   height: number;
   /** Live capture of the desktop behind the island window (null until first sample). */
   backdropUrl: string | null;
-  /** Position of the shell inside the 400x188 native window the capture was taken of. */
+  /** Position of the shell inside the 860x188 native window the capture was taken of. */
   offsetX: number;
   offsetY: number;
   /**

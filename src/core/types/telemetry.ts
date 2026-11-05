@@ -10,16 +10,9 @@ export interface ProcessItem {
 
 export interface MemoryReport {
   mainProcess: ProcessItem;
-  childProcesses: ProcessItem[];
-  unmeasuredDescendantCount: number;
-  totalWorkingSetMb: number;
-  totalPrivateMb: number;
-  totalPrivateWorkingSetMb: number | null;
-  aspirationMb: number;
-  targetMb: number;
-  maximumMb: number;
-  meetsAspiration: boolean;
-  meetsTarget: boolean;
-  meetsMaximum: boolean;
+  webviewProcesses: ProcessItem[];
+  unmeasuredWebviewCount: number;
+  combinedPrivateWorkingSetMb: number | null;
+  measuredAtUnixMs: number;
   measurementMethod: string;
 }

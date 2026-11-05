@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ipc, setCompactWidthHint } from "../core/ipc/client";
 import { useConfigStore } from "../core/stores/useConfigStore";
 import { AppConfig, normalizeGlassPreset } from "../core/types/config";
@@ -21,6 +22,8 @@ import { CalendarSection } from "./island/CalendarSection";
 import { HardwareSection } from "./island/HardwareSection";
 import { MultiTaskSection } from "./island/MultiTaskSection";
 import { GlassLayers, GlassTone, nextGlassTone } from "./island/GlassLayers";
+import { FileDropAction, FileDropTray } from "./island/FileDropTray";
+import { resolveCompactRightSlot } from "../core/utils/compactSlot";
 
 const formatSeconds = (totalSecs: number) => {
   if (isNaN(totalSecs) || totalSecs < 0) return "0:00";
@@ -106,16 +109,7 @@ export function estimateCompactWidth({
   if (isDownloading || isUploading) {
     contentWidth += 54;
   } else {
-    const effectiveMode =
-      config.compactRightSlot === "smart"
-        ? config.customRightText &&
-          config.customRightText.trim() !== "" &&
-          config.customRightText.trim() !== "ORBIT"
-          ? "custom_text"
-          : weatherInfo
-          ? "weather"
-          : "orbit_logo"
-        : config.compactRightSlot;
+    const effectiveMode = resolveCompactRightSlot(config, Boolean(weatherInfo));
 
     switch (effectiveMode) {
       case "weather":
@@ -161,6 +155,22 @@ export const IslandApp: React.FC = () => {
 
   const islandRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [dropTrayOpen, setDropTrayOpen] = useState(false);
+  const [dropTarget, setDropTarget] = useState<FileDropAction>("shelf");
+  const [dropCount, setDropCount] = useState(0);
+  const [dropMessage, setDropMessage] = useState<string | null>(null);
+  const [dropError, setDropError] = useState(false);
+  const [dropBusy, setDropBusy] = useState(false);
+  const dropTargetRef = useRef<FileDropAction>("shelf");
+  const dropTrayOpenRef = useRef(false);
+  const dropCountRef = useRef(0);
+  const dropBusyRef = useRef(false);
+  const lastShareLaunchAtRef = useRef(0);
+  const dropScrollRef = useRef<HTMLDivElement>(null);
+  const dragScaleRef = useRef(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1);
+  const dragPathsRef = useRef<string[]>([]);
+  const dragFrameRef = useRef<number | null>(null);
+  const pendingDragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const [measuredCompactWidth, setMeasuredCompactWidth] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState(0);
@@ -244,7 +254,7 @@ export const IslandApp: React.FC = () => {
   const pointerInsideRef = useRef(false);
   const privacyTestUntilRef = useRef(0);
   const nativeStateRef = useRef<
-    "compact" | "compact_dual" | "notification" | "notification_hover" | "expanded" | "suppressed"
+    "compact" | "compact_dual" | "notification" | "notification_hover" | "expanded" | "drag_targets" | "suppressed"
   >("compact");
 
   // 2-second compact utility alert state
@@ -378,7 +388,8 @@ export const IslandApp: React.FC = () => {
       const cached = localStorage.getItem("orbit_weather_cache");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed.data && typeof parsed.data.tempC === "number") {
+        const cacheIsFresh = typeof parsed.timestamp === "number" && Date.now() - parsed.timestamp <= 10 * 60 * 1000;
+        if (cacheIsFresh && parsed.data && typeof parsed.data.tempC === "number") {
           return parsed.data;
         }
       }
@@ -640,6 +651,7 @@ export const IslandApp: React.FC = () => {
   const lastRegionWidthRef = useRef(0);
   useEffect(() => {
     setCompactWidthHint(compactPillWidth);
+    if (dropTrayOpen || dropTrayOpenRef.current || dropBusyRef.current) return;
     const ns = nativeStateRef.current;
     if (ns !== "compact" && ns !== "compact_dual") return;
     if (isExpanded || transientNotif || utilityAlert?.kind === "timer_done") return;
@@ -807,6 +819,7 @@ export const IslandApp: React.FC = () => {
 
   // Fix 1: Only change native state when already in compact mode, NEVER while collapsing from expanded!
   useEffect(() => {
+    if (dropTrayOpen || dropTrayOpenRef.current || dropBusyRef.current) return;
     if (
       !isExpanded &&
       !transientNotif &&
@@ -820,11 +833,289 @@ export const IslandApp: React.FC = () => {
         ipc.setIslandState(targetState).catch(() => {});
       }
     }
-  }, [isDualCompact, isExpanded, transientNotif, utilityAlert, isMeetingSuppressed]);
+  }, [isDualCompact, isExpanded, transientNotif, utilityAlert, isMeetingSuppressed, dropTrayOpen]);
 
   // File Shelf state
   const [shelfItems, setShelfItems] = useState<ShelfItem[]>([]);
   const [showFileShelf, setShowFileShelf] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    let unlistenScale: (() => void) | undefined;
+    const win = getCurrentWindow();
+    win
+      .scaleFactor()
+      .then((scale) => {
+        if (isMounted && Number.isFinite(scale) && scale > 0) dragScaleRef.current = scale;
+      })
+      .catch(() => {});
+    win
+      .onScaleChanged(({ payload }) => {
+        if (isMounted) {
+          dragScaleRef.current = payload.scaleFactor || window.devicePixelRatio || 1;
+        }
+      })
+      .then((unlisten) => {
+        if (isMounted) unlistenScale = unlisten;
+        else unlisten();
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+      if (unlistenScale) unlistenScale();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!config.dragDropEnabled) {
+      dropTrayOpenRef.current = false;
+      setDropTrayOpen(false);
+      if (nativeStateRef.current === "drag_targets") {
+        nativeStateRef.current = "compact";
+        ipc.setIslandState("compact").catch(() => {});
+      }
+      return;
+    }
+
+    let active = true;
+    let closeTimer: ReturnType<typeof setTimeout> | null = null;
+    const openTray = (paths: string[]) => {
+      dragPathsRef.current = paths;
+      if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+      if (collapseGraceTimerRef.current) {
+        clearTimeout(collapseGraceTimerRef.current);
+        collapseGraceTimerRef.current = null;
+      }
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
+      if (autoExpandTimerRef.current) {
+        clearTimeout(autoExpandTimerRef.current);
+        autoExpandTimerRef.current = null;
+      }
+      if (notifHoverGraceTimerRef.current) {
+        clearTimeout(notifHoverGraceTimerRef.current);
+        notifHoverGraceTimerRef.current = null;
+      }
+      dropBusyRef.current = false;
+      setDropBusy(false);
+      dropCountRef.current = paths.length;
+      setDropCount(paths.length);
+      dropTargetRef.current = "shelf";
+      setDropTarget("shelf");
+      setDropMessage(null);
+      setDropError(false);
+      dropTrayOpenRef.current = true;
+      setDropTrayOpen(true);
+      setShowFileShelf(false);
+      setIsExpanded(false);
+      setIsClosing(false);
+      pointerInsideRef.current = true;
+      nativeStateRef.current = "drag_targets";
+      ipc.setIslandState("drag_targets").catch((error) => console.error("Could not open file drop tray:", error));
+    };
+
+    const unlistenEnter = listen<{ paths: string[]; position: { x: number; y: number } }>(
+      "tauri://drag-enter",
+      (event) => {
+        if (!active || !event.payload?.paths?.length) return;
+        openTray(event.payload.paths);
+      }
+    );
+    const unlistenOver = listen<{ position: { x: number; y: number } }>(
+      "tauri://drag-over",
+      (event) => {
+        if (!active) return;
+        if (closeTimer !== null) {
+          window.clearTimeout(closeTimer);
+          closeTimer = null;
+        }
+        if (!dropTrayOpenRef.current) {
+          openTray(dragPathsRef.current);
+        }
+        pendingDragPositionRef.current = event.payload?.position ?? null;
+        if (dragFrameRef.current !== null) return;
+        dragFrameRef.current = requestAnimationFrame(() => {
+          dragFrameRef.current = null;
+          const position = pendingDragPositionRef.current;
+          if (!position) return;
+          const scale = dragScaleRef.current || window.devicePixelRatio || 1;
+          const x = position.x / scale;
+          const y = position.y / scale;
+          const hovered = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-orbit-drop-action]");
+          const action = hovered?.dataset.orbitDropAction as FileDropAction | undefined;
+          if (action && action !== dropTargetRef.current) {
+            dropTargetRef.current = action;
+            setDropTarget(action);
+          }
+          const scrollArea = dropScrollRef.current;
+          if (scrollArea) {
+            const bounds = scrollArea.getBoundingClientRect();
+            if (x > bounds.left - 36 && x < bounds.right + 36 && y > bounds.top - 8 && y < bounds.bottom + 8) {
+              const edge = Math.min(48, bounds.width * 0.16);
+              if (x < bounds.left + edge) scrollArea.scrollLeft = Math.max(0, scrollArea.scrollLeft - 14);
+              else if (x > bounds.right - edge) scrollArea.scrollLeft += 14;
+            }
+          }
+        });
+      }
+    );
+    const unlistenLeave = listen("tauri://drag-leave", () => {
+      if (!active || !dropTrayOpenRef.current) return;
+      if (closeTimer) clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        if (!dropBusyRef.current) {
+          dropTrayOpenRef.current = false;
+          setDropTrayOpen(false);
+          pointerInsideRef.current = false;
+          nativeStateRef.current = "compact";
+          ipc.setIslandState("compact").catch(() => {});
+        }
+      }, 160);
+    });
+    const unlistenDrop = listen<{ paths: string[]; position?: { x: number; y: number } }>("tauri://drag-drop", async (event) => {
+      if (!active || dropBusyRef.current) return;
+      const paths = event.payload?.paths;
+      if (!paths?.length) return;
+      if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+      if (dragFrameRef.current !== null) {
+        cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = null;
+      }
+      const dropPos = event.payload?.position ?? pendingDragPositionRef.current;
+      if (dropPos && dropTrayOpenRef.current) {
+        const scale = dragScaleRef.current || window.devicePixelRatio || 1;
+        const x = dropPos.x / scale;
+        const y = dropPos.y / scale;
+        const hovered = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-orbit-drop-action]");
+        const hoveredAction = hovered?.dataset.orbitDropAction as FileDropAction | undefined;
+        if (hoveredAction && hoveredAction !== dropTargetRef.current) {
+          dropTargetRef.current = hoveredAction;
+          setDropTarget(hoveredAction);
+        }
+      }
+      if (!dropTrayOpenRef.current) {
+        openTray(paths);
+      }
+      dropBusyRef.current = true;
+      setDropBusy(true);
+      setDropMessage("Working on your files…");
+      const action = dropTargetRef.current;
+      try {
+        if (action === "share") {
+          const now = Date.now();
+          if (now - lastShareLaunchAtRef.current < 1500) {
+            setDropMessage("Windows Share is already opening");
+            setDropError(false);
+            return;
+          }
+          lastShareLaunchAtRef.current = now;
+          await ipc.shareFiles(paths);
+          if (!active) return;
+          setDropMessage("Windows Share opened · choose an app and recipient");
+          setDropError(false);
+          closeTimer = setTimeout(() => {
+            if (!active) return;
+            dropTrayOpenRef.current = false;
+            setDropTrayOpen(false);
+            pointerInsideRef.current = false;
+            nativeStateRef.current = "compact";
+            ipc.setIslandState("compact").catch(() => {});
+          }, 1400);
+          return;
+        }
+        // This listener is installed when drag-and-drop is enabled. Read the current pins
+        // here instead of its initial React closure, which can otherwise reject valid pins.
+        const pinnedDestinations = useConfigStore.getState().config.pinnedDestinations;
+        const pinnedDestination = action.startsWith("website:")
+          ? pinnedDestinations.find((destination) => `website:${destination.id}` === action)
+          : undefined;
+        const backendAction = pinnedDestination ? "shelf" : action as Exclude<FileDropAction, `website:${string}` | "share">;
+        const results = await ipc.handleFileDrop(paths, backendAction);
+        let destinationMessage: string | null = null;
+        let destinationError = false;
+        if (pinnedDestination && results.some((result) => !result.error)) {
+          try {
+            await ipc.openExternalUrl(pinnedDestination.url);
+            destinationMessage = `Saved to Shelf · opening ${pinnedDestination.name}; attach the saved files there.`;
+          } catch (openError) {
+            destinationMessage = `Saved to Shelf, but could not open ${pinnedDestination.name}: ${String(openError)}`;
+            destinationError = true;
+          }
+        }
+        if (!active) return;
+        const succeeded = results.filter((result) => !result.error);
+        const failures = results.filter((result) => result.error);
+        const summary = failures.length
+          ? `${succeeded.length} complete · ${failures.length} failed: ${failures[0].displayName} — ${failures[0].error}`
+          : `${succeeded.length} ${succeeded.length === 1 ? "file" : "files"} complete`;
+        setDropMessage(destinationMessage ?? summary);
+        setDropError(failures.length > 0 || destinationError);
+        if (action === "shelf" || pinnedDestination) {
+          const current = await ipc.getShelfItems();
+          if (!active) return;
+          setShelfItems(current);
+          const openShelf = () => {
+            if (!active) return;
+            setActiveSection(0);
+            setShowFileShelf(true);
+            setIsClosing(false);
+            setIsExpanded(true);
+            dropTrayOpenRef.current = false;
+            setDropTrayOpen(false);
+            pointerInsideRef.current = true;
+            nativeStateRef.current = "expanded";
+            ipc.setIslandState("expanded").catch((error) => console.error("Could not show Shelf after drop:", error));
+          };
+          if (failures.length) closeTimer = setTimeout(openShelf, 3200);
+          else openShelf();
+        } else {
+          closeTimer = setTimeout(() => {
+            if (!active) return;
+            dropTrayOpenRef.current = false;
+            setDropTrayOpen(false);
+            pointerInsideRef.current = false;
+            nativeStateRef.current = "compact";
+            ipc.setIslandState("compact").catch(() => {});
+          }, failures.length ? 3200 : 900);
+        }
+      } catch (error) {
+        console.error("File drop failed:", error);
+        setDropMessage(String(error));
+        setDropError(true);
+        closeTimer = setTimeout(() => {
+          if (!active) return;
+          dropTrayOpenRef.current = false;
+          setDropTrayOpen(false);
+          pointerInsideRef.current = false;
+          nativeStateRef.current = "compact";
+          ipc.setIslandState("compact").catch(() => {});
+        }, 3200);
+      } finally {
+        dropBusyRef.current = false;
+        setDropBusy(false);
+      }
+    });
+
+    return () => {
+      active = false;
+      if (closeTimer) clearTimeout(closeTimer);
+      if (dragFrameRef.current !== null) cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+      unlistenEnter.then((unlisten) => unlisten());
+      unlistenOver.then((unlisten) => unlisten());
+      unlistenLeave.then((unlisten) => unlisten());
+      unlistenDrop.then((unlisten) => unlisten());
+    };
+  }, [config.dragDropEnabled]);
 
   // Dynamic Section 2 (Option A: Multi-Task Hub appears at Dot 2 when 2+ activities are active)
   const hasMultiTaskSection = useMemo(() => {
@@ -1283,33 +1574,6 @@ export const IslandApp: React.FC = () => {
       }
     );
 
-    const unlistenDrop = listen<{ paths: string[] }>(
-      "tauri://drag-drop",
-      async (event) => {
-        const paths = event.payload?.paths;
-        if (!paths || paths.length === 0) return;
-        try {
-          let current = await ipc.getShelfItems();
-          for (const p of paths) {
-            if (current.length >= 10) break;
-            await ipc.addShelfItem(p);
-            current = await ipc.getShelfItems();
-          }
-          setShelfItems(current);
-          setActiveSection(0);
-          setShowFileShelf(true);
-          setIsClosing(false);
-          setIsExpanded(true);
-          if (nativeStateRef.current !== "expanded") {
-            nativeStateRef.current = "expanded";
-            ipc.setIslandState("expanded").catch((e) => console.error(e));
-          }
-        } catch (err) {
-          console.error("Drop file error:", err);
-        }
-      }
-    );
-
     const unlistenTimer = listen<{ action: string; durationSecs?: number }>(
       "timer-command",
       (event) => {
@@ -1551,7 +1815,6 @@ export const IslandApp: React.FC = () => {
       unlistenNotifs.then((unlisten) => unlisten());
       unlistenPrivacyTestFinished.then((unlisten) => unlisten());
       unlistenHardware.then((unlisten) => unlisten());
-      unlistenDrop.then((unlisten) => unlisten());
       unlistenTimer.then((unlisten) => unlisten());
       unlistenPin.then((unlisten) => unlisten());
       if (collapseGraceTimerRef.current)
@@ -1579,6 +1842,14 @@ export const IslandApp: React.FC = () => {
 
   // Completion-driven native collapse finalizer
   const finalizeNativeCollapse = async (transitionId: number) => {
+    if (dropTrayOpenRef.current || dropBusyRef.current) {
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
+      return;
+    }
+
     if (contextMenuOpenRef.current) {
       return;
     }
@@ -1631,6 +1902,14 @@ export const IslandApp: React.FC = () => {
 
   // Initiates visual 3D collapse and sets up completion-driven synchronization
   const triggerCollapse = (transitionId: number) => {
+    if (dropTrayOpenRef.current || dropBusyRef.current) {
+      if (watchdogTimerRef.current) {
+        clearTimeout(watchdogTimerRef.current);
+        watchdogTimerRef.current = null;
+      }
+      return;
+    }
+
     if (contextMenuOpenRef.current) {
       return;
     }
@@ -1665,6 +1944,7 @@ export const IslandApp: React.FC = () => {
 
   // Immediate 3D visual expansion on pointer enter
   const handleMouseEnter = () => {
+    if (dropTrayOpenRef.current) return;
     pointerInsideRef.current = true;
     const currentTransitionId = ++transitionIdRef.current;
 
@@ -1746,6 +2026,7 @@ export const IslandApp: React.FC = () => {
   };
 
   const handleMouseLeave = () => {
+    if (dropTrayOpenRef.current) return;
     if (
       contextMenuOpenRef.current ||
       isPinnedExpandedRef.current ||
@@ -1928,8 +2209,7 @@ export const IslandApp: React.FC = () => {
     }
   };
 
-  const handleAddReminder = async (e?: React.FormEvent, customCat?: string) => {
-    if (e) e.preventDefault();
+  const handleAddReminder = async (customCat?: string): Promise<void> => {
     if (!newReminderTitle.trim()) return;
     try {
       const dueMs = selectedCalendarDate.getTime();
@@ -1944,6 +2224,7 @@ export const IslandApp: React.FC = () => {
       await loadReminders();
     } catch (err) {
       console.error("Failed to add reminder:", err);
+      throw err;
     }
   };
 
@@ -2435,7 +2716,9 @@ export const IslandApp: React.FC = () => {
     config.position,
   ]);
 
-  const currentShellWidth = isExpanded
+  const currentShellWidth = dropTrayOpen
+    ? 760
+    : isExpanded
     ? 356
     : transientNotif
     ? isNotifHovered
@@ -2445,7 +2728,9 @@ export const IslandApp: React.FC = () => {
     ? 316
     : compactPillWidth;
 
-  const currentShellHeight = isExpanded
+  const currentShellHeight = dropTrayOpen
+    ? 156
+    : isExpanded
     ? 168
     : transientNotif
     ? isNotifHovered
@@ -2457,16 +2742,20 @@ export const IslandApp: React.FC = () => {
 
   const isGlassMode =
     effectiveTransparencyMode !== "solid" && !isReducedEffects && !isMediaBackdropActive;
-  const activeGlassTone: GlassTone = isMediaBackdropActive ? "dark" : glassTone;
+  const activeGlassTone: GlassTone = isMediaBackdropActive && !dropTrayOpen ? "dark" : glassTone;
 
-  const currentYOffset = (!isExpanded && transientNotif && config.notificationsEnabled && !isNotifEntering) ? 10 : 3;
-  const currentXOffset = (400 - currentShellWidth) / 2;
+  const currentYOffset = (!isExpanded && !dropTrayOpen && transientNotif && config.notificationsEnabled && !isNotifEntering) ? 10 : 3;
+  const currentXOffset = config.position === "top-left"
+    ? 0
+    : config.position === "top-right"
+    ? 860 - currentShellWidth
+    : (860 - currentShellWidth) / 2;
 
   return (
     <div
       onContextMenu={handleContextMenu}
       onWheel={handleWheel}
-      className={`island-container orbit-stage-3d w-full h-full flex items-start justify-center pt-[3px] overflow-hidden select-none relative bg-transparent font-sans theme-${resolvedThemeId} orbit-font-${config.fontFamily || "inter"}`}
+      className={`island-container orbit-stage-3d w-full h-full flex items-start ${config.position === "top-left" ? "justify-start" : config.position === "top-right" ? "justify-end" : "justify-center"} pt-[3px] overflow-hidden select-none relative bg-transparent font-sans theme-${resolvedThemeId} orbit-font-${config.fontFamily || "inter"}`}
     >
       {/* Primary 3D Sculpted Island Shell */}
       <div
@@ -2476,6 +2765,7 @@ export const IslandApp: React.FC = () => {
         onTransitionEnd={handleTransitionEnd}
         onClick={() => {
           if (
+            !dropTrayOpen &&
             !isExpanded &&
             !transientNotif &&
             utilityAlert?.kind !== "timer_done"
@@ -2492,7 +2782,9 @@ export const IslandApp: React.FC = () => {
         style={{
           width: `${currentShellWidth}px`,
           height: `${currentShellHeight}px`,
-          borderRadius: isExpanded
+          borderRadius: dropTrayOpen
+            ? "24px"
+            : isExpanded
             ? "26px"
             : transientNotif
             ? isNotifHovered
@@ -2513,11 +2805,11 @@ export const IslandApp: React.FC = () => {
               : isMediaBackdropActive
               ? "0 8px 32px rgba(0, 0, 0, 0.75), 0 0 28px rgba(59, 130, 246, 0.45), inset 0 0 22px rgba(59, 130, 246, 0.35)"
               : undefined,
-          backgroundColor: isMediaBackdropActive
+          backgroundColor: isMediaBackdropActive && !dropTrayOpen
             ? "#080b18"
-            : isMediaActive && config.mediaBackgroundMode === "solid"
+            : !dropTrayOpen && isMediaActive && config.mediaBackgroundMode === "solid"
             ? "#11151d"
-            : isExpanded
+            : isExpanded || dropTrayOpen
             ? "var(--island-panel)"
             : "var(--island-pill)",
           opacity: isClosing || isMeetingSuppressed ? 0 : 1,
@@ -2531,6 +2823,8 @@ export const IslandApp: React.FC = () => {
             ? "none"
             : isClosing
             ? "transform 230ms cubic-bezier(0.32, 0, 0.67, 0), opacity 210ms ease-in"
+            : dropTrayOpen
+            ? "width 135ms ease-out, height 135ms ease-out, border-radius 140ms ease, border-color 120ms ease, background-color 120ms ease"
             : isExpanded
             ? "width 330ms cubic-bezier(0.22, 1.26, 0.36, 1), height 360ms cubic-bezier(0.18, 1.16, 0.32, 1) 20ms, border-radius 300ms ease, border-color 260ms ease, background-color 260ms ease, transform 140ms ease-out, opacity 220ms ease-out"
             : "height 280ms cubic-bezier(0.22, 1.15, 0.36, 1), width 300ms cubic-bezier(0.22, 1.15, 0.36, 1), border-radius 260ms ease, border-color 240ms ease, background-color 240ms ease, box-shadow 300ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-out",
@@ -2538,13 +2832,13 @@ export const IslandApp: React.FC = () => {
         className={`orbit-shell-3d transparency-${effectiveTransparencyMode} ${
           isReducedEffects ? "orbit-reduced-effects" : ""
         } ${isGlassMode || isMediaBackdropActive ? `glass-tone-${activeGlassTone}` : ""} ${
-          isMediaBackdropActive ? "orbit-media-active" : ""
+          isMediaBackdropActive && !dropTrayOpen ? "orbit-media-active" : ""
         } ${isGlassMode && !liveBackdropUrl ? "orbit-glass-nocapture" : ""} relative overflow-hidden select-none border ${
-          isExpanded ? "cursor-default" : "cursor-pointer"
+          isExpanded || dropTrayOpen ? "cursor-default" : "cursor-pointer"
         }`}
       >
         {/* Liquid glass: live refracted desktop + tone-aware scrim, sheen and specular rim */}
-        {isGlassMode && (!isMediaActive || config.mediaBackgroundMode === "cover") && (
+        {(dropTrayOpen ? isGlassMode : isGlassMode && (!isMediaActive || config.mediaBackgroundMode === "cover")) && (
           <GlassLayers
             mode={effectiveTransparencyMode as "glass" | "frosted" | "smoked"}
             tone={activeGlassTone}
@@ -2557,7 +2851,7 @@ export const IslandApp: React.FC = () => {
         )}
 
         {/* Media Backdrop with Album Cover Art Blur */}
-        {isMediaBackdropActive && (
+        {isMediaBackdropActive && !dropTrayOpen && (
           <div className="pointer-events-none absolute inset-0 rounded-[inherit] overflow-hidden z-[1]">
             {mediaSession?.track.thumbnail_base64 ? (
               <img
@@ -2586,6 +2880,7 @@ export const IslandApp: React.FC = () => {
           </div>
         )}
 
+        {!dropTrayOpen && <>
         {/* COMPACT / INTERMEDIATE 3D CAPSULE LAYER */}
         <CompactCapsule
           isExpanded={isExpanded}
@@ -2853,6 +3148,30 @@ export const IslandApp: React.FC = () => {
             })}
           </div>
         </div>
+        </>}
+        {dropTrayOpen && (
+          <FileDropTray
+            fileCount={dropCount}
+            storageMode={config.shelfStorageMode}
+            pinnedDestinations={config.pinnedDestinations}
+            selected={dropTarget}
+            message={dropBusy ? "Working on your files…" : dropMessage}
+            error={dropError}
+            scrollRef={dropScrollRef}
+            onSelect={(action) => {
+              dropTargetRef.current = action;
+              setDropTarget(action);
+            }}
+            onClose={() => {
+              if (dropBusyRef.current) return;
+              dropTrayOpenRef.current = false;
+              setDropTrayOpen(false);
+              pointerInsideRef.current = false;
+              nativeStateRef.current = "compact";
+              ipc.setIslandState("compact").catch(() => {});
+            }}
+          />
+        )}
       </div>
     </div>
   );

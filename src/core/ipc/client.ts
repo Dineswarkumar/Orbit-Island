@@ -54,6 +54,7 @@ export const ipc = {
       | "notification"
       | "notification_hover"
       | "expanded"
+      | "drag_targets"
       | "suppressed"
   ): Promise<void> => {
     // Compact-family states carry the live pill width so the native hit region hugs the capsule.
@@ -174,13 +175,24 @@ export const ipc = {
     return invoke<MemoryCleanResult>("free_up_memory");
   },
 
-  // File Shelf (Max 10 held references, SQLite persistence)
+  // File Shelf (unbounded references, SQLite persistence)
   getShelfItems: async (): Promise<ShelfItem[]> => {
     return invoke<ShelfItem[]>("get_shelf_items");
   },
 
   addShelfItem: async (filePath: string): Promise<ShelfItem> => {
     return invoke<ShelfItem>("add_shelf_item", { filePath });
+  },
+
+  handleFileDrop: async (
+    paths: string[],
+    action: "shelf" | "open" | "open_with" | "reveal" | "print"
+  ): Promise<Array<{ path: string; displayName: string; error: string | null; shelfItem: ShelfItem | null }>> => {
+    return invoke("handle_file_drop", { paths, action });
+  },
+
+  shareFiles: async (paths: string[]): Promise<void> => {
+    return invoke<void>("share_files", { paths });
   },
 
   removeShelfItem: async (id: string): Promise<void> => {
@@ -201,6 +213,10 @@ export const ipc = {
 
   clearShelf: async (): Promise<void> => {
     return invoke<void>("clear_shelf");
+  },
+
+  openExternalUrl: async (url: string): Promise<void> => {
+    return invoke<void>("open_external_url", { url });
   },
 
   clearLocalData: async (): Promise<void> => {

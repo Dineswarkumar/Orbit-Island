@@ -6,6 +6,7 @@ import { NotificationItem } from "../../core/types/notifications";
 import { HardwareMetrics } from "../../core/types/hardware";
 import { NotificationBrandIcon } from "./NotificationBrandIcon";
 import { ipc } from "../../core/ipc/client";
+import { resolveCompactRightSlot } from "../../core/utils/compactSlot";
 
 export interface WeatherGlance {
   tempC: number;
@@ -193,16 +194,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
   ]);
 
   const renderCompactRightSlot = () => {
-    const effectiveMode =
-      config.compactRightSlot === "smart"
-        ? config.customRightText &&
-          config.customRightText.trim() !== "" &&
-          config.customRightText.trim() !== "ORBIT"
-          ? "custom_text"
-          : weatherInfo
-          ? "weather"
-          : "orbit_logo"
-        : config.compactRightSlot;
+    const effectiveMode = resolveCompactRightSlot(config, Boolean(weatherInfo));
 
     switch (effectiveMode) {
       case "orbit_logo":
@@ -963,7 +955,7 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                   </svg>
                 </div>
                 <span
-                  className={`font-bold text-[11.5px] tracking-tight tabular-nums ${
+                  className={`font-bold text-[13px] tracking-tight tabular-nums ${
                     isTimerPaused ? "text-amber-400/75" : "text-amber-300"
                   }`}
                 >
@@ -1026,17 +1018,12 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
               <div className="flex items-center space-x-[2px] h-3.5 shrink-0">
                 {config.mediaVisualizerMode !== "off" && [0, 1, 2].map((idx) => {
                   const isPlaying = mediaSession.playback_status === "playing";
-                  const barVal = isPlaying
-                    ? config.mediaVisualizerMode === "beats"
-                      ? audioSpectrum?.compactBars?.[0] ?? 0
-                      : audioSpectrum?.compactBars?.[idx] ?? 0
-                    : 0;
-                  const hasFreq = isPlaying && (audioSpectrum?.peak ?? 0) >= 0.005 && barVal > 0.005;
-                  const fallbackBars = [0.45, 0.85, 0.55];
+                  const barVal = isPlaying ? audioSpectrum?.compactBars?.[idx] ?? 0 : 0;
+                  const hasFreq = isPlaying && (audioSpectrum?.peak ?? 0) >= 0.001 && barVal > 0.001;
                   const scaleY = hasFreq
                     ? Math.max(0.18, Math.min(1, 0.12 + barVal * 0.88))
                     : isPlaying
-                    ? fallbackBars[idx]
+                    ? 0.15
                     : 0.15;
                   return (
                     <div
@@ -1251,16 +1238,15 @@ export const CompactCapsule: React.FC<CompactCapsuleProps> = ({
                 const waveBars = audioSpectrum?.waveBars ?? [];
                 let scaleY = 0.15;
                 if (isPlaying) {
-                  if ((audioSpectrum?.peak ?? 0) >= 0.005 && waveBars.length > 0) {
+                  if ((audioSpectrum?.peak ?? 0) >= 0.001 && waveBars.length > 0) {
                     const mirroredIndex = Math.min(idx, 5 - idx);
                     const srcIdx = Math.floor((mirroredIndex / 2) * ((waveBars.length - 1) / 2));
                     const val = config.mediaVisualizerMode === "beats"
-                      ? audioSpectrum?.compactBars?.[0] ?? 0
+                      ? audioSpectrum?.compactBars?.[mirroredIndex] ?? 0
                       : waveBars[srcIdx] ?? 0;
                     scaleY = Math.max(0.2, Math.min(1, 0.15 + val * 1.5));
                   } else {
-                    const fallbackBars = [0.35, 0.75, 0.52, 0.9, 0.65, 0.42];
-                    scaleY = fallbackBars[idx];
+                    scaleY = 0.15;
                   }
                 }
                 return (

@@ -34,6 +34,11 @@ export type CustomRightTextStyle = "neon_glow" | "cyber_badge" | "aurora_pill" |
 export type NetworkActivityMode = "off" | "speed_only" | "full";
 export type MediaBackgroundMode = "cover" | "theme" | "solid";
 export type MediaVisualizerMode = "spectrum" | "beats" | "off";
+export interface PinnedDestination {
+  id: string;
+  name: string;
+  url: string;
+}
 
 export interface AppConfig {
   theme: AppTheme;
@@ -57,6 +62,7 @@ export interface AppConfig {
   expandTrigger: ExpandTrigger;
   pauseInFullscreen: boolean;
   shelfStorageMode: ShelfStorageMode;
+  dragDropEnabled: boolean;
   fontFamily: FontFamily;
   onboardingCompleted: boolean;
   compactRightSlot: CompactRightSlot;
@@ -72,6 +78,7 @@ export interface AppConfig {
   mediaVisualizerMode: MediaVisualizerMode;
   mediaShowCoverArt: boolean;
   mediaCompactMode: boolean;
+  pinnedDestinations: PinnedDestination[];
 }
 
 /** Normalize saved material + opacity combinations while retaining the opaque low-cost surface. */
@@ -117,6 +124,7 @@ export const DEFAULT_APP_CONFIG: Readonly<AppConfig> = {
   expandTrigger: "hover",
   pauseInFullscreen: true,
   shelfStorageMode: "reference",
+  dragDropEnabled: true,
   fontFamily: "inter",
   onboardingCompleted: false,
   compactRightSlot: "weather",
@@ -132,6 +140,7 @@ export const DEFAULT_APP_CONFIG: Readonly<AppConfig> = {
   mediaVisualizerMode: "spectrum",
   mediaShowCoverArt: true,
   mediaCompactMode: false,
+  pinnedDestinations: [],
 };
 
 export function createDefaultAppConfig(): AppConfig {
@@ -170,6 +179,7 @@ export function mergeWithDefaultConfig(partial?: unknown): AppConfig {
     expandTrigger: typeof obj.expandTrigger === "string" ? (obj.expandTrigger as ExpandTrigger) : base.expandTrigger,
     pauseInFullscreen: typeof obj.pauseInFullscreen === "boolean" ? obj.pauseInFullscreen : base.pauseInFullscreen,
     shelfStorageMode: typeof obj.shelfStorageMode === "string" ? (obj.shelfStorageMode as ShelfStorageMode) : base.shelfStorageMode,
+    dragDropEnabled: typeof obj.dragDropEnabled === "boolean" ? obj.dragDropEnabled : base.dragDropEnabled,
     fontFamily: typeof obj.fontFamily === "string" ? (obj.fontFamily as FontFamily) : base.fontFamily,
     onboardingCompleted: typeof obj.onboardingCompleted === "boolean" ? obj.onboardingCompleted : base.onboardingCompleted,
     compactRightSlot: typeof obj.compactRightSlot === "string" ? (obj.compactRightSlot as CompactRightSlot) : base.compactRightSlot,
@@ -185,6 +195,9 @@ export function mergeWithDefaultConfig(partial?: unknown): AppConfig {
     mediaVisualizerMode: obj.mediaVisualizerMode === "spectrum" || obj.mediaVisualizerMode === "beats" || obj.mediaVisualizerMode === "off" ? obj.mediaVisualizerMode : base.mediaVisualizerMode,
     mediaShowCoverArt: typeof obj.mediaShowCoverArt === "boolean" ? obj.mediaShowCoverArt : base.mediaShowCoverArt,
     mediaCompactMode: typeof obj.mediaCompactMode === "boolean" ? obj.mediaCompactMode : base.mediaCompactMode,
+    pinnedDestinations: Array.isArray(obj.pinnedDestinations)
+      ? obj.pinnedDestinations.filter((item): item is PinnedDestination => Boolean(item && typeof item === "object" && typeof (item as PinnedDestination).id === "string" && typeof (item as PinnedDestination).name === "string" && typeof (item as PinnedDestination).url === "string" && (item as PinnedDestination).url.startsWith("https://"))).slice(0, 6)
+      : base.pinnedDestinations,
   };
 }
 

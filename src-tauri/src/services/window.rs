@@ -193,11 +193,11 @@ pub fn position_island_window<R: tauri::Runtime>(window: &WebviewWindow<R>, posi
     let scale = monitor.scale_factor();
     let screen_width = monitor.size().width as f64 / scale;
 
-    // Stable 400x188 canvas positioned at top-left, top-center, or top-right (y = 10.0)
+    // Stable wide canvas lets the drop tray open without resizing during an active drag.
     let x = match position {
         "top-left" => 24.0,
-        "top-right" => (screen_width - 400.0 - 24.0).max(0.0),
-        _ => (screen_width - 400.0) / 2.0,
+        "top-right" => (screen_width - 860.0 - 24.0).max(0.0),
+        _ => (screen_width - 860.0) / 2.0,
     };
     // Keep the island below a taskbar docked to the top edge. The old fixed 10px
     // offset placed it directly over the taskbar and made its controls hard to reach.
@@ -216,7 +216,7 @@ pub fn position_island_window<R: tauri::Runtime>(window: &WebviewWindow<R>, posi
     }
 
     let x_px = (x * scale).round() as i32;
-    let width_px = (400.0 * scale).round() as i32;
+    let width_px = (860.0 * scale).round() as i32;
     let height_px = (188.0 * scale).round() as i32;
 
     let pos_result = unsafe {
@@ -246,15 +246,15 @@ pub fn position_island_window<R: tauri::Runtime>(window: &WebviewWindow<R>, posi
     let screen_width = monitor.size().width as f64 / scale;
     let x = match position {
         "top-left" => 24.0,
-        "top-right" => (screen_width - 400.0 - 24.0).max(0.0),
-        _ => (screen_width - 400.0) / 2.0,
+        "top-right" => (screen_width - 860.0 - 24.0).max(0.0),
+        _ => (screen_width - 860.0) / 2.0,
     };
     window
         .set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y: 10.0 }))
         .map_err(|e| e.to_string())?;
     window
         .set_size(tauri::Size::Logical(tauri::LogicalSize {
-            width: 400.0,
+            width: 860.0,
             height: 188.0,
         }))
         .map_err(|e| e.to_string())?;
@@ -282,7 +282,7 @@ pub fn apply_island_region(window: &WebviewWindow, state: &str) -> Result<(), St
 }
 
 /// Same as `apply_island_region`, but for compact-family states an optional logical pill width
-/// makes the native hit region hug the visible capsule (centered on the 400px window) instead of
+/// makes the native hit region hug the visible capsule within the 860px window instead of
 /// using a fixed slab. This keeps wide pills (REC + privacy light + call timer) from being clipped
 /// and stops narrow pills from blocking clicks on empty space beside them.
 #[cfg(target_os = "windows")]
@@ -307,27 +307,49 @@ pub fn apply_island_region_sized(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Primary monitor not found".to_string())?;
     let scale = monitor.scale_factor();
+    let screen_width = monitor.size().width as f64 / scale;
+    let centered_x = (screen_width - 860.0) / 2.0;
+    let window_x = window
+        .outer_position()
+        .map_err(|error| error.to_string())?
+        .x as f64
+        / scale;
+    let alignment = if window_x < centered_x - 2.0 {
+        "top-left"
+    } else if window_x > centered_x + 2.0 {
+        "top-right"
+    } else {
+        "top-center"
+    };
 
     // Give a 4px breathing clearance around the visual 3D shell so that:
     // 1. DirectComposition/WebView2 renders smooth subpixel anti-aliased 3D borders without
     //    1-bit GDI Bresenham clipping chewing into the capsule rim.
     // 2. 3D perspective tilt (rotateX/rotateY), spring overshoot, and outer 3D rim depth
     //    never get guillotined at the boundary, while keeping outside space and corners click-through.
-    // Dynamic compact region: pill width + 8px breathing (4px each side), centered at x=200.
+    // Match the visible pill's alignment while keeping the unused canvas click-through.
+    let aligned_bounds = |width: f64, y2: f64, corner: f64| {
+        let (left, right) = match alignment {
+            "top-left" => (0.0, width + 8.0),
+            "top-right" => (860.0 - width - 8.0, 860.0),
+            _ => ((860.0 - width) / 2.0 - 4.0, (860.0 + width) / 2.0 + 4.0),
+        };
+        (left, 0.0, right, y2, corner)
+    };
     let dynamic_compact = compact_width.map(|w| {
-        let half = (w.clamp(60.0, 380.0) / 2.0) + 4.0;
-        (200.0 - half, 0.0, 200.0 + half, 48.0, 46.0)
+        aligned_bounds(w.clamp(60.0, 380.0), 48.0, 46.0)
     });
 
     let (x1_f, y1_f, x2_f, y2_f, corner_f) = match state {
         "suppressed" => (0.0, 0.0, 0.0, 0.0, 0.0),
-        "compact" | "compact_alert" => dynamic_compact.unwrap_or((110.0, 0.0, 290.0, 48.0, 46.0)),
-        "compact_dual" => dynamic_compact.unwrap_or((68.0, 0.0, 332.0, 48.0, 46.0)),
-        "notification" => (36.0, 0.0, 364.0, 74.0, 56.0),
+        "compact" | "compact_alert" => dynamic_compact.unwrap_or_else(|| aligned_bounds(180.0, 48.0, 46.0)),
+        "compact_dual" => dynamic_compact.unwrap_or_else(|| aligned_bounds(264.0, 48.0, 46.0)),
+        "notification" => aligned_bounds(328.0, 74.0, 56.0),
         // Use a square-ended hit region for the notification action row. A large rounded
         // corner here clips the lower-right Dismiss button on Windows, especially at scaled DPI.
-        "notification_hover" => (8.0, 0.0, 392.0, 150.0, 0.0),
-        "expanded" => (16.0, 0.0, 384.0, 180.0, 56.0),
+        "notification_hover" => aligned_bounds(384.0, 150.0, 0.0),
+        "expanded" => aligned_bounds(368.0, 180.0, 56.0),
+        "drag_targets" => aligned_bounds(828.0, 188.0, 52.0),
         _ => return Err(format!("Unsupported island state for region: {state}")),
     };
 
@@ -608,8 +630,10 @@ pub struct LiveBackdropSnapshot {
 
 // Capture resolution for the live glass backdrop. 3:4 of the 400x188 island window keeps the
 // refraction layer crisp enough to read as "glass" without bloating the IPC payload.
-pub const BACKDROP_WIDTH: i32 = 300;
-pub const BACKDROP_HEIGHT: i32 = 141;
+// Keep the captured image close to the wide island canvas aspect ratio (860x188).
+// The old 300x141 buffer stretched into the expanded tray and visibly duplicated the desktop.
+pub const BACKDROP_WIDTH: i32 = 516;
+pub const BACKDROP_HEIGHT: i32 = 113;
 
 #[cfg(target_os = "windows")]
 #[repr(C)]
@@ -1583,8 +1607,12 @@ fn try_activate_browser_tab_via_uia(
                     )
                 {
                     if sel_pat.Select().is_ok() {
-                        if let Ok(is_sel) = sel_pat.CurrentIsSelected() {
-                            if is_sel.as_bool() {
+                        let is_sel = sel_pat.CurrentIsSelected().map(|v| v.as_bool()).unwrap_or(true);
+                        if is_sel {
+                            switched = true;
+                        } else {
+                            std::thread::sleep(std::time::Duration::from_millis(15));
+                            if sel_pat.CurrentIsSelected().map(|v| v.as_bool()).unwrap_or(true) {
                                 switched = true;
                             }
                         }
@@ -1598,7 +1626,9 @@ fn try_activate_browser_tab_via_uia(
                             UIA_LegacyIAccessiblePatternId,
                         )
                     {
-                        let _ = leg_pat.DoDefaultAction();
+                        if leg_pat.DoDefaultAction().is_ok() {
+                            switched = true;
+                        }
                     }
                 }
 
@@ -1607,18 +1637,22 @@ fn try_activate_browser_tab_via_uia(
                     if let Ok(inv_pat) = target_tab
                         .GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
                     {
-                        let _ = inv_pat.Invoke();
+                        if inv_pat.Invoke().is_ok() {
+                            switched = true;
+                        }
                     }
                 }
 
                 // Re-verify selection state via SelectionItemPattern; if still not selected, click center of tab rect
-                if let Ok(sel_pat) = target_tab
-                    .GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(
-                        UIA_SelectionItemPatternId,
-                    )
-                {
-                    if let Ok(is_sel) = sel_pat.CurrentIsSelected() {
-                        switched = is_sel.as_bool();
+                if !switched {
+                    if let Ok(sel_pat) = target_tab
+                        .GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(
+                            UIA_SelectionItemPatternId,
+                        )
+                    {
+                        if let Ok(is_sel) = sel_pat.CurrentIsSelected() {
+                            switched = is_sel.as_bool();
+                        }
                     }
                 }
 
@@ -1658,6 +1692,28 @@ pub fn activate_app_window(
     app_name: &str,
     title_hint: Option<&str>,
 ) -> Result<bool, String> {
+    static LAST_ACTIVATE: std::sync::Mutex<Option<(String, std::time::Instant)>> =
+        std::sync::Mutex::new(None);
+    let key = format!(
+        "{}|{}|{}",
+        app_id.trim().to_lowercase(),
+        app_name.trim().to_lowercase(),
+        title_hint.unwrap_or("").trim().to_lowercase()
+    );
+    {
+        let mut guard = LAST_ACTIVATE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let now = std::time::Instant::now();
+        if let Some((ref last_key, ref last_time)) = *guard {
+            if last_key == &key && now.duration_since(*last_time) < std::time::Duration::from_millis(600) {
+                log::debug!("Debouncing duplicate activate_app_window for key: {key}");
+                return Ok(true);
+            }
+        }
+        *guard = Some((key, now));
+    }
+
     use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM};
     use windows_sys::Win32::System::Threading::{
         GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW,
@@ -2085,6 +2141,13 @@ mod tests {
     fn test_bmp_header_size() {
         let row_bytes = (BACKDROP_WIDTH * 3 + 3) & !3;
         let file_size: u32 = 54 + (row_bytes * BACKDROP_HEIGHT) as u32;
-        assert_eq!(file_size, 126954);
+        assert_eq!(file_size, 174978);
+    }
+
+    #[test]
+    fn live_backdrop_buffer_matches_wide_island_canvas_ratio() {
+        let capture_ratio = BACKDROP_WIDTH as f64 / BACKDROP_HEIGHT as f64;
+        let canvas_ratio = 860.0 / 188.0;
+        assert!((capture_ratio - canvas_ratio).abs() < 0.02);
     }
 }

@@ -218,10 +218,9 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, Strin
         return Err(error);
     }
 
-    if let Some(tray) = app.try_state::<crate::TrayState>() {
-        if let Err(error) = tray.0.set_visible(config.show_system_tray_icon) {
-            log::error!("Failed to apply system tray visibility setting: {error}");
-        }
+    let island_visible = main_win.is_visible().unwrap_or(false);
+    if let Err(error) = crate::sync_tray_visibility(&app, island_visible) {
+        log::error!("Failed to apply system tray visibility setting: {error}");
     }
 
     if let Some(vis) = app.try_state::<std::sync::Arc<crate::IslandVisibilityState>>() {
@@ -240,14 +239,26 @@ pub fn save_config(app: AppHandle, config: AppConfig) -> Result<AppConfig, Strin
 
 #[tauri::command]
 pub fn hide_island_window(app: AppHandle) -> Result<(), String> {
-    if let Some(vis) = app.try_state::<std::sync::Arc<crate::IslandVisibilityState>>() {
-        vis.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
-    }
     let main_win = app
         .get_webview_window("main")
         .ok_or_else(|| "Main island window not found".to_string())?;
+    // Do not let the user hide the island while the only restore path is also hidden.
+    if let Err(error) = crate::sync_tray_visibility(&app, false) {
+        return Err(error);
+    }
+    if let Some(vis) = app.try_state::<std::sync::Arc<crate::IslandVisibilityState>>() {
+        vis.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
     let _ = crate::services::window::apply_island_region(&main_win, "compact");
-    main_win.hide().map_err(|e| e.to_string())
+    if let Err(error) = main_win.hide() {
+        if let Some(vis) = app.try_state::<std::sync::Arc<crate::IslandVisibilityState>>() {
+            vis.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+        let island_visible = main_win.is_visible().unwrap_or(true);
+        let _ = crate::sync_tray_visibility(&app, island_visible);
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -323,6 +334,7 @@ pub fn set_island_state(
             let should_temp_top = state == "notification"
                 || state == "notification_hover"
                 || state == "expanded"
+                || state == "drag_targets"
                 || state == "compact_alert";
             let _ = main_win.set_always_on_top(should_temp_top);
             crate::services::window::force_window_topmost(&main_win, should_temp_top);
@@ -607,40 +619,45 @@ pub fn delete_reminder(
 }
 
 #[tauri::command]
-pub fn pick_and_import_calendar(
+pub async fn pick_and_import_calendar(
     app: AppHandle,
     source_tag: String,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<usize, String> {
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let script = r#"
-            Add-Type -AssemblyName System.Windows.Forms
-            $dialog = New-Object System.Windows.Forms.OpenFileDialog
-            $dialog.Title = 'Import Academic or Office Calendar (.ics, .csv, .json)'
-            $dialog.Filter = 'Calendar & Schedule Files (*.ics;*.ical;*.csv;*.json)|*.ics;*.ical;*.csv;*.json|All Files (*.*)|*.*'
-            $dialog.Multiselect = $false
-            if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-                Write-Output $dialog.FileName
+        let db = db.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let script = r#"
+                Add-Type -AssemblyName System.Windows.Forms
+                $dialog = New-Object System.Windows.Forms.OpenFileDialog
+                $dialog.Title = 'Import Academic or Office Calendar (.ics, .csv, .json)'
+                $dialog.Filter = 'Calendar & Schedule Files (*.ics;*.ical;*.csv;*.json)|*.ics;*.ical;*.csv;*.json|All Files (*.*)|*.*'
+                $dialog.Multiselect = $false
+                if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                    Write-Output $dialog.FileName
+                }
+            "#;
+            let powershell_exe = crate::services::db::get_powershell_path();
+            let output = std::process::Command::new(powershell_exe)
+                .args(["-NoProfile", "-NonInteractive", "-Command", script])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .map_err(|e| format!("Failed to open calendar file picker: {e}"))?;
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if path.is_empty() {
+                return Ok(0);
             }
-        "#;
-        let powershell_exe = crate::services::db::get_powershell_path();
-        let output = std::process::Command::new(powershell_exe)
-            .args(["-NoProfile", "-NonInteractive", "-Command", script])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("Failed to open calendar file picker: {e}"))?;
-        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if path.is_empty() {
-            return Ok(0);
-        }
-        let count = db.import_calendar_file(&path, &source_tag)?;
-        if let Ok(updated) = db.get_reminders() {
-            let _ = app.emit("reminders-updated", &updated);
-        }
-        Ok(count)
+            let count = db.import_calendar_file(&path, &source_tag)?;
+            if let Ok(updated) = db.get_reminders() {
+                let _ = app.emit("reminders-updated", &updated);
+            }
+            Ok(count)
+        })
+        .await
+        .map_err(|e| format!("Calendar import worker stopped unexpectedly: {e}"))?
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -690,7 +707,7 @@ pub async fn free_up_memory(
     Ok(result)
 }
 
-// File Shelf (Max 10 held references, SQLite persistence)
+// File Shelf (unbounded references, SQLite persistence)
 #[tauri::command]
 pub fn get_shelf_items(
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
@@ -699,13 +716,77 @@ pub fn get_shelf_items(
 }
 
 #[tauri::command]
-pub fn add_shelf_item(
+pub async fn add_shelf_item(
     app: AppHandle,
     file_path: String,
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<crate::services::db::ShelfItem, String> {
     let cfg = load_config(&app);
-    db.add_shelf_item_with_mode(&file_path, &cfg.shelf_storage_mode)
+    let storage_mode = cfg.shelf_storage_mode;
+    let db = db.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.add_shelf_item_with_mode(&file_path, &storage_mode)
+    })
+    .await
+    .map_err(|error| format!("Shelf worker stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+pub async fn handle_file_drop(
+    app: AppHandle,
+    paths: Vec<String>,
+    action: String,
+    db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
+) -> Result<Vec<crate::services::db::DropFileResult>, String> {
+    let storage_mode = load_config(&app).shelf_storage_mode;
+    let db = db.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.handle_dropped_files(&paths, &action, &storage_mode)
+    })
+    .await
+    .map_err(|error| format!("File drop worker stopped unexpectedly: {error}"))
+}
+
+#[tauri::command]
+pub async fn share_files(window: tauri::Window, paths: Vec<String>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let hwnd = window
+            .hwnd()
+            .map_err(|error| format!("Could not connect sharing to the ORBIT window: {error}"))?
+            .0 as isize;
+        let validated_paths = paths
+            .iter()
+            .map(|raw_path| {
+                let path = crate::services::db::validate_local_safe_path(raw_path)?;
+                if !path.is_file() {
+                    return Err("Only regular files can be shared.".to_string());
+                }
+                Ok(path.to_string_lossy().into_owned())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+
+        tauri::async_runtime::spawn_blocking(move || {
+            let files = crate::services::windows_share::prepare_share_files(&validated_paths)?;
+            let send_files = crate::services::windows_share::SendStorageFiles(files);
+            let (tx, rx) = std::sync::mpsc::sync_channel(1);
+            window
+                .run_on_main_thread(move || {
+                    let files = send_files.take();
+                    let res = crate::services::windows_share::show_share_ui_for_window_on_main_thread(hwnd, files);
+                    let _ = tx.send(res);
+                })
+                .map_err(|e| format!("Failed to dispatch share UI to main thread: {e}"))?;
+            rx.recv().map_err(|e| format!("Share UI response channel closed: {e}"))?
+        })
+        .await
+        .map_err(|error| format!("Windows Share worker stopped unexpectedly: {error}"))?
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, paths);
+        Err("Windows app sharing is only available on Windows.".into())
+    }
 }
 
 #[tauri::command]
@@ -733,33 +814,37 @@ pub fn show_shelf_file_in_folder(
 }
 
 #[tauri::command]
-pub fn pick_shelf_file() -> Result<Option<String>, String> {
+pub async fn pick_shelf_file() -> Result<Option<String>, String> {
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let script = r#"
-            Add-Type -AssemblyName System.Windows.Forms
-            $dialog = New-Object System.Windows.Forms.OpenFileDialog
-            $dialog.Title = 'Select File for ORBIT Shelf'
-            $dialog.Filter = 'All Files (*.*)|*.*'
-            $dialog.Multiselect = $false
-            if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-                Write-Output $dialog.FileName
+        tauri::async_runtime::spawn_blocking(move || {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let script = r#"
+                Add-Type -AssemblyName System.Windows.Forms
+                $dialog = New-Object System.Windows.Forms.OpenFileDialog
+                $dialog.Title = 'Select File for ORBIT Shelf'
+                $dialog.Filter = 'All Files (*.*)|*.*'
+                $dialog.Multiselect = $false
+                if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                    Write-Output $dialog.FileName
+                }
+            "#;
+            let powershell_exe = crate::services::db::get_powershell_path();
+            let output = std::process::Command::new(powershell_exe)
+                .args(["-NoProfile", "-NonInteractive", "-Command", script])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .map_err(|e| format!("Failed to open file picker: {e}"))?;
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if path.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(path))
             }
-        "#;
-        let powershell_exe = crate::services::db::get_powershell_path();
-        let output = std::process::Command::new(powershell_exe)
-            .args(["-NoProfile", "-NonInteractive", "-Command", script])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("Failed to open file picker: {e}"))?;
-        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if path.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(path))
-        }
+        })
+        .await
+        .map_err(|e| format!("File picker worker stopped unexpectedly: {e}"))?
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -772,6 +857,30 @@ pub fn clear_shelf(
     db: tauri::State<'_, Arc<crate::services::db::DatabaseManager>>,
 ) -> Result<(), String> {
     db.clear_shelf()
+}
+
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") || url.chars().any(char::is_control) {
+        return Err("Only secure https links can be opened from a pinned destination.".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let verb: Vec<u16> = "open\0".encode_utf16().collect();
+        let target: Vec<u16> = url.encode_utf16().chain(std::iter::once(0)).collect();
+        let result = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), target.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL as i32) };
+        if (result as isize) <= 32 {
+            return Err(format!("Windows could not open that link (code: {result:?})."));
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = url;
+        Err("Pinned web destinations are currently supported on Windows only.".to_string())
+    }
 }
 
 #[tauri::command]

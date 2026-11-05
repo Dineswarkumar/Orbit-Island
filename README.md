@@ -8,14 +8,14 @@
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.90%2B-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Version](https://img.shields.io/badge/Version-3.1.2-emerald)](#)
+[![Version](https://img.shields.io/badge/Version-3.2.5-emerald)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
 
 ---
 
-ORBIT Island brings Apple's glanceable, tactile Dynamic Island UX to Windows 11. Floating discreetly at the top of your display, ORBIT blends hardware telemetry, system media controls, frequency-reactive equalizer bars, notification drops, focus countdowns, academic schedule calendars, a drag-and-drop file shelf, and real-time camera/microphone privacy indicators into an organic, glass-rendered desktop overlay.
+ORBIT Island brings Apple's glanceable, tactile Dynamic Island UX to Windows 11. Floating discreetly at the top of your display, ORBIT blends hardware telemetry, system media controls, frequency-reactive equalizer bars, notification drops, focus countdowns, academic schedule calendars, a theme-matched drag-to-expand file tray, and real-time camera/microphone privacy indicators into an organic, glass-rendered desktop overlay.
 
 ---
 
@@ -25,21 +25,71 @@ Windows installers and standalone builds are published on the [GitHub Releases p
 
 ---
 
-## Latest UI · Version 3.1.2 Liquid Glass
+## Latest UI · Version 3.2.0 Liquid Glass
 
-The latest screenshots show ORBIT's light and dark Liquid Glass themes, notification surfaces, and expanded calendar.
+The screenshots below show ORBIT's light and dark Liquid Glass themes, notification surfaces, and expanded calendar.
 
 | Liquid Glass home · light | Notification · expanded |
 | :---: | :---: |
-| <img src="docs/screenshots/liquid-glass-home-light.png" width="420" alt="ORBIT 3.1.2 light Liquid Glass home island" /> | <img src="docs/screenshots/liquid-glass-notification-expanded.png" width="420" alt="ORBIT 3.1.2 expanded notification in Liquid Glass" /> |
+| <img src="docs/screenshots/liquid-glass-home-light.png" width="420" alt="ORBIT 3.2.0 light Liquid Glass home island" /> | <img src="docs/screenshots/liquid-glass-notification-expanded.png" width="420" alt="ORBIT 3.2.0 expanded notification in Liquid Glass" /> |
 
 | Notification · compact | Calendar |
 | :---: | :---: |
-| <img src="docs/screenshots/liquid-glass-notification-compact.png" width="420" alt="ORBIT 3.1.2 compact Liquid Glass notification" /> | <img src="docs/screenshots/liquid-glass-calendar.png" width="420" alt="ORBIT 3.1.2 Liquid Glass calendar" /> |
+| <img src="docs/screenshots/liquid-glass-notification-compact.png" width="420" alt="ORBIT 3.2.0 compact Liquid Glass notification" /> | <img src="docs/screenshots/liquid-glass-calendar.png" width="420" alt="ORBIT 3.2.0 Liquid Glass calendar" /> |
 
 | Liquid Glass home · dark |
 | :---: |
-| <img src="docs/screenshots/liquid-glass-home-dark.png" width="520" alt="ORBIT 3.1.2 dark Liquid Glass home island" /> |
+| <img src="docs/screenshots/liquid-glass-home-dark.png" width="520" alt="ORBIT 3.2.0 dark Liquid Glass home island" /> |
+
+### Drag-to-expand file tray
+
+Dragging files onto ORBIT opens a horizontal target tray that follows the selected glass or opaque theme. Targets include Shelf, Windows Share, Open, Open with, File Explorer, Print, and up to six pinned web destinations. Windows Share passes the selected files to Windows, which lists compatible installed share targets such as Outlook/Mail, WhatsApp, Teams, Nearby Sharing, and OneNote when available for that Windows version, account, app installation, and file type. ORBIT cannot force an app to appear or control the app's recipient/compose screen; Windows and the destination app handle that next step. A pinned web destination saves the files to Shelf, opens the site, and reveals the saved file for manual upload; websites do not receive automatic file attachments. Saved Shelf files can also be sent to Windows Open with or opened beside a pinned site. Shelf can keep a path reference without copying file data, or make a managed copy limited by available storage. Text and links can be saved to Shelf with a per-item keep-after-restart option. ORBIT does not monitor the clipboard in the background. Drag-to-expand can be switched off in Settings.
+
+### Version 3.2.5 updates
+- Calendar month headings and date cells now share the same seven-column width, keeping every weekday aligned across the full month grid.
+- Adding a task now blocks duplicate submits, keeps the event inside the calendar form, and shows an inline error if saving fails.
+
+
+- Context-menu actions now report failures to the app log instead of silently ignoring failed menu events.
+- Hiding the island forces the tray icon visible as a restore path, even if the user's normal tray preference is off; showing the island restores that preference.
+- Auto-hide in fullscreen and keyboard/tray restore paths now keep tray visibility in sync with whether the island is visible.
+
+### Version 3.2.4 updates
+
+- Fixed Windows Share crash (`0xc0000005` in `twinapi.appcore.dll`) by ensuring COM apartment stability and main UI thread dispatch with deferral handling.
+- Fixed drag-and-drop region collapse, DPI coordinate tracking on multi-DPI displays, and file shelf action double-activation debouncing.
+- Fixed rapid duplicate app activation and browser tab switching across UIA patterns.
+- Hardened background telemetry loops, notifications listener, and SQLite/media mutexes against panics.
+
+### Version 3.2.3 updates
+
+- Notification logos now use the sender app identity only, so a ChatGPT message mentioning WhatsApp cannot display WhatsApp's logo.
+- Ordinary notification text no longer triggers the urgent Alert badge by containing words such as “alert”; priority badges are limited to timer, alarm, and reminder notifications from matching utility apps.
+- Notifications with the same display name but different app identities stay in separate groups.
+
+### Version 3.2.2 updates
+
+- Added a Windows Share target that sends dropped files through the native Windows share panel for compatible installed apps.
+- Replaced stale share callbacks on repeated attempts and guarded event cleanup so rapid shares cannot accumulate old file payloads.
+- Kept the existing Shelf, open, print, settings, media, and timer paths separate from the share action.
+
+### Version 3.2.1 updates
+
+- Shelf drops now resolve the latest pinned website settings, so destinations added after launch do not fall through as unsupported targets.
+- Shelf file picking and clearing are guarded against rapid repeated clicks; changing/removing Shelf contents waits until a picker add finishes.
+- Window and drag-over events are no longer synchronously written to disk on every pointer movement.
+- Startup skips synchronous hardware status queries; the hardware monitor supplies live values after launch.
+- Settings section navigation uses compact labeled icons, and the wide layout uses two columns to reduce unused space.
+- Compact dual media and timer mode uses a larger timer readout.
+
+### Version 3.2.0 updates
+
+- Settings now use a responsive three-column layout on wide screens, with section shortcuts, a persistent Terms & Privacy page, and links to the project and release notes.
+- Repeated launches focus the existing ORBIT window instead of starting another instance or terminating existing processes.
+- Memory reporting separates ORBIT from its verified WebView2 child processes and removes the arbitrary RAM budget label.
+- Smart Auto uses weather only when online weather is enabled; otherwise it shows the ORBIT mark. Custom text remains an explicit choice.
+- Shelf supports deliberately saved text and URLs, with an option to keep each item after restarting Windows.
+- Online weather is optional; when enabled, ORBIT requests weather from wttr.in. The app does not upload settings or Shelf contents.
 
 ---
 
@@ -279,7 +329,7 @@ ORBIT Island is deeply indebted to pioneering work in glanceable interaction des
    npm run tauri build
    ```
    The installer will be generated at:
-   `src-tauri/target/release/bundle/nsis/ORBIT_3.1.2_x64-setup.exe`
+   `src-tauri/target/release/bundle/nsis/ORBIT_3.2.0_x64-setup.exe`
 
 ---
 

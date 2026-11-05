@@ -6,10 +6,10 @@ use commands::{
     clear_local_data, clear_shelf, close_settings_window, delete_reminder, dismiss_notification,
     free_up_memory, get_config, get_hardware_metrics, get_live_backdrop, get_media_sources, get_media_state,
     get_memory_metrics, get_notification_access_status, get_notification_state, get_privacy_state,
-    get_reminders, get_shelf_items, get_weather, hide_island_window, media_seek, media_send_command,
-    open_settings_window, open_shelf_file, pick_and_import_calendar, pick_shelf_file,
+    get_reminders, get_shelf_items, get_weather, handle_file_drop, hide_island_window, media_seek, media_send_command,
+    open_external_url, open_settings_window, open_shelf_file, pick_and_import_calendar, pick_shelf_file,
     pin_media_source, remove_shelf_item, request_notification_access, reveal_diagnostic_log,
-    save_config, set_island_state, show_context_menu, show_shelf_file_in_folder, toggle_reminder,
+    save_config, set_island_state, share_files, show_context_menu, show_shelf_file_in_folder, toggle_reminder,
     trigger_privacy_test, update_island_region, MediaState,
 };
 use services::config::load_config;
@@ -47,6 +47,29 @@ impl ConfigStore {
         let mut guard = self.inner.write().unwrap_or_else(|p| p.into_inner());
         *guard = new_config;
     }
+}
+
+/// Keep at least one visible way to restore the island. If the island is hidden,
+/// the tray icon overrides the user's normal tray preference until it is shown again.
+pub fn sync_tray_visibility(app: &tauri::AppHandle, island_visible: bool) -> Result<(), String> {
+    let config = app
+        .try_state::<std::sync::Arc<ConfigStore>>()
+        .map(|store| store.get())
+        .unwrap_or_else(|| services::config::load_config(app));
+    let should_show_tray = tray_visibility_for_state(config.show_system_tray_icon, island_visible);
+    if let Some(tray) = app.try_state::<TrayState>() {
+        tray.0
+            .set_visible(should_show_tray)
+            .map_err(|error| format!("Could not update the ORBIT tray icon: {error}"))
+    } else if should_show_tray {
+        Err("ORBIT tray icon is not available to restore the hidden island.".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn tray_visibility_for_state(preference_enabled: bool, island_visible: bool) -> bool {
+    preference_enabled || !island_visible
 }
 
 #[cfg(target_os = "windows")]
@@ -109,83 +132,29 @@ where
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(target_os = "windows")]
-    {
-        use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
-        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
-            TH32CS_SNAPPROCESS,
-        };
-        use windows_sys::Win32::System::Threading::{
-            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
-            PROCESS_TERMINATE,
-        };
-
-        #[link(name = "kernel32")]
-        unsafe extern "system" {
-            fn CreateMutexW(
-                lp_mutex_attributes: *const std::ffi::c_void,
-                b_initial_owner: i32,
-                lp_name: *const u16,
-            ) -> *mut std::ffi::c_void;
-        }
-
-        let mutex_name: Vec<u16> = "Local\\ORBIT_Island_SingleInstance_Mutex\0"
-            .encode_utf16()
-            .collect();
-        let handle = unsafe { CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr()) };
-        if !handle.is_null() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-            unsafe {
-                let _ = CloseHandle(handle);
-                let my_pid = std::process::id();
-                let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-                if !snap.is_null() && (snap as isize) != -1 {
-                    let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-                    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-                    if Process32FirstW(snap, &mut entry) != 0 {
-                        loop {
-                            if entry.th32ProcessID != my_pid {
-                                let len = entry
-                                    .szExeFile
-                                    .iter()
-                                    .position(|&c| c == 0)
-                                    .unwrap_or(entry.szExeFile.len());
-                                let exe_name =
-                                    String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase();
-                                if exe_name == "orbit.exe" {
-                                    let proc_handle = OpenProcess(
-                                        PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
-                                        0,
-                                        entry.th32ProcessID,
-                                    );
-                                    if !proc_handle.is_null() {
-                                        let _ = TerminateProcess(proc_handle, 0);
-                                        let _ = WaitForSingleObject(proc_handle, 1000);
-                                        let _ = CloseHandle(proc_handle);
-                                    }
-                                }
-                            }
-                            if Process32NextW(snap, &mut entry) == 0 {
-                                break;
-                            }
-                        }
-                    }
-                    let _ = CloseHandle(snap);
-                }
-                let _ = CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr());
-            }
-        }
-    }
-
     services::logger::init_logger();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
+                vis.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                if window.show().is_ok() {
+                    let _ = window.set_focus();
+                    let _ = sync_tray_visibility(app, true);
+                    let _ = app.emit("island-shown", ());
+                }
+            }
+        }))
         .plugin(tauri_plugin_log::Builder::new().build())
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             match id {
                 "ctx_pin_expanded" => {
-                    let _ = app.emit("toggle-pin-expanded", ());
+                    if let Err(error) = app.emit("toggle-pin-expanded", ()) {
+                        log::error!("Could not apply Pin Expanded Island: {error}");
+                    }
                 }
                 "ctx_pause_fullscreen" => {
                     let mut cfg = load_config(app);
@@ -229,28 +198,44 @@ pub fn run() {
                     if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
                         vis.user_manually_hidden.store(true, std::sync::atomic::Ordering::SeqCst);
                     }
-                    let _ = app.emit("request-hide-island", ());
+                    if let Err(error) = app.emit("request-hide-island", ()) {
+                        log::error!("Could not apply Hide Island: {error}");
+                    }
                 }
                 "ctx_dismiss" => {
-                    let _ = app.emit("collapse-island", ());
+                    if let Err(error) = app.emit("collapse-island", ()) {
+                        log::error!("Could not apply Dismiss: {error}");
+                    }
                 }
                 "ctx_test_privacy" => {
-                    let _ = commands::trigger_privacy_test(app.clone());
+                    if let Err(error) = commands::trigger_privacy_test(app.clone()) {
+                        log::error!("Could not run Privacy Light test: {error}");
+                    }
                 }
                 "ctx_timer_5" => {
-                    let _ = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 300 }));
+                    if let Err(error) = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 300 })) {
+                        log::error!("Could not start the 5 minute timer: {error}");
+                    }
                 }
                 "ctx_timer_15" => {
-                    let _ = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 900 }));
+                    if let Err(error) = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 900 })) {
+                        log::error!("Could not start the 15 minute timer: {error}");
+                    }
                 }
                 "ctx_timer_25" => {
-                    let _ = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 1500 }));
+                    if let Err(error) = app.emit("timer-command", serde_json::json!({ "action": "start", "durationSecs": 1500 })) {
+                        log::error!("Could not start the 25 minute timer: {error}");
+                    }
                 }
                 "ctx_timer_stop" => {
-                    let _ = app.emit("timer-command", serde_json::json!({ "action": "stop" }));
+                    if let Err(error) = app.emit("timer-command", serde_json::json!({ "action": "stop" })) {
+                        log::error!("Could not stop the timer: {error}");
+                    }
                 }
                 "ctx_settings" | "settings" => {
-                    let _ = open_settings_window(app.clone());
+                    if let Err(error) = open_settings_window(app.clone()) {
+                        log::error!("Could not open ORBIT Settings from the menu: {error}");
+                    }
                 }
                 "toggle" => {
                     if let Some(main_win) = app.get_webview_window("main") {
@@ -264,9 +249,11 @@ pub fn run() {
                                 if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
                                     vis.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
                                 }
-                                let _ = main_win.show();
-                                let _ = main_win.set_focus();
-                                let _ = app.emit("island-shown", ());
+                                if main_win.show().is_ok() {
+                                    let _ = main_win.set_focus();
+                                    let _ = sync_tray_visibility(app, true);
+                                    let _ = app.emit("island-shown", ());
+                                }
                             }
                         }
                     }
@@ -276,9 +263,19 @@ pub fn run() {
                     cfg.show_system_tray_icon = false;
                     match services::config::save_config(app, &cfg) {
                         Ok(()) => {
-                            if let Some(tray) = app.try_state::<TrayState>() {
-                                if let Err(error) = tray.0.set_visible(false) {
-                                    log::error!("Failed to hide system tray icon: {error}");
+                            if let Some(main_win) = app.get_webview_window("main") {
+                                if !main_win.is_visible().unwrap_or(false) {
+                                    if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
+                                        vis.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                                        vis.auto_suppressed_fullscreen.store(false, std::sync::atomic::Ordering::SeqCst);
+                                    }
+                                    if main_win.show().is_ok() {
+                                        let _ = main_win.set_focus();
+                                        let _ = app.emit("island-shown", ());
+                                    }
+                                }
+                                if let Err(error) = sync_tray_visibility(app, main_win.is_visible().unwrap_or(false)) {
+                                    log::error!("Failed to apply tray preference: {error}");
                                 }
                             }
                             let _ = app.emit("config-changed", &cfg);
@@ -323,11 +320,6 @@ pub fn run() {
             }
         })
         .on_window_event(|window, event| {
-            services::logger::log_event(
-                "DEBUG",
-                "window_event",
-                &format!("label: {}, event: {:?}", window.label(), event),
-            );
             if window.label() == "settings" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
@@ -346,6 +338,7 @@ pub fn run() {
         .setup(|app| {
             // Initialize in-memory configuration cache from disk once on application boot
             let initial_config = load_config(&app.handle());
+            services::config::sync_startup_registry(initial_config.launch_at_startup);
             let config_store = std::sync::Arc::new(ConfigStore::new(initial_config.clone()));
             app.manage(config_store.clone());
 
@@ -419,11 +412,16 @@ pub fn run() {
                         let app = tray.app_handle();
                         if let Some(vis) = app.try_state::<std::sync::Arc<IslandVisibilityState>>() {
                             vis.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                            vis.auto_suppressed_fullscreen.store(false, std::sync::atomic::Ordering::SeqCst);
                         }
                         if let Some(main_win) = app.get_webview_window("main") {
-                            let _ = main_win.show();
-                            let _ = main_win.set_focus();
-                            let _ = app.emit("island-shown", ());
+                            if main_win.show().is_ok() {
+                                let _ = main_win.set_focus();
+                                if let Err(error) = sync_tray_visibility(&app, true) {
+                                    log::error!("Could not restore tray preference after showing island: {error}");
+                                }
+                                let _ = app.emit("island-shown", ());
+                            }
                         }
                     }
                 })
@@ -509,8 +507,11 @@ pub fn run() {
                                             if let Some(main_win) = app_handle_hk.get_webview_window("main") {
                                                 if !main_win.is_visible().unwrap_or(true) {
                                                     vis_hk.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
-                                                    let _ = main_win.show();
-                                                    let _ = app_handle_hk.emit("island-shown", ());
+                                                    vis_hk.auto_suppressed_fullscreen.store(false, std::sync::atomic::Ordering::SeqCst);
+                                                    if main_win.show().is_ok() {
+                                                        let _ = sync_tray_visibility(&app_handle_hk, true);
+                                                        let _ = app_handle_hk.emit("island-shown", ());
+                                                    }
                                                 }
                                             }
                                             let _ = app_handle_hk.emit("hotkey-toggle-expand", ());
@@ -524,9 +525,12 @@ pub fn run() {
                                                         let _ = app_handle_hk.emit("request-hide-island", ());
                                                     } else {
                                                         vis_hk.user_manually_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
-                                                        let _ = main_win.show();
-                                                        let _ = main_win.set_focus();
-                                                        let _ = app_handle_hk.emit("island-shown", ());
+                                                        vis_hk.auto_suppressed_fullscreen.store(false, std::sync::atomic::Ordering::SeqCst);
+                                                        if main_win.show().is_ok() {
+                                                            let _ = main_win.set_focus();
+                                                            let _ = sync_tray_visibility(&app_handle_hk, true);
+                                                            let _ = app_handle_hk.emit("island-shown", ());
+                                                        }
                                                     }
                                                 }
                                             }
@@ -635,7 +639,11 @@ pub fn run() {
                                 let _ = app_handle_fs.emit("fullscreen-state-changed", true);
                                 if let Ok(is_vis) = main_win.is_visible() {
                                     if is_vis {
-                                        let _ = main_win.hide();
+                                        if main_win.hide().is_ok() {
+                                            if let Err(error) = sync_tray_visibility(&app_handle_fs, false) {
+                                                log::error!("Could not show tray icon while island is hidden: {error}");
+                                            }
+                                        }
                                     }
                                 }
                             } else if (!is_fs || !should_pause) && auto_suppressed && !manually_hidden {
@@ -643,8 +651,12 @@ pub fn run() {
                                 let _ = app_handle_fs.emit("fullscreen-state-changed", false);
                                 let _ = main_win.set_always_on_top(cfg.always_on_top);
                                 services::window::set_window_topmost(&main_win, cfg.always_on_top);
-                                let _ = main_win.show();
-                                let _ = app_handle_fs.emit("island-shown", ());
+                                if main_win.show().is_ok() {
+                                    if let Err(error) = sync_tray_visibility(&app_handle_fs, true) {
+                                        log::error!("Could not restore tray preference after fullscreen: {error}");
+                                    }
+                                    let _ = app_handle_fs.emit("island-shown", ());
+                                }
                             } else if !is_fs && !auto_suppressed && !manually_hidden {
                                 if cfg.always_on_top {
                                     services::window::set_window_topmost(&main_win, true);
@@ -818,7 +830,7 @@ pub fn run() {
                             &mut phase,
                         )
                     };
-                    let is_active = spectrum.peak > 0.004;
+                    let is_active = spectrum.peak > 0.001;
                     if is_active || was_active {
                         was_active = is_active;
                         let _ = app_handle_spectrum.emit("media-audio-spectrum", &spectrum);
@@ -911,11 +923,14 @@ pub fn run() {
             free_up_memory,
             get_shelf_items,
             add_shelf_item,
+            handle_file_drop,
+            share_files,
             remove_shelf_item,
             open_shelf_file,
             show_shelf_file_in_folder,
             pick_shelf_file,
             clear_shelf,
+            open_external_url,
             clear_local_data,
             activate_app_source,
             reveal_diagnostic_log,
@@ -932,6 +947,14 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn hidden_island_always_has_a_tray_restore_path() {
+        assert!(tray_visibility_for_state(false, false));
+        assert!(tray_visibility_for_state(true, false));
+        assert!(tray_visibility_for_state(true, true));
+        assert!(!tray_visibility_for_state(false, true));
+    }
 
     #[test]
     fn test_spawn_supervised_loop_recovers_from_panic() {

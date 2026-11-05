@@ -79,24 +79,16 @@ pub struct HardwareManager {
 
 impl HardwareManager {
     pub fn new() -> Self {
-        let (battery_percentage, ac_power_connected, battery_charging) = get_power_status();
-        let initial_metrics = HardwareMetrics {
-            battery_percentage,
-            ac_power_connected,
-            battery_charging,
-            battery_saver_active: is_battery_saver_active(),
-            os_transparency_enabled: is_os_transparency_enabled(),
-            ..HardwareMetrics::default()
-        };
         Self {
             is_running: Arc::new(AtomicBool::new(false)),
-            // Keep app setup fast. The monitor thread fills in real metrics after launch.
-            last_metrics: Arc::new(Mutex::new(initial_metrics)),
+            // Keep startup free of synchronous hardware queries. The monitor fills in live
+            // values after launch; defaults are shown only during its first sampling interval.
+            last_metrics: Arc::new(Mutex::new(HardwareMetrics::default())),
         }
     }
 
     pub fn get_metrics(&self) -> HardwareMetrics {
-        self.last_metrics.lock().unwrap().clone()
+        self.last_metrics.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
     }
 
     pub fn free_up_memory(&self) -> MemoryCleanResult {
@@ -105,7 +97,7 @@ impl HardwareManager {
         std::thread::sleep(Duration::from_millis(100));
         let (ram_used_bytes, _, ram_percentage) = get_ram_metrics();
         let freed_bytes = system_memory_freed(before_used, ram_used_bytes);
-        let mut metrics = self.last_metrics.lock().unwrap();
+        let mut metrics = self.last_metrics.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         metrics.ram_used_bytes = ram_used_bytes;
         metrics.ram_percentage = ram_percentage;
 
@@ -126,79 +118,78 @@ impl HardwareManager {
         let is_running = self.is_running.clone();
         let last_metrics = self.last_metrics.clone();
 
-        std::thread::Builder::new()
-            .name("orbit-hardware-monitor".to_string())
-            .spawn(move || {
-                let mut prev_cpu = get_cpu_times();
-                let mut prev_net = get_network_octets();
-                let mut prev_time = Instant::now();
-                let mut gpu_tracker = PdhGpuTracker::new();
-                let mut downloads_tracker = DownloadsTracker::new();
-                let cpu_cores = get_cpu_cores();
-                let gpu_name = get_gpu_name();
+        crate::spawn_supervised_loop("orbit-hardware", move || {
+            let mut prev_cpu = get_cpu_times();
+            let mut prev_net = get_network_octets();
+            let mut prev_time = Instant::now();
+            let mut gpu_tracker = PdhGpuTracker::new();
+            let mut downloads_tracker = DownloadsTracker::new();
+            let cpu_cores = get_cpu_cores();
+            let gpu_name = get_gpu_name();
 
-                while is_running.load(Ordering::Relaxed) {
-                    std::thread::sleep(Duration::from_millis(1000));
+            while is_running.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(1000));
 
-                    let now = Instant::now();
-                    let elapsed_secs = now.duration_since(prev_time).as_secs_f64().max(0.1);
-                    prev_time = now;
+                let now = Instant::now();
+                let elapsed_secs = now.duration_since(prev_time).as_secs_f64().max(0.1);
+                prev_time = now;
 
-                    let (cur_in, cur_out) = get_network_octets();
-                    let net_delta_in = cur_in.saturating_sub(prev_net.0);
-                    let net_delta_out = cur_out.saturating_sub(prev_net.1);
-                    prev_net = (cur_in, cur_out);
+                let (cur_in, cur_out) = get_network_octets();
+                let net_delta_in = cur_in.saturating_sub(prev_net.0);
+                let net_delta_out = cur_out.saturating_sub(prev_net.1);
+                prev_net = (cur_in, cur_out);
 
-                    let download_bps = (net_delta_in as f64 / elapsed_secs) as u64;
-                    let upload_bps = (net_delta_out as f64 / elapsed_secs) as u64;
+                let download_bps = (net_delta_in as f64 / elapsed_secs) as u64;
+                let upload_bps = (net_delta_out as f64 / elapsed_secs) as u64;
 
-                    let cur_cpu = get_cpu_times();
-                    let cpu_usage = calculate_cpu_usage(prev_cpu, cur_cpu);
-                    prev_cpu = cur_cpu;
+                let cur_cpu = get_cpu_times();
+                let cpu_usage = calculate_cpu_usage(prev_cpu, cur_cpu);
+                prev_cpu = cur_cpu;
 
-                    let (ram_used, ram_total, ram_pct) = get_ram_metrics();
-                    let (disk_free, disk_total, disk_pct) = get_disk_metrics();
-                    let (battery_pct, ac_power_connected, battery_charging) = get_power_status();
-                    let (wifi_connected, bluetooth_enabled, hotspot_active) = get_connectivity_status();
-                    let gpu_usage = gpu_tracker.sample();
-                    let screen_recording_active = is_screen_recording_active();
-                    let (active_download_count, last_completed_download) = downloads_tracker.sample();
+                let (ram_used, ram_total, ram_pct) = get_ram_metrics();
+                let (disk_free, disk_total, disk_pct) = get_disk_metrics();
+                let (battery_pct, ac_power_connected, battery_charging) = get_power_status();
+                let (wifi_connected, bluetooth_enabled, hotspot_active) = get_connectivity_status();
+                let gpu_usage = gpu_tracker.sample();
+                let screen_recording_active = is_screen_recording_active();
+                let (active_download_count, last_completed_download) = downloads_tracker.sample();
 
-                    let metrics = HardwareMetrics {
-                        cpu_usage,
-                        cpu_cores,
-                        ram_used_bytes: ram_used,
-                        ram_total_bytes: ram_total,
-                        ram_percentage: ram_pct,
-                        disk_free_bytes: disk_free,
-                        disk_total_bytes: disk_total,
-                        disk_percentage: disk_pct,
-                        battery_percentage: battery_pct,
-                        battery_charging,
-                        ac_power_connected,
-                        wifi_connected,
-                        bluetooth_enabled,
-                        hotspot_active,
-                        network_upload_speed_bps: upload_bps,
-                        network_download_speed_bps: download_bps,
-                        gpu_name: gpu_name.clone(),
-                        gpu_usage,
-                        screen_recording_active,
-                        active_download_count,
-                        last_completed_download,
-                        battery_saver_active: is_battery_saver_active(),
-                        os_transparency_enabled: is_os_transparency_enabled(),
-                    };
+                let metrics = HardwareMetrics {
+                    cpu_usage,
+                    cpu_cores,
+                    ram_used_bytes: ram_used,
+                    ram_total_bytes: ram_total,
+                    ram_percentage: ram_pct,
+                    disk_free_bytes: disk_free,
+                    disk_total_bytes: disk_total,
+                    disk_percentage: disk_pct,
+                    battery_percentage: battery_pct,
+                    battery_charging,
+                    ac_power_connected,
+                    wifi_connected,
+                    bluetooth_enabled,
+                    hotspot_active,
+                    network_upload_speed_bps: upload_bps,
+                    network_download_speed_bps: download_bps,
+                    gpu_name: gpu_name.clone(),
+                    gpu_usage,
+                    screen_recording_active,
+                    active_download_count,
+                    last_completed_download,
+                    battery_saver_active: is_battery_saver_active(),
+                    os_transparency_enabled: is_os_transparency_enabled(),
+                };
 
-                    {
-                        let mut guard = last_metrics.lock().unwrap();
-                        *guard = metrics.clone();
-                    }
-
-                    let _ = app.emit("hardware-metrics-changed", &metrics);
+                {
+                    let mut guard = last_metrics
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    *guard = metrics.clone();
                 }
-            })
-            .expect("Failed to spawn hardware monitor thread");
+
+                let _ = app.emit("hardware-metrics-changed", &metrics);
+            }
+        });
     }
 }
 

@@ -110,7 +110,7 @@ export const OnboardingOverlay: React.FC<OnboardingOverlayProps> = ({
       {isPrivacyStep ? (
         <div className="my-1 min-h-0 flex-1 overflow-y-auto px-1 space-y-1.5 text-[9px] leading-snug text-slate-200">
           <p><strong className="text-white">Terms of use.</strong> ORBIT is a local desktop utility. Use its system controls only when you understand their effect. RAM Boost asks Windows to trim app working sets for this session; it cannot guarantee a performance gain. ORBIT is provided as-is.</p>
-          <p><strong className="text-white">Privacy.</strong> Settings, media details, notification previews, and Shelf data stay on this PC. ORBIT does not upload them. By default, ORBIT makes no internet requests.</p>
+          <p><strong className="text-white">Privacy.</strong> Settings, media details, notification previews, and Shelf data stay on this PC. ORBIT does not upload or sync them. Online weather is optional and contacts wttr.in only when enabled; opening GitHub links connects your browser to GitHub.</p>
           <p><strong className="text-white">Optional internet use.</strong> Live weather sends a request to wttr.in, which can see your network IP. Leave the box below clear to keep ORBIT offline.</p>
           <p><strong className="text-white">Permissions.</strong> Notification previews need Windows notification access. ORBIT reads Windows camera/microphone activity status only; it does not record either, so it does not request microphone permission.</p>
           <label className="flex items-start gap-1.5 rounded-lg border border-white/15 bg-white/5 p-1.5 cursor-pointer text-white">
