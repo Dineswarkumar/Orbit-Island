@@ -7,12 +7,13 @@ import {
   ChevronRight,
   FolderOpen,
   Printer,
+  Share2,
   X,
   Globe2,
 } from "lucide-react";
 import { PinnedDestination } from "../../core/types/config";
 
-export type FileDropAction = "shelf" | "open" | "open_with" | "reveal" | "print" | `website:${string}`;
+export type FileDropAction = "shelf" | "share" | "open" | "open_with" | "reveal" | "print" | `website:${string}`;
 
 const targets: Array<{
   id: FileDropAction;
@@ -21,6 +22,7 @@ const targets: Array<{
   Icon: typeof Archive;
 }> = [
   { id: "shelf", title: "Save to Shelf", detail: "Keep a reference or copy", Icon: Archive },
+  { id: "share", title: "Windows Share", detail: "Mail · WhatsApp · Teams + more", Icon: Share2 },
   { id: "open", title: "Open", detail: "Use the default app", Icon: AppWindow },
   { id: "open_with", title: "Open with…", detail: "Choose an installed app", Icon: AppWindow },
   { id: "reveal", title: "File Explorer", detail: "Show the file location", Icon: FolderOpen },
@@ -82,7 +84,7 @@ export const FileDropTray: React.FC<FileDropTrayProps> = ({
       <div
         ref={scrollRef}
         data-orbit-drop-scroll="true"
-        className="flex-1 flex items-stretch gap-2 overflow-x-auto overscroll-x-contain scroll-smooth py-0.5"
+        className="flex-1 flex items-stretch gap-2 overflow-x-auto overscroll-x-contain py-0.5"
         style={{ scrollbarWidth: "none" }}
       >
         {[...targets, ...pinnedDestinations.map((destination) => ({ id: `website:${destination.id}` as FileDropAction, title: destination.name, detail: "Open · attach from Shelf", Icon: Globe2 }))].map(({ id, title, detail, Icon }) => (

@@ -7,5 +7,6 @@ pub mod media;
 pub mod notifications;
 pub mod privacy;
 pub mod spectrum_dsp;
+pub mod windows_share;
 pub mod telemetry;
 pub mod window;

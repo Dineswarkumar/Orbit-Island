@@ -1607,8 +1607,12 @@ fn try_activate_browser_tab_via_uia(
                     )
                 {
                     if sel_pat.Select().is_ok() {
-                        if let Ok(is_sel) = sel_pat.CurrentIsSelected() {
-                            if is_sel.as_bool() {
+                        let is_sel = sel_pat.CurrentIsSelected().map(|v| v.as_bool()).unwrap_or(true);
+                        if is_sel {
+                            switched = true;
+                        } else {
+                            std::thread::sleep(std::time::Duration::from_millis(15));
+                            if sel_pat.CurrentIsSelected().map(|v| v.as_bool()).unwrap_or(true) {
                                 switched = true;
                             }
                         }
@@ -1622,7 +1626,9 @@ fn try_activate_browser_tab_via_uia(
                             UIA_LegacyIAccessiblePatternId,
                         )
                     {
-                        let _ = leg_pat.DoDefaultAction();
+                        if leg_pat.DoDefaultAction().is_ok() {
+                            switched = true;
+                        }
                     }
                 }
 
@@ -1631,18 +1637,22 @@ fn try_activate_browser_tab_via_uia(
                     if let Ok(inv_pat) = target_tab
                         .GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
                     {
-                        let _ = inv_pat.Invoke();
+                        if inv_pat.Invoke().is_ok() {
+                            switched = true;
+                        }
                     }
                 }
 
                 // Re-verify selection state via SelectionItemPattern; if still not selected, click center of tab rect
-                if let Ok(sel_pat) = target_tab
-                    .GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(
-                        UIA_SelectionItemPatternId,
-                    )
-                {
-                    if let Ok(is_sel) = sel_pat.CurrentIsSelected() {
-                        switched = is_sel.as_bool();
+                if !switched {
+                    if let Ok(sel_pat) = target_tab
+                        .GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(
+                            UIA_SelectionItemPatternId,
+                        )
+                    {
+                        if let Ok(is_sel) = sel_pat.CurrentIsSelected() {
+                            switched = is_sel.as_bool();
+                        }
                     }
                 }
 
@@ -1682,6 +1692,28 @@ pub fn activate_app_window(
     app_name: &str,
     title_hint: Option<&str>,
 ) -> Result<bool, String> {
+    static LAST_ACTIVATE: std::sync::Mutex<Option<(String, std::time::Instant)>> =
+        std::sync::Mutex::new(None);
+    let key = format!(
+        "{}|{}|{}",
+        app_id.trim().to_lowercase(),
+        app_name.trim().to_lowercase(),
+        title_hint.unwrap_or("").trim().to_lowercase()
+    );
+    {
+        let mut guard = LAST_ACTIVATE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let now = std::time::Instant::now();
+        if let Some((ref last_key, ref last_time)) = *guard {
+            if last_key == &key && now.duration_since(*last_time) < std::time::Duration::from_millis(600) {
+                log::debug!("Debouncing duplicate activate_app_window for key: {key}");
+                return Ok(true);
+            }
+        }
+        *guard = Some((key, now));
+    }
+
     use windows_sys::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM};
     use windows_sys::Win32::System::Threading::{
         GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW,

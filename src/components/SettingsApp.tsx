@@ -669,15 +669,21 @@ export const SettingsApp: React.FC = () => {
       >
         <div className="max-w-7xl mx-auto w-full">
           <nav aria-label="Settings sections" className={`sticky top-0 z-10 mb-4 flex flex-wrap gap-2 rounded-2xl border p-2 backdrop-blur-xl ${cardBg}`}>
-            {[["appearance", "Appearance"], ["media", "Media"], ["privacy", "Privacy & notifications"], ["performance", "Performance"], ["about", "About & privacy"]].map(([id, label]) => (
-              <button key={id} type="button" onClick={() => document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} className={`rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${isLight ? "text-slate-600 hover:bg-cyan-50 hover:text-cyan-800" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
-                {label}
+            {[
+              { id: "appearance", label: "Appearance", Icon: Palette },
+              { id: "media", label: "Media", Icon: Music },
+              { id: "privacy", label: "Privacy & notifications", Icon: ShieldCheck },
+              { id: "performance", label: "Performance", Icon: Activity },
+              { id: "about", label: "About & privacy", Icon: HelpCircle },
+            ].map(({ id, label, Icon }) => (
+              <button key={id} type="button" aria-label={label} title={label} onClick={() => document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} className={`rounded-xl p-2.5 transition-colors ${isLight ? "text-slate-600 hover:bg-cyan-50 hover:text-cyan-800" : "text-slate-300 hover:bg-white/10 hover:text-white"}`}>
+                <Icon className="h-4 w-4" aria-hidden="true" />
               </button>
             ))}
           </nav>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 items-start gap-4 xl:gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 items-start gap-4 xl:gap-5">
           {/* Bento Card 0: 3D Curated Theme Showcase Gallery (Full Width) */}
-          <div id="settings-appearance" className={`scroll-mt-20 rounded-2xl p-5 border space-y-4 md:col-span-2 xl:col-span-3 ${cardBg}`}>
+          <div id="settings-appearance" className={`scroll-mt-20 rounded-2xl p-5 border space-y-4 md:col-span-2 xl:col-span-2 ${cardBg}`}>
             <div className="flex items-center justify-between pb-1 border-b border-white/10">
               <h2 className={`text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5 ${cardHeaderColor}`}>
                 <Palette className="w-4 h-4 text-cyan-500" />

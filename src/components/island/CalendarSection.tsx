@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { ThemeMeta } from "../../core/theme";
 import { ReminderItem } from "../../core/types/reminders";
 
@@ -11,7 +11,7 @@ interface CalendarSectionProps {
   reminders: ReminderItem[];
   newReminderTitle: string;
   setNewReminderTitle: (val: string) => void;
-  onAddReminder: (e?: React.FormEvent, category?: string) => void;
+  onAddReminder: (category: string) => Promise<void>;
   onToggleReminder: (id: string) => void;
   onDeleteReminder: (id: string) => void;
   onImportCalendar?: () => void;
@@ -130,6 +130,9 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
 }) => {
   const [showTaskDrawer, setShowTaskDrawer] = useState(false);
   const [newTaskCategory, setNewTaskCategory] = useState<string>("task");
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  const [addTaskError, setAddTaskError] = useState<string | null>(null);
+  const addTaskInFlightRef = useRef(false);
 
   const curYear = calendarMonth.getFullYear();
   const curMonth = calendarMonth.getMonth();
@@ -374,9 +377,21 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                onAddReminder(e, newTaskCategory);
+                e.stopPropagation();
+                if (addTaskInFlightRef.current || !newReminderTitle.trim()) return;
+                addTaskInFlightRef.current = true;
+                setIsAddingTask(true);
+                setAddTaskError(null);
+                try {
+                  await onAddReminder(newTaskCategory);
+                } catch {
+                  setAddTaskError("Could not add this task. Please try again.");
+                } finally {
+                  addTaskInFlightRef.current = false;
+                  setIsAddingTask(false);
+                }
               }}
               className="flex items-center space-x-1.5 pt-1 border-t border-white/10 shrink-0"
             >
@@ -421,33 +436,37 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
                 value={newReminderTitle}
                 onChange={(e) => setNewReminderTitle(e.target.value)}
                 placeholder="New task or event..."
+                disabled={isAddingTask}
                 className="flex-1 min-w-0 orbit-well-3d rounded-md px-2 py-0.5 text-[10.5px] text-white placeholder-white/40 focus:outline-none focus:border-white/30"
               />
               <button
                 type="submit"
-                disabled={!newReminderTitle.trim()}
+                disabled={!newReminderTitle.trim() || isAddingTask}
                 className="px-2.5 py-0.5 rounded-md orbit-pill-badge-3d font-bold text-[10.5px] disabled:opacity-30 cursor-pointer"
                 style={{ color: activeThemeMeta.accent }}
               >
-                Add
+                {isAddingTask ? "Adding…" : "Add"}
               </button>
             </form>
+            {addTaskError && (
+              <div role="status" className="text-[9px] text-rose-300 truncate" title={addTaskError}>
+                {addTaskError}
+              </div>
+            )}
           </div>
         ) : (
           <>
             {/* Weekday Header + Month Prev/Next Controls */}
-            <div className="flex items-center justify-between pb-1 border-b border-white/10 shrink-0">
+            <div className="relative flex items-center pb-1 border-b border-white/10 shrink-0">
               <div
-                className="grid grid-cols-7 flex-1 text-center text-[10px] font-bold"
-                style={{
-                  color: "var(--island-muted)",
-                }}
+                className="grid grid-cols-7 w-full pr-9 text-center text-[10px] font-bold"
+                style={{ color: "var(--island-muted)" }}
               >
                 {["S", "M", "T", "W", "T", "F", "S"].map((d, idx) => (
                   <span key={`${d}-${idx}`}>{d}</span>
                 ))}
               </div>
-              <div className="flex items-center space-x-0.5 ml-1 shrink-0">
+              <div className="absolute right-0 flex items-center space-x-0.5 shrink-0">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -478,7 +497,7 @@ export const CalendarSection: React.FC<CalendarSectionProps> = ({
             </div>
 
             {/* 7-Column Calendar Matrix with Full-Cell Category Highlighting (Zero Micro-Dot Collisions) */}
-            <div className="grid grid-cols-7 gap-y-1 text-center my-auto pr-4">
+            <div className="grid grid-cols-7 gap-y-1 text-center my-auto pr-9">
               {Array.from({ length: firstDayIndex }).map((_, i) => (
                 <div key={`empty-${i}`} className="h-[20px]" />
               ))}

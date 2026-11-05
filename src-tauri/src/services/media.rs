@@ -294,7 +294,7 @@ mod win {
 
         let cache_key = format!("{source_id}:{title}:{artist}:{album}");
         let thumbnail_base64 = {
-            let mut cache = THUMBNAIL_CACHE.lock().unwrap();
+            let mut cache = THUMBNAIL_CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             if let Some((ref key, ref thumb)) = *cache {
                 if key == &cache_key {
                     thumb.clone()

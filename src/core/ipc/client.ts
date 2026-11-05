@@ -191,6 +191,10 @@ export const ipc = {
     return invoke("handle_file_drop", { paths, action });
   },
 
+  shareFiles: async (paths: string[]): Promise<void> => {
+    return invoke<void>("share_files", { paths });
+  },
+
   removeShelfItem: async (id: string): Promise<void> => {
     return invoke<void>("remove_shelf_item", { id });
   },

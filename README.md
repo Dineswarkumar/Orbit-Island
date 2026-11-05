@@ -8,7 +8,7 @@
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8D8?logo=tauri&logoColor=white)](https://tauri.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.90%2B-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Version](https://img.shields.io/badge/Version-3.2.0-emerald)](#)
+[![Version](https://img.shields.io/badge/Version-3.2.5-emerald)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 </div>
@@ -43,7 +43,44 @@ The screenshots below show ORBIT's light and dark Liquid Glass themes, notificat
 
 ### Drag-to-expand file tray
 
-Dragging files onto ORBIT opens a horizontal target tray that follows the selected glass or opaque theme. Targets include Shelf, Open, Open with, File Explorer, Print, and up to six pinned web destinations. A pinned web destination saves the files to Shelf, opens the site, and reveals the saved file for manual upload; websites do not receive automatic file attachments. Saved Shelf files can also be sent to Windows Open with or opened beside a pinned site. Shelf can keep a path reference without copying file data, or make a managed copy limited by available storage. Text and links can be saved to Shelf with a per-item keep-after-restart option. ORBIT does not monitor the clipboard in the background. Drag-to-expand can be switched off in Settings.
+Dragging files onto ORBIT opens a horizontal target tray that follows the selected glass or opaque theme. Targets include Shelf, Windows Share, Open, Open with, File Explorer, Print, and up to six pinned web destinations. Windows Share passes the selected files to Windows, which lists compatible installed share targets such as Outlook/Mail, WhatsApp, Teams, Nearby Sharing, and OneNote when available for that Windows version, account, app installation, and file type. ORBIT cannot force an app to appear or control the app's recipient/compose screen; Windows and the destination app handle that next step. A pinned web destination saves the files to Shelf, opens the site, and reveals the saved file for manual upload; websites do not receive automatic file attachments. Saved Shelf files can also be sent to Windows Open with or opened beside a pinned site. Shelf can keep a path reference without copying file data, or make a managed copy limited by available storage. Text and links can be saved to Shelf with a per-item keep-after-restart option. ORBIT does not monitor the clipboard in the background. Drag-to-expand can be switched off in Settings.
+
+### Version 3.2.5 updates
+- Calendar month headings and date cells now share the same seven-column width, keeping every weekday aligned across the full month grid.
+- Adding a task now blocks duplicate submits, keeps the event inside the calendar form, and shows an inline error if saving fails.
+
+
+- Context-menu actions now report failures to the app log instead of silently ignoring failed menu events.
+- Hiding the island forces the tray icon visible as a restore path, even if the user's normal tray preference is off; showing the island restores that preference.
+- Auto-hide in fullscreen and keyboard/tray restore paths now keep tray visibility in sync with whether the island is visible.
+
+### Version 3.2.4 updates
+
+- Fixed Windows Share crash (`0xc0000005` in `twinapi.appcore.dll`) by ensuring COM apartment stability and main UI thread dispatch with deferral handling.
+- Fixed drag-and-drop region collapse, DPI coordinate tracking on multi-DPI displays, and file shelf action double-activation debouncing.
+- Fixed rapid duplicate app activation and browser tab switching across UIA patterns.
+- Hardened background telemetry loops, notifications listener, and SQLite/media mutexes against panics.
+
+### Version 3.2.3 updates
+
+- Notification logos now use the sender app identity only, so a ChatGPT message mentioning WhatsApp cannot display WhatsApp's logo.
+- Ordinary notification text no longer triggers the urgent Alert badge by containing words such as “alert”; priority badges are limited to timer, alarm, and reminder notifications from matching utility apps.
+- Notifications with the same display name but different app identities stay in separate groups.
+
+### Version 3.2.2 updates
+
+- Added a Windows Share target that sends dropped files through the native Windows share panel for compatible installed apps.
+- Replaced stale share callbacks on repeated attempts and guarded event cleanup so rapid shares cannot accumulate old file payloads.
+- Kept the existing Shelf, open, print, settings, media, and timer paths separate from the share action.
+
+### Version 3.2.1 updates
+
+- Shelf drops now resolve the latest pinned website settings, so destinations added after launch do not fall through as unsupported targets.
+- Shelf file picking and clearing are guarded against rapid repeated clicks; changing/removing Shelf contents waits until a picker add finishes.
+- Window and drag-over events are no longer synchronously written to disk on every pointer movement.
+- Startup skips synchronous hardware status queries; the hardware monitor supplies live values after launch.
+- Settings section navigation uses compact labeled icons, and the wide layout uses two columns to reduce unused space.
+- Compact dual media and timer mode uses a larger timer readout.
 
 ### Version 3.2.0 updates
 

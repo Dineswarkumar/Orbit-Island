@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { ShelfItem } from "../../core/types/shelf";
 import { ipc } from "../../core/ipc/client";
@@ -42,6 +42,7 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const processingRef = useRef(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [snippets, setSnippets] = useState<SavedSnippet[]>(readSavedSnippets);
   const [showSnippetEditor, setShowSnippetEditor] = useState(false);
@@ -95,6 +96,8 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
   };
 
   const handleAddFile = async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setActionError(null);
     setIsProcessing(true);
     try {
@@ -107,21 +110,30 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
       setActionError(String(err));
       setTimeout(() => setActionError(null), 3500);
     } finally {
+      processingRef.current = false;
       setIsProcessing(false);
     }
   };
 
   const handleOpen = async (id: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setActionError(null);
     try {
       await ipc.openShelfFile(id);
     } catch (err) {
       setActionError(String(err));
       setTimeout(() => setActionError(null), 3500);
+    } finally {
+      setTimeout(() => {
+        processingRef.current = false;
+      }, 350);
     }
   };
 
   const handleSendToApp = async (filePath: string, displayName: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setActionError(null);
     setActionNotice(null);
     try {
@@ -132,10 +144,16 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
     } catch (err) {
       setActionError(String(err));
       setTimeout(() => setActionError(null), 4000);
+    } finally {
+      setTimeout(() => {
+        processingRef.current = false;
+      }, 350);
     }
   };
 
   const handleSendToPinnedSite = async (shelfItemId: string, destinationId: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setActionError(null);
     try {
       const destination = config.pinnedDestinations.find((item) => item.id === destinationId);
@@ -147,20 +165,32 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
     } catch (err) {
       setActionError(String(err));
       setTimeout(() => setActionError(null), 4000);
+    } finally {
+      setTimeout(() => {
+        processingRef.current = false;
+      }, 350);
     }
   };
 
   const handleReveal = async (id: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setActionError(null);
     try {
       await ipc.showShelfFileInFolder(id);
     } catch (err) {
       setActionError(String(err));
       setTimeout(() => setActionError(null), 3500);
+    } finally {
+      setTimeout(() => {
+        processingRef.current = false;
+      }, 350);
     }
   };
 
   const handleRemove = async (id: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setActionError(null);
     try {
       await ipc.removeShelfItem(id);
@@ -168,10 +198,16 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
     } catch (err) {
       setActionError(String(err));
       setTimeout(() => setActionError(null), 3500);
+    } finally {
+      setTimeout(() => {
+        processingRef.current = false;
+      }, 350);
     }
   };
 
   const handleClear = async () => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     setActionError(null);
     try {
       await ipc.clearShelf();
@@ -180,6 +216,10 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
     } catch (err) {
       setActionError(String(err));
       setTimeout(() => setActionError(null), 3500);
+    } finally {
+      setTimeout(() => {
+        processingRef.current = false;
+      }, 350);
     }
   };
 
@@ -190,6 +230,7 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
         <div className="flex items-center space-x-1.5 min-w-0">
           <button
             type="button"
+            disabled={isProcessing}
             onClick={(e) => {
               e.stopPropagation();
               onBack();
@@ -250,7 +291,8 @@ export const FileShelfDrawer: React.FC<FileShelfDrawerProps> = ({
                 e.stopPropagation();
                 handleClear();
               }}
-              className="px-2 py-0.5 rounded-md text-[9.5px] font-medium text-rose-300 hover:text-rose-200 hover:bg-rose-500/20 transition-colors cursor-pointer"
+              disabled={isProcessing}
+              className="px-2 py-0.5 rounded-md text-[9.5px] font-medium text-rose-300 hover:text-rose-200 hover:bg-rose-500/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-wait"
               title="Clear Shelf entries and saved text or links; original user files stay intact"
             >
               Clear

@@ -251,7 +251,7 @@ impl DatabaseManager {
 
     // Reminders / Productivity Hub Operations
     pub fn get_reminders(&self) -> Result<Vec<ReminderItem>, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut stmt = conn
             .prepare(
                 "SELECT id, title, due_timestamp_ms, is_completed, source, category, created_at
@@ -314,7 +314,7 @@ impl DatabaseManager {
             created_at: now,
         };
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         conn.execute(
             "INSERT INTO reminders (id, title, due_timestamp_ms, is_completed, source, category, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -334,7 +334,7 @@ impl DatabaseManager {
     }
 
     pub fn toggle_reminder(&self, id: &str) -> Result<bool, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let current_state: Option<i32> = conn
             .query_row(
                 "SELECT is_completed FROM reminders WHERE id = ?1",
@@ -356,7 +356,7 @@ impl DatabaseManager {
     }
 
     pub fn delete_reminder(&self, id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         conn.execute("DELETE FROM reminders WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete reminder: {e}"))?;
         Ok(())
@@ -365,7 +365,7 @@ impl DatabaseManager {
     /// Clears imported schedule events (optionally filtered by source like "academic", "office", "ics"),
     /// while preserving manual local tasks (`source = 'local'`).
     pub fn clear_imported_reminders(&self, source_filter: Option<&str>) -> Result<usize, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let deleted = if let Some(src) = source_filter.filter(|s| !s.trim().is_empty()) {
             conn.execute("DELETE FROM reminders WHERE source = ?1", params![src.trim()])
                 .map_err(|e| format!("Failed to clear imported reminders: {e}"))?
@@ -418,7 +418,7 @@ impl DatabaseManager {
             .unwrap_or_default()
             .as_millis() as u64;
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut inserted_count = 0usize;
 
         for (idx, (title, due_ms, raw_cat)) in parsed_events.into_iter().enumerate() {
@@ -466,7 +466,7 @@ impl DatabaseManager {
 
     // File Shelf Operations (persisted references or managed copies sized by available disk space)
     pub fn get_shelf_items(&self) -> Result<Vec<ShelfItem>, String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut stmt = conn
             .prepare(
                 "SELECT id, file_path, display_name, file_size, extension, added_at, is_managed_copy
@@ -519,7 +519,7 @@ impl DatabaseManager {
 
         let norm_path = canonical.to_string_lossy().to_string();
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
         // Check if already in shelf (duplicate check by normalized path)
         let existing: Option<ShelfItem> = conn
@@ -688,7 +688,7 @@ impl DatabaseManager {
     pub fn remove_shelf_item(&self, id: &str) -> Result<(), String> {
         // Removing reference from shelf NEVER deletes original user files outside shelf_storage.
         // If the item is a managed copy inside shelf_storage, clean up that managed copy.
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let existing: Option<(String, bool)> = conn
             .query_row(
                 "SELECT file_path, is_managed_copy FROM file_shelf WHERE id = ?1",
@@ -717,7 +717,7 @@ impl DatabaseManager {
     }
 
     pub fn open_shelf_file(&self, id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let file_path: String = conn
             .query_row(
                 "SELECT file_path FROM file_shelf WHERE id = ?1",
@@ -768,7 +768,7 @@ impl DatabaseManager {
     }
 
     pub fn show_shelf_file_in_folder(&self, id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let file_path: String = conn
             .query_row(
                 "SELECT file_path FROM file_shelf WHERE id = ?1",
@@ -797,7 +797,7 @@ impl DatabaseManager {
     }
 
     pub fn clear_shelf(&self) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         conn.execute("DELETE FROM file_shelf", [])
             .map_err(|e| format!("Failed to clear file shelf: {e}"))?;
         if self.shelf_storage_dir.exists() {
@@ -807,7 +807,7 @@ impl DatabaseManager {
     }
 
     pub fn clear_local_data(&self) -> Result<(), String> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         conn.execute_batch(
             "
             DELETE FROM reminders;
