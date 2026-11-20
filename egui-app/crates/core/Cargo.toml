@@ -1,0 +1,13 @@
+[package]
+name = "orbit-core"
+description = "ORBIT core state store, config, and typed events (no UI, no Windows types)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+crossbeam-channel.workspace = true
+serde.workspace = true
+toml.workspace = true
+tracing.workspace = true

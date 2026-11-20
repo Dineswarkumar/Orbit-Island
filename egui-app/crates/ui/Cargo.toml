@@ -1,0 +1,11 @@
+[package]
+name = "orbit-ui"
+description = "ORBIT egui views, theme, geometry, and animations (no Win32, no I/O)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+egui.workspace = true
+egui-phosphor.workspace = true
+orbit-core.workspace = true

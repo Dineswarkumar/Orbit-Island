@@ -1,0 +1,31 @@
+[package]
+name = "orbit-app"
+description = "ORBIT Dynamic Island native egui application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "orbit-egui"
+path = "src/main.rs"
+
+[features]
+default = []
+# Shows frame count, CPU time, interval, and repaint causes without requesting repaints.
+debug-overlay = []
+
+[dependencies]
+anyhow.workspace = true
+crossbeam-channel.workspace = true
+eframe.workspace = true
+egui.workspace = true
+orbit-core.workspace = true
+orbit-platform.workspace = true
+orbit-ui.workspace = true
+raw-window-handle.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tray-icon.workspace = true
+
+[build-dependencies]
+winresource = "0.1"

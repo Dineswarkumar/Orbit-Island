@@ -1,0 +1,8 @@
+[package]
+name = "orbit-services"
+description = "Background services for ORBIT (populated in Gate 2+)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
