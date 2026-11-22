@@ -5,7 +5,7 @@
 //! Embeds the ORBIT app icon and Windows version info into orbit-egui.exe.
 
 fn main() {
-    const ICON: &str = "../../../src-tauri/icons/icon.ico";
+    const ICON: &str = "../../assets/icon.ico";
     println!("cargo:rerun-if-changed={ICON}");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;

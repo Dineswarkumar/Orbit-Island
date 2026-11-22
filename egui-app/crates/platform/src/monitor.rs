@@ -12,7 +12,9 @@ use windows::Win32::Graphics::Gdi::{
     MONITOR_DEFAULTTOPRIMARY, MONITORINFO, MonitorFromPoint, MonitorFromWindow,
 };
 use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
-use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetCursorPos, SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
+};
 use windows::core::BOOL;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,4 +128,30 @@ pub fn under_cursor() -> Result<Monitor> {
 pub fn of_window(hwnd: Hwnd) -> Result<Monitor> {
     // SAFETY: plain lookup.
     info(unsafe { MonitorFromWindow(hwnd.get(), MONITOR_DEFAULTTONEAREST) })
+}
+
+/// Returns the primary monitor usable work area via `SPI_GETWORKAREA`,
+/// automatically excluding docked taskbars on any edge while keeping
+/// full bounds when taskbar auto-hide is enabled.
+pub fn primary_work_area() -> Rect {
+    let mut rc = RECT::default();
+    // SAFETY: valid out pointer for SPI_GETWORKAREA.
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            Some(&mut rc as *mut RECT as *mut _),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+    }
+    .is_ok();
+    if ok && rc.right > rc.left && rc.bottom > rc.top {
+        return rc.into();
+    }
+    primary().map(|m| m.work).unwrap_or(Rect {
+        left: 0,
+        top: 0,
+        right: 1920,
+        bottom: 1080,
+    })
 }

@@ -7,11 +7,12 @@
 use anyhow::{Context, Result};
 use crossbeam_channel::Sender;
 use orbit_ui::geometry::Squircle;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrayCommand {
+    OpenSettings,
     Quit,
 }
 
@@ -22,13 +23,24 @@ pub struct Tray {
 impl Tray {
     /// Must run on the UI thread that pumps Win32 messages.
     pub fn new(tx: Sender<TrayCommand>, ctx: egui::Context) -> Result<Self> {
+        let settings = MenuItem::with_id("settings", "Settings...", true, None);
+        let separator = PredefinedMenuItem::separator();
         let quit = MenuItem::with_id("quit", "Quit ORBIT", true, None);
         let menu = Menu::new();
-        menu.append(&quit).context("building tray menu")?;
+        menu.append(&settings).context("adding settings tray item")?;
+        menu.append(&separator).context("adding tray separator")?;
+        menu.append(&quit).context("adding quit tray item")?;
 
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
-            if event.id.as_ref() == "quit" && tx.send(TrayCommand::Quit).is_ok() {
-                ctx.request_repaint();
+            let cmd = match event.id.as_ref() {
+                "settings" => Some(TrayCommand::OpenSettings),
+                "quit" => Some(TrayCommand::Quit),
+                _ => None,
+            };
+            if let Some(cmd) = cmd
+                && tx.send(cmd).is_ok()
+            {
+                ctx.request_repaint_of(egui::ViewportId::ROOT);
             }
         }));
 

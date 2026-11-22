@@ -51,6 +51,18 @@ impl SpringParams {
     pub fn snappy() -> Self {
         Self::critical(420.0)
     }
+
+    pub fn panel_width() -> Self {
+        Self::with_overshoot(320.0, 0.04)
+    }
+
+    pub fn panel_height() -> Self {
+        Self::with_overshoot(250.0, 0.04)
+    }
+
+    pub fn placement_x() -> Self {
+        Self::critical(340.0)
+    }
 }
 
 impl Default for SpringParams {
@@ -70,8 +82,8 @@ pub fn damping_ratio_for_overshoot(overshoot: f32) -> f32 {
 
 const SUBSTEP: f32 = 1.0 / 480.0;
 const MAX_DT: f32 = 1.0 / 15.0;
-const REST_DISTANCE: f32 = 1e-3;
-const REST_VELOCITY: f32 = 1e-2;
+const REST_DISTANCE: f32 = 0.05;
+const REST_VELOCITY: f32 = 0.05;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Spring {
@@ -107,6 +119,8 @@ impl Spring {
             self.velocity = 0.0;
             return false;
         }
+        let prev_value = self.value;
+        let mut offset = self.value - self.target;
         let mut remaining = dt.clamp(0.0, MAX_DT);
         let SpringParams {
             stiffness,
@@ -116,12 +130,16 @@ impl Spring {
         let mass = mass.max(1e-4);
         while remaining > 0.0 {
             let h = remaining.min(SUBSTEP);
-            let force = -stiffness * (self.value - self.target) - damping * self.velocity;
+            let force = -stiffness * offset - damping * self.velocity;
             self.velocity += force / mass * h;
-            self.value += self.velocity * h;
+            offset += self.velocity * h;
             remaining -= h;
         }
-        if self.is_settled() {
+        self.value = self.target + offset;
+        let stalled = dt > 0.0
+            && (self.value - prev_value).abs() == 0.0
+            && self.velocity.abs() < 1.0;
+        if self.is_settled() || stalled {
             self.value = self.target;
             self.velocity = 0.0;
             false
@@ -154,6 +172,11 @@ fn frame_dt(ctx: &Context, last_time: f64) -> f32 {
 
 /// Animates towards `target` with a spring. Requests repaint ONLY while moving.
 pub fn spring(ctx: &Context, id: Id, target: f32, params: SpringParams) -> f32 {
+    spring_with_status(ctx, id, target, params).0
+}
+
+/// Like [`spring`], also returning whether the spring is currently still moving.
+pub fn spring_with_status(ctx: &Context, id: Id, target: f32, params: SpringParams) -> (f32, bool) {
     let now = ctx.input(|i| i.time);
     let mut slot = ctx
         .data(|d| d.get_temp::<SpringSlot>(id))
@@ -163,18 +186,27 @@ pub fn spring(ctx: &Context, id: Id, target: f32, params: SpringParams) -> f32 {
         });
     slot.spring.params = params;
     slot.spring.set_target(target);
-    if motion(ctx).reduced {
+    let moving = if motion(ctx).reduced {
         slot.spring.snap(target);
+        false
     } else {
         let dt = frame_dt(ctx, slot.last_time);
-        if slot.spring.step(dt) {
+        let active = slot.spring.step(dt);
+        if active {
             ctx.request_repaint();
         }
-    }
+        active
+    };
     slot.last_time = now;
     let value = slot.spring.value;
     ctx.data_mut(|d| d.insert_temp(id, slot));
-    value
+    (value, moving)
+}
+
+/// Returns `true` if a stored spring is still moving towards its target.
+pub fn spring_is_moving(ctx: &Context, id: Id) -> bool {
+    ctx.data(|d| d.get_temp::<SpringSlot>(id))
+        .is_some_and(|slot| !slot.spring.is_settled())
 }
 
 /// Smooth 0..1 boolean tween stored in egui temp data.
@@ -243,6 +275,35 @@ mod tests {
             s.step(1.0 / 60.0);
         }
         assert!(s.is_settled());
+        assert!(!s.step(1.0 / 60.0));
+    }
+
+    #[test]
+    fn panel_springs_overshoot_about_four_percent_and_settle() {
+        for params in [SpringParams::panel_width(), SpringParams::panel_height()] {
+            let mut s = Spring::new(0.0, params);
+            s.set_target(100.0);
+            let mut peak = 0.0f32;
+            for _ in 0..240 {
+                s.step(1.0 / 60.0);
+                peak = peak.max(s.value);
+            }
+            assert!(peak > 102.5 && peak < 105.5, "unexpected peak {peak}");
+            assert!(s.is_settled());
+        }
+    }
+
+    #[test]
+    fn large_coordinate_spring_settles_without_ulp_stall() {
+        let mut s = Spring::new(620.0, SpringParams::placement_x());
+        s.set_target(1356.0);
+        for _ in 0..120 {
+            if !s.step(1.0 / 60.0) {
+                break;
+            }
+        }
+        assert!(s.is_settled(), "stalled at value={} vel={}", s.value, s.velocity);
+        assert_eq!(s.value, 1356.0);
         assert!(!s.step(1.0 / 60.0));
     }
 }

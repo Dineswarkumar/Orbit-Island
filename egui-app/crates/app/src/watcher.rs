@@ -16,6 +16,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 fn to_monitor_info(m: monitor::Monitor) -> MonitorInfo {
+    let work = monitor::primary_work_area();
     MonitorInfo {
         id: m.id,
         bounds: MonitorRect {
@@ -25,10 +26,10 @@ fn to_monitor_info(m: monitor::Monitor) -> MonitorInfo {
             bottom: m.bounds.bottom,
         },
         work: MonitorRect {
-            left: m.work.left,
-            top: m.work.top,
-            right: m.work.right,
-            bottom: m.work.bottom,
+            left: work.left,
+            top: work.top,
+            right: work.right,
+            bottom: work.bottom,
         },
         dpi: m.dpi,
     }
@@ -39,6 +40,7 @@ pub fn sample() -> SystemSnapshot {
         monitor: monitor::primary().ok().map(to_monitor_info),
         light_theme: system::apps_use_light_theme(),
         animations: system::animations_enabled(),
+        transparency_enabled: system::transparency_enabled(),
         battery: power::battery().map(|b| BatteryStatus {
             percent: b.percent,
             charging: b.charging,
@@ -71,7 +73,7 @@ impl Watcher {
                         if tx.send(CoreEvent::SystemChanged(now)).is_err() {
                             break;
                         }
-                        ctx.request_repaint();
+                        ctx.request_repaint_of(egui::ViewportId::ROOT);
                     }
                 }
             })?;

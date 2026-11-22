@@ -21,6 +21,7 @@ egui-phosphor = { version = "0.14", features = ["regular", "fill"] }
 windows = "0.62"
 tray-icon = "0.26"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.9"
 anyhow = "1"
 thiserror = "2"
@@ -28,10 +29,40 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 crossbeam-channel = "0.5"
 raw-window-handle = "0.6"
+rusqlite = { version = "0.33", features = ["bundled"] }
+rustfft = "6"
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+ureq = "3"
+windows-core = "0.62"
+windows-collections = "0.3"
+windows-numerics = "0.3"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_Storage_FileSystem",
+    "Win32_System_SystemInformation",
+    "Win32_System_Power",
+    "Win32_System_RemoteDesktop",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_UI_Shell",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Accessibility",
+] }
 
 orbit-core = { path = "crates/core" }
 orbit-platform = { path = "crates/platform" }
 orbit-ui = { path = "crates/ui" }
+orbit-services = { path = "crates/services" }
 
 [profile.release]
 lto = "thin"

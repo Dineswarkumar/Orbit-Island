@@ -5,10 +5,17 @@
 //! Minimal registry access (values only, no key enumeration).
 
 use crate::wide;
+use std::path::Path;
+use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
+    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ,
+    RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegGetValueW,
+    RegOpenKeyExW, RegSetValueExW,
 };
 use windows::core::PCWSTR;
+
+pub const RUN_SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+pub const RUN_VALUE_NAME: &str = "ORBIT";
 
 #[derive(Clone, Copy, Debug)]
 pub enum Hive {
@@ -82,4 +89,94 @@ pub fn read_string(hive: Hive, subkey: &str, value: &str) -> Option<String> {
     }
     let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     Some(String::from_utf16_lossy(&buf[..len]))
+}
+
+pub fn format_startup_command(exe_path: &Path) -> String {
+    format!("\"{}\"", exe_path.display())
+}
+
+/// Registers or removes ORBIT under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+pub fn sync_startup_registry(enabled: bool, exe_path: &Path) -> Result<(), String> {
+    let subkey = wide(RUN_SUBKEY);
+    let value_name = wide(RUN_VALUE_NAME);
+    let mut hkey = HKEY::default();
+
+    if enabled {
+        // SAFETY: Valid HKEY_CURRENT_USER + NUL-terminated UTF-16 subkey; handle closed below.
+        let err = unsafe {
+            RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey.as_ptr()),
+                None,
+                PCWSTR::null(),
+                REG_OPTION_NON_VOLATILE,
+                KEY_SET_VALUE,
+                None,
+                &mut hkey,
+                None,
+            )
+        };
+        if err != ERROR_SUCCESS {
+            return Err(format!("Failed to open startup registry key ({})", err.0));
+        }
+        let cmd = format_startup_command(exe_path);
+        let cmd_bytes: Vec<u8> = wide(&cmd).into_iter().flat_map(u16::to_le_bytes).collect();
+        // SAFETY: Open key handle with KEY_SET_VALUE and NUL-terminated REG_SZ UTF-16LE bytes.
+        let set_err = unsafe {
+            RegSetValueExW(
+                hkey,
+                PCWSTR(value_name.as_ptr()),
+                None,
+                REG_SZ,
+                Some(&cmd_bytes),
+            )
+        };
+        unsafe {
+            let _ = RegCloseKey(hkey);
+        }
+        if set_err != ERROR_SUCCESS {
+            return Err(format!("Failed to set startup registry entry ({})", set_err.0));
+        }
+        Ok(())
+    } else {
+        // SAFETY: Valid HKEY_CURRENT_USER + NUL-terminated UTF-16 subkey; handle closed below.
+        let err = unsafe {
+            RegOpenKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey.as_ptr()),
+                None,
+                KEY_SET_VALUE,
+                &mut hkey,
+            )
+        };
+        if err == ERROR_FILE_NOT_FOUND {
+            return Ok(());
+        }
+        if err != ERROR_SUCCESS {
+            return Err(format!("Failed to open startup registry key ({})", err.0));
+        }
+        // SAFETY: Open key handle with KEY_SET_VALUE and NUL-terminated value name.
+        let del_err = unsafe { RegDeleteValueW(hkey, PCWSTR(value_name.as_ptr())) };
+        unsafe {
+            let _ = RegCloseKey(hkey);
+        }
+        if del_err != ERROR_SUCCESS && del_err != ERROR_FILE_NOT_FOUND {
+            return Err(format!("Failed to remove startup registry entry ({})", del_err.0));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_startup_command_quotes_path_with_spaces() {
+        let p = Path::new(r"C:\Program Files\ORBIT\orbit-egui.exe");
+        assert_eq!(
+            format_startup_command(p),
+            "\"C:\\Program Files\\ORBIT\\orbit-egui.exe\""
+        );
+    }
 }

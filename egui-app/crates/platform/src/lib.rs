@@ -5,8 +5,10 @@
 //! Thin wrappers over the Win32 and DWM APIs ORBIT uses.
 //! No egui types appear in this crate.
 
+pub mod backdrop;
 pub mod crash;
 pub mod fonts;
+pub mod fullscreen;
 pub mod hittest;
 pub mod material;
 pub mod monitor;

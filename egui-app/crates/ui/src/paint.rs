@@ -5,10 +5,10 @@
 //! Low-level painting: vertical gradient squircles, film grain, rim, and top highlight.
 
 use crate::geometry::Squircle;
-use egui::epaint::{Mesh, PathShape, PathStroke, Vertex};
+use egui::epaint::{Mesh, PathShape, PathStroke, RectShape, Vertex};
 use egui::{
-    Color32, ColorImage, Context, Painter, Pos2, Shape, TextureHandle, TextureId, TextureOptions,
-    TextureWrapMode, pos2, vec2,
+    Color32, ColorImage, Context, CornerRadius, Painter, Pos2, Rect, Shape, Stroke, StrokeKind,
+    TextureHandle, TextureId, TextureOptions, TextureWrapMode, pos2, vec2,
 };
 
 const NOISE_SIZE: usize = 128;
@@ -69,22 +69,52 @@ pub fn fill_noise(
     painter.add(Shape::mesh(mesh));
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn pill_surface(
+/// Draws a soft multi-step drop shadow beneath `shape` using pure egui shapes.
+pub fn drop_shadow(painter: &Painter, shape: &Squircle, shadow_color: Color32) {
+    if shadow_color.a() == 0 {
+        return;
+    }
+    const LAYERS: [(f32, f32, f32); 4] = [
+        (5.5, 4.0, 0.10),
+        (4.0, 2.8, 0.18),
+        (2.5, 1.6, 0.28),
+        (1.2, 0.7, 0.38),
+    ];
+    let [r, g, b, base_a] = shadow_color.to_srgba_unmultiplied();
+    for (dy, expand, weight) in LAYERS {
+        let a = (base_a as f32 * weight).round().clamp(0.0, 255.0) as u8;
+        if a == 0 {
+            continue;
+        }
+        let s = Squircle::new(
+            shape.rect.expand(expand).translate(vec2(0.0, dy)),
+            (shape.radius + expand).max(2.0),
+        )
+        .with_exponent(shape.exponent);
+        let pts = s.outline();
+        painter.add(Shape::convex_polygon(
+            pts,
+            Color32::from_rgba_unmultiplied(r, g, b, a),
+            PathStroke::NONE,
+        ));
+    }
+}
+
+fn paint_rim_and_highlights(
     painter: &Painter,
     shape: &Squircle,
     outline: &[Pos2],
-    top: Color32,
-    bottom: Color32,
     rim: Color32,
+    inner_rim: Color32,
     highlight: Color32,
-    noise_alpha: u8,
-    grain_px: f32,
 ) {
-    fill_gradient(painter, outline, top, bottom);
-    if noise_alpha > 0 {
-        let noise = noise_texture(painter.ctx());
-        fill_noise(painter, outline, noise.id(), noise_alpha, grain_px);
+    if shape.rect.width() > 6.0 && shape.rect.height() > 6.0 && inner_rim.a() > 0 {
+        let inner = Squircle::new(shape.rect.shrink(1.0), (shape.radius - 1.0).max(1.0))
+            .with_exponent(shape.exponent);
+        painter.add(PathShape::closed_line(
+            inner.outline(),
+            PathStroke::new(0.85, inner_rim),
+        ));
     }
     painter.add(PathShape::closed_line(
         outline.to_vec(),
@@ -93,9 +123,47 @@ pub fn pill_surface(
     top_highlight(painter, shape, highlight);
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn pill_surface(
+    painter: &Painter,
+    shape: &Squircle,
+    outline: &[Pos2],
+    top: Color32,
+    bottom: Color32,
+    rim: Color32,
+    inner_rim: Color32,
+    highlight: Color32,
+    shadow: Color32,
+    noise_alpha: u8,
+    grain_px: f32,
+) {
+    drop_shadow(painter, shape, shadow);
+    fill_gradient(painter, outline, top, bottom);
+    if noise_alpha > 0 {
+        let noise = noise_texture(painter.ctx());
+        fill_noise(painter, outline, noise.id(), noise_alpha, grain_px);
+    }
+    paint_rim_and_highlights(painter, shape, outline, rim, inner_rim, highlight);
+}
+
+/// Draws the 3D drop shadow, inner edge highlight, rim, and top specular highlight
+/// with an unfilled interior so the Composition host-blur shows cleanly behind it.
+pub fn glass_frame(
+    painter: &Painter,
+    shape: &Squircle,
+    outline: &[Pos2],
+    shadow: Color32,
+    rim: Color32,
+    inner_rim: Color32,
+    highlight: Color32,
+) {
+    drop_shadow(painter, shape, shadow);
+    paint_rim_and_highlights(painter, shape, outline, rim, inner_rim, highlight);
+}
+
 pub fn top_highlight(painter: &Painter, shape: &Squircle, color: Color32) {
     let r = shape.radius;
-    let y = shape.rect.min.y + 0.75;
+    let y = shape.rect.min.y + 0.85;
     let x0 = shape.rect.min.x + r;
     let x1 = shape.rect.max.x - r;
     if x1 <= x0 {
@@ -104,7 +172,7 @@ pub fn top_highlight(painter: &Painter, shape: &Squircle, color: Color32) {
     let mid = 0.5 * (x0 + x1);
     let fade = Color32::TRANSPARENT;
     let mut mesh = Mesh::default();
-    let h = 1.0;
+    let h = 1.25;
     for (x, c) in [(x0, fade), (mid, color), (x1, fade)] {
         mesh.colored_vertex(pos2(x, y), c);
         mesh.colored_vertex(pos2(x, y + h), c);
@@ -114,6 +182,25 @@ pub fn top_highlight(painter: &Painter, shape: &Squircle, color: Color32) {
     mesh.add_triangle(2, 3, 4);
     mesh.add_triangle(3, 4, 5);
     painter.add(Shape::mesh(mesh));
+}
+
+/// Paints a textured rectangle with rounded corners and crisp border.
+pub fn rounded_texture(
+    painter: &Painter,
+    rect: Rect,
+    radius: f32,
+    tex: TextureId,
+    alpha: f32,
+    border_color: Color32,
+) {
+    let a = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let tint = Color32::from_white_alpha(a);
+    let shape = RectShape::filled(rect, CornerRadius::same(radius.round().clamp(0.0, 255.0) as u8), tint)
+        .with_texture(tex, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)));
+    painter.add(shape);
+    if border_color.a() > 0 {
+        painter.rect_stroke(rect, radius, Stroke::new(1.0, border_color), StrokeKind::Inside);
+    }
 }
 
 fn centroid(points: &[Pos2]) -> Pos2 {

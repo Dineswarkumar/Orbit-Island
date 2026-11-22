@@ -13,6 +13,8 @@ path = "src/main.rs"
 default = []
 # Shows frame count, CPU time, interval, and repaint causes without requesting repaints.
 debug-overlay = []
+# Opt-in diagnostic instrumentation and deterministic bug-hunt test driver modes.
+bughunt-probe = ["orbit-platform/bughunt-probe"]
 
 [dependencies]
 anyhow.workspace = true
@@ -21,6 +23,7 @@ eframe.workspace = true
 egui.workspace = true
 orbit-core.workspace = true
 orbit-platform.workspace = true
+orbit-services.workspace = true
 orbit-ui.workspace = true
 raw-window-handle.workspace = true
 tracing.workspace = true
