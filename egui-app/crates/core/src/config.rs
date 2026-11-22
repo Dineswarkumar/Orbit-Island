@@ -52,6 +52,63 @@ pub enum GlassMode {
     Opaque,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColorTheme {
+    #[default]
+    Obsidian,
+    OledBlack,
+    LinearIndigo,
+    VisionSpatial,
+    CatppuccinMocha,
+    Cyberpunk,
+    SunsetVelvet,
+    EmeraldAurora,
+    CeramicPearl,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MotionPreset {
+    #[default]
+    LiquidSpring,
+    Snappy,
+    Bouncy,
+    Smooth,
+    Reduced,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimeFormat {
+    #[default]
+    Hour12,
+    Hour24,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactRightSlot {
+    #[default]
+    Weather,
+    Battery,
+    OrbitLogo,
+    WindowsLogo,
+    AppleLogo,
+    LinuxLogo,
+    SmartAuto,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingsAppearance {
+    #[default]
+    Dark,
+    System,
+    Light,
+    Orbit,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -74,6 +131,12 @@ pub struct Config {
     pub notification_preview_secs: u32,
     pub glass_mode: GlassMode,
     pub hide_from_screen_capture: bool,
+    pub color_theme: ColorTheme,
+    pub motion_preset: MotionPreset,
+    pub time_format: TimeFormat,
+    pub compact_right_slot: CompactRightSlot,
+    pub utility_alerts_enabled: bool,
+    pub settings_appearance: SettingsAppearance,
 }
 
 impl Default for Config {
@@ -98,6 +161,12 @@ impl Default for Config {
             notification_preview_secs: 5,
             glass_mode: GlassMode::Normal,
             hide_from_screen_capture: false,
+            color_theme: ColorTheme::Obsidian,
+            motion_preset: MotionPreset::LiquidSpring,
+            time_format: TimeFormat::Hour12,
+            compact_right_slot: CompactRightSlot::Weather,
+            utility_alerts_enabled: true,
+            settings_appearance: SettingsAppearance::Dark,
         }
     }
 }
@@ -211,6 +280,12 @@ mod tests {
             notification_preview_secs: 9,
             glass_mode: GlassMode::Blurred,
             hide_from_screen_capture: true,
+            color_theme: ColorTheme::Cyberpunk,
+            motion_preset: MotionPreset::Bouncy,
+            time_format: TimeFormat::Hour24,
+            compact_right_slot: CompactRightSlot::OrbitLogo,
+            utility_alerts_enabled: false,
+            settings_appearance: SettingsAppearance::Orbit,
         };
         let text = toml::to_string_pretty(&cfg).expect("serialize");
         let back: Config = toml::from_str(&text).expect("parse");
@@ -254,6 +329,12 @@ launch_at_startup = false
         assert_eq!(cfg.notification_preview_secs, 5);
         assert_eq!(cfg.glass_mode, GlassMode::Normal);
         assert!(!cfg.hide_from_screen_capture);
+        assert_eq!(cfg.color_theme, ColorTheme::Obsidian);
+        assert_eq!(cfg.motion_preset, MotionPreset::LiquidSpring);
+        assert_eq!(cfg.time_format, TimeFormat::Hour12);
+        assert_eq!(cfg.compact_right_slot, CompactRightSlot::Weather);
+        assert!(cfg.utility_alerts_enabled);
+        assert_eq!(cfg.settings_appearance, SettingsAppearance::Dark);
     }
 
     #[test]

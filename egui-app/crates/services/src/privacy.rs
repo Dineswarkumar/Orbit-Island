@@ -432,9 +432,11 @@ mod win {
     ) -> PrivacyState {
         static CAM_PATH: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
         static MIC_PATH: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
+        static LOC_PATH: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
 
         let mut cam_apps = Vec::new();
         let mut mic_apps = Vec::new();
+        let mut loc_apps = Vec::new();
         let wasapi_mic_active = inspect_wasapi_microphones(enumerator_cache, &mut mic_apps);
         let mut mic_ok = wasapi_mic_active;
 
@@ -448,8 +450,14 @@ mod win {
                 .encode_utf16()
                 .collect()
         });
+        let loc_path = LOC_PATH.get_or_init(|| {
+            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\location\0"
+                .encode_utf16()
+                .collect()
+        });
 
         let mut cam_ok = false;
+        let mut loc_ok = false;
         for &hive in &[HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
             let mut cam_key = std::ptr::null_mut();
             unsafe {
@@ -469,6 +477,16 @@ mod win {
                     check_subkeys(mic_key, &mut mic_apps);
                     RegCloseKey(mic_key);
                     mic_ok = true;
+                }
+            }
+            let mut loc_key = std::ptr::null_mut();
+            unsafe {
+                if RegOpenKeyExW(hive, loc_path.as_ptr(), 0, KEY_READ, &mut loc_key)
+                    == ERROR_SUCCESS
+                {
+                    check_subkeys(loc_key, &mut loc_apps);
+                    RegCloseKey(loc_key);
+                    loc_ok = true;
                 }
             }
         }
@@ -506,7 +524,9 @@ mod win {
             camera_app: (!cam_apps.is_empty()).then(|| cam_apps.join(", ")),
             microphone_active: !mic_apps.is_empty(),
             microphone_app: (!mic_apps.is_empty()).then(|| mic_apps.join(", ")),
-            is_reliable: cam_ok || mic_ok,
+            location_active: !loc_apps.is_empty(),
+            location_app: (!loc_apps.is_empty()).then(|| loc_apps.join(", ")),
+            is_reliable: cam_ok || mic_ok || loc_ok,
         }
     }
 }

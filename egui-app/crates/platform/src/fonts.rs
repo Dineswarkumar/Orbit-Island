@@ -7,6 +7,7 @@
 pub struct FontBytes {
     pub regular: Option<Vec<u8>>,
     pub semibold: Option<Vec<u8>>,
+    pub bold: Option<Vec<u8>>,
 }
 
 /// Loads `segoeui.ttf` and `seguisb.ttf` from `%WINDIR%\Fonts`.
@@ -17,5 +18,6 @@ pub fn load_segoe_ui() -> FontBytes {
     FontBytes {
         regular: load("segoeui.ttf"),
         semibold: load("seguisb.ttf"),
+        bold: load("segoeuib.ttf"),
     }
 }

@@ -363,6 +363,203 @@ pub fn set_capture_stealth(hwnd: Hwnd, hide: bool) -> Result<()> {
     unsafe { SetWindowDisplayAffinity(hwnd.get(), affinity) }.api("SetWindowDisplayAffinity")
 }
 
+/// Returns the bottom screen-coordinate (`rc.bottom`) of any visible topmost
+/// screen-recording toolbar occupying the top-center band of the primary work area,
+/// excluding `own_hwnd` and `backdrop_hwnd`.
+#[cfg(target_os = "windows")]
+pub fn top_center_recording_bar_bottom(
+    own_hwnd: Hwnd,
+    backdrop_hwnd: Option<Hwnd>,
+) -> Option<i32> {
+    use windows_sys::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, RECT};
+    use windows_sys::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GWL_EXSTYLE, GetClassNameW, GetWindowLongW, GetWindowRect, GetWindowTextW,
+        GetWindowThreadProcessId, IsWindowVisible, WS_EX_TOPMOST,
+    };
+
+    struct EnumCtx {
+        own_raw: isize,
+        backdrop_raw: Option<isize>,
+        work_top: i32,
+        center_left: i32,
+        center_right: i32,
+        max_bottom: Option<i32>,
+    }
+
+    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        const RECORDER_EXES: &[&str] = &[
+            "snippingtool",
+            "screensketch",
+            "screenclippinghost",
+            "bcastdvr",
+            "gamebar",
+            "gamebarftserver",
+            "captureservice",
+            "screenclip",
+            "screenrec",
+            "obs64",
+            "obs32",
+            "bdcam",
+            "camtasia",
+            "loom",
+            "sharex",
+        ];
+        const RECORDER_TITLES: &[&str] = &[
+            "screen recording",
+            "screen capture",
+            "recording toolbar",
+            "recording",
+            "snipping tool",
+            "xbox game bar",
+        ];
+
+        // SAFETY: `lparam` points to `EnumCtx` alive for the duration of `EnumWindows`.
+        let ctx = unsafe { &mut *(lparam as *mut EnumCtx) };
+        let raw = hwnd as isize;
+        if raw == ctx.own_raw || ctx.backdrop_raw == Some(raw) {
+            return 1;
+        }
+        // SAFETY: Win32 window queries on enumerated HWND.
+        if unsafe { IsWindowVisible(hwnd) } == 0 {
+            return 1;
+        }
+        // SAFETY: Win32 extended style query on enumerated HWND.
+        let ex_style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) } as u32;
+        if (ex_style & WS_EX_TOPMOST) == 0 {
+            return 1;
+        }
+        let mut cloaked: u32 = 0;
+        // SAFETY: valid out buffer for DWMWA_CLOAKED.
+        let dwm_hr = unsafe {
+            DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_CLOAKED as u32,
+                (&mut cloaked as *mut u32).cast(),
+                std::mem::size_of::<u32>() as u32,
+            )
+        };
+        if dwm_hr == 0 && cloaked != 0 {
+            return 1;
+        }
+
+        let mut rc = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        // SAFETY: valid out RECT pointer.
+        if unsafe { GetWindowRect(hwnd, &mut rc) } == 0 {
+            return 1;
+        }
+        if rc.top < ctx.work_top - 6 || rc.top > ctx.work_top + 84 {
+            return 1;
+        }
+        let w = rc.right - rc.left;
+        let h = rc.bottom - rc.top;
+        if !(18..=130).contains(&h) || !(80..=780).contains(&w) {
+            return 1;
+        }
+        if rc.right < ctx.center_left || rc.left > ctx.center_right {
+            return 1;
+        }
+
+        let mut class_buf = [0u16; 128];
+        // SAFETY: valid buffer for GetClassNameW.
+        let class_len =
+            unsafe { GetClassNameW(hwnd, class_buf.as_mut_ptr(), class_buf.len() as i32) };
+        if class_len > 0 {
+            let class_name = String::from_utf16_lossy(&class_buf[..class_len as usize]);
+            if matches!(
+                class_name.as_str(),
+                "Shell_TrayWnd" | "Progman" | "WorkerW" | "ORBIT.Backdrop"
+            ) {
+                return 1;
+            }
+        }
+
+        let mut pid = 0u32;
+        // SAFETY: valid out pointer for GetWindowThreadProcessId.
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        let exe_name = if pid != 0 {
+            // SAFETY: querying full process image name for owning pid and closing handle.
+            let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+            if !handle.is_null() {
+                let mut exe_buf = [0u16; 512];
+                let mut size = exe_buf.len() as u32;
+                let ok = unsafe {
+                    QueryFullProcessImageNameW(handle, 0, exe_buf.as_mut_ptr(), &mut size)
+                } != 0;
+                unsafe { CloseHandle(handle) };
+                if ok && size > 0 {
+                    let full_path = String::from_utf16_lossy(&exe_buf[..size as usize]);
+                    full_path
+                        .rsplit(['\\', '/'])
+                        .next()
+                        .unwrap_or("")
+                        .to_lowercase()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        let mut title_buf = [0u16; 256];
+        // SAFETY: valid buffer for GetWindowTextW.
+        let title_len =
+            unsafe { GetWindowTextW(hwnd, title_buf.as_mut_ptr(), title_buf.len() as i32) };
+        let title_lower = if title_len > 0 {
+            String::from_utf16_lossy(&title_buf[..title_len as usize]).to_lowercase()
+        } else {
+            String::new()
+        };
+
+        let matched = RECORDER_EXES.iter().any(|k| exe_name.contains(k))
+            || RECORDER_TITLES.iter().any(|k| title_lower.contains(k));
+        if matched {
+            ctx.max_bottom = Some(ctx.max_bottom.map_or(rc.bottom, |m| m.max(rc.bottom)));
+        }
+
+        1
+    }
+
+    let work = crate::monitor::primary_work_area();
+    let center_left = work.left + (work.width() as f32 * 0.25) as i32;
+    let center_right = work.left + (work.width() as f32 * 0.75) as i32;
+
+    let mut ctx = EnumCtx {
+        own_raw: own_hwnd.raw(),
+        backdrop_raw: backdrop_hwnd.map(Hwnd::raw),
+        work_top: work.top,
+        center_left,
+        center_right,
+        max_bottom: None,
+    };
+
+    // SAFETY: `EnumWindows` invokes `enum_proc` synchronously with `&mut ctx` pointer.
+    unsafe {
+        let _ = EnumWindows(Some(enum_proc), &mut ctx as *mut EnumCtx as isize);
+    }
+
+    ctx.max_bottom
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn top_center_recording_bar_bottom(
+    _own_hwnd: Hwnd,
+    _backdrop_hwnd: Option<Hwnd>,
+) -> Option<i32> {
+    None
+}
+
 /// Activates or restores an application or browser window associated with a notification or media source.
 pub fn activate_app_window(
     app_id: &str,

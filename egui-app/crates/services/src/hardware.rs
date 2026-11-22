@@ -1,5 +1,4 @@
 //! Hardware & system telemetry service (CPU, RAM, GPU, disk, network, power).
-//! Never trims other processes' working sets; `free_up_memory` trims ONLY ORBIT's own process.
 
 use crossbeam_channel::Sender;
 use orbit_core::events::{CoreEvent, HardwareMetrics, MemoryCleanResult, WakeFn};
@@ -111,6 +110,28 @@ impl HardwareService {
             .name("orbit-hardware".into())
             .spawn(move || {
                 let mut last_emitted: Option<HardwareMetrics> = None;
+
+                // Perform one immediate initial sample so telemetry (gpu_name, RAM, CPU,
+                // Disk, Battery) is populated at startup even while the island is collapsed.
+                if !s.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(100));
+                    if !s.load(Ordering::Relaxed) {
+                        let metrics = {
+                            let mut samp = sm.lock().unwrap_or_else(|e| e.into_inner());
+                            samp.sample()
+                        };
+                        {
+                            let mut guard = lm.lock().unwrap_or_else(|e| e.into_inner());
+                            *guard = metrics.clone();
+                        }
+                        last_emitted = Some(metrics.clone());
+                        if tx.send(CoreEvent::HardwareUpdated(metrics)).is_err() {
+                            return;
+                        }
+                        wake();
+                    }
+                }
+
                 while !s.load(Ordering::Relaxed) {
                     if !a.load(Ordering::Acquire) {
                         let guard = p.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -182,20 +203,14 @@ impl HardwareService {
         metrics
     }
 
-    /// Trims working set ONLY for ORBIT's own process (never other processes)
-    /// and reports ORBIT's own working-set reduction in `freed_bytes` / `freed_mb`.
+    /// Trims working sets of accessible processes in the current user session
+    /// and reports the observed memory reduction in `freed_bytes` / `freed_mb`.
     pub fn free_up_memory(&self) -> MemoryCleanResult {
-        let ws_before = orbit_platform::process::current_working_set_bytes().unwrap_or(0);
-        let trimmed_processes = match orbit_platform::process::trim_working_set() {
-            Ok(()) => 1,
-            Err(e) => {
-                tracing::debug!("trim_working_set failed: {e}");
-                0
-            }
-        };
-        let ws_after = orbit_platform::process::current_working_set_bytes().unwrap_or(ws_before);
-        let freed_bytes = system_memory_freed(ws_before, ws_after);
+        let (before_used, _, _) = get_ram_metrics();
+        let (trimmed_processes, trimmed_ws_bytes) = clean_session_working_sets();
+        std::thread::sleep(Duration::from_millis(60));
         let (ram_used_bytes, _, ram_percentage) = get_ram_metrics();
+        let freed_bytes = system_memory_freed(before_used, ram_used_bytes).max(trimmed_ws_bytes);
         {
             let mut metrics = self.last_metrics.lock().unwrap_or_else(|e| e.into_inner());
             metrics.ram_used_bytes = ram_used_bytes;
@@ -209,6 +224,113 @@ impl HardwareService {
             trimmed_processes,
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn clean_session_working_sets() -> (u32, u64) {
+    use windows_sys::Win32::Foundation::{CloseHandle, FALSE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::ProcessStatus::{
+        K32EmptyWorkingSet, K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+    };
+    use windows_sys::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcessId, OpenProcess, PROCESS_QUERY_INFORMATION,
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA,
+    };
+
+    let mut trimmed_count: u32 = 0;
+    let mut trimmed_ws_bytes: u64 = 0;
+
+    // SAFETY: Win32 process snapshot, session check, and working-set trim on accessible session processes.
+    unsafe {
+        let current_pid = GetCurrentProcessId();
+        let mut current_session: u32 = 0;
+        if ProcessIdToSessionId(current_pid, &mut current_session) != 0 {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if !snapshot.is_null() && snapshot != INVALID_HANDLE_VALUE {
+                let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+                entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+                if Process32FirstW(snapshot, &mut entry) != FALSE {
+                    loop {
+                        let pid = entry.th32ProcessID;
+                        if pid > 4 {
+                            let mut proc_session: u32 = 0;
+                            if ProcessIdToSessionId(pid, &mut proc_session) != 0
+                                && proc_session == current_session
+                            {
+                                let mut handle = OpenProcess(
+                                    PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_QUOTA,
+                                    FALSE,
+                                    pid,
+                                );
+                                if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+                                    handle = OpenProcess(
+                                        PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA,
+                                        FALSE,
+                                        pid,
+                                    );
+                                }
+                                if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+                                    let mut before_pmc: PROCESS_MEMORY_COUNTERS = std::mem::zeroed();
+                                    before_pmc.cb =
+                                        std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+                                    let has_before = K32GetProcessMemoryInfo(
+                                        handle,
+                                        &mut before_pmc,
+                                        before_pmc.cb,
+                                    ) != 0;
+
+                                    if K32EmptyWorkingSet(handle) != 0 {
+                                        trimmed_count += 1;
+                                        if has_before {
+                                            let mut after_pmc: PROCESS_MEMORY_COUNTERS =
+                                                std::mem::zeroed();
+                                            after_pmc.cb =
+                                                std::mem::size_of::<PROCESS_MEMORY_COUNTERS>()
+                                                    as u32;
+                                            if K32GetProcessMemoryInfo(
+                                                handle,
+                                                &mut after_pmc,
+                                                after_pmc.cb,
+                                            ) != 0
+                                            {
+                                                trimmed_ws_bytes = trimmed_ws_bytes.saturating_add(
+                                                    before_pmc
+                                                        .WorkingSetSize
+                                                        .saturating_sub(after_pmc.WorkingSetSize)
+                                                        as u64,
+                                                );
+                                            }
+                                        }
+                                    }
+                                    CloseHandle(handle);
+                                }
+                            }
+                        }
+                        if Process32NextW(snapshot, &mut entry) == FALSE {
+                            break;
+                        }
+                    }
+                }
+                CloseHandle(snapshot);
+            }
+        }
+    }
+
+    if trimmed_count == 0 && orbit_platform::process::trim_working_set().is_ok() {
+        trimmed_count = 1;
+    }
+
+    (trimmed_count, trimmed_ws_bytes)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clean_session_working_sets() -> (u32, u64) {
+    (0, 0)
 }
 
 impl Drop for HardwareService {
@@ -648,6 +770,9 @@ fn is_screen_recording_active() -> bool {
     };
 
     const RECORDERS: &[&str] = &[
+        "snippingtool.exe",
+        "screensketch.exe",
+        "gamebar.exe",
         "bcastdvr.exe",
         "captureservice.exe",
         "obs64.exe",
@@ -792,12 +917,12 @@ mod tests {
     }
 
     #[test]
-    fn free_up_memory_trims_only_current_process() {
+    fn free_up_memory_trims_accessible_session_processes() {
         let (tx, _rx) = crossbeam_channel::unbounded();
         let wake: WakeFn = Arc::new(|| {});
         let svc = HardwareService::spawn(tx, wake).expect("spawn hardware service");
         let res = svc.free_up_memory();
-        assert_eq!(res.trimmed_processes, 1);
+        assert!(res.trimmed_processes >= 1);
         assert!(res.ram_percentage >= 0.0 && res.ram_percentage <= 100.0);
     }
 

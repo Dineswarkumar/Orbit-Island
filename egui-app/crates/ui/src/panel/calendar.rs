@@ -60,12 +60,13 @@ pub fn show(
         );
         p.galley(pos2(cx - month_g.size().x * 0.5, left_rect.min.y + 12.0), month_g, theme.accent_blue);
 
+        let muted_text = theme::mix(theme.pill_text_dim, theme.pill_text, 0.30);
         let year_g = p.layout_no_wrap(
             view_year.to_string(),
-            Theme::font_semibold(10.5),
-            theme.pill_text_dim,
+            Theme::font(10.5),
+            muted_text,
         );
-        p.galley(pos2(cx - year_g.size().x * 0.5, left_rect.min.y + 29.0), year_g, theme.pill_text_dim);
+        p.galley(pos2(cx - year_g.size().x * 0.5, left_rect.min.y + 29.0), year_g, muted_text);
 
         let day_g = p.layout_no_wrap(
             sel_day.to_string(),
@@ -77,10 +78,10 @@ pub fn show(
         let wd = weekday_of_ymd(view_year, view_month, sel_day);
         let wd_g = p.layout_no_wrap(
             weekday_name(wd).into(),
-            Theme::font_semibold(11.5),
-            theme.pill_text_dim,
+            Theme::font(11.5),
+            muted_text,
         );
-        p.galley(pos2(cx - wd_g.size().x * 0.5, left_rect.max.y - 52.0), wd_g, theme.pill_text_dim);
+        p.galley(pos2(cx - wd_g.size().x * 0.5, left_rect.max.y - 52.0), wd_g, muted_text);
 
         let btn_rect = Rect::from_min_size(
             pos2(left_rect.min.x + 10.0, left_rect.max.y - 31.0),
@@ -203,11 +204,12 @@ fn show_month_grid(
     let col_w = grid_w / 7.0;
     let header_y = rect.min.y + 8.0;
     let day_headers = ["S", "M", "T", "W", "T", "F", "S"];
+    let header_col = theme::mix(theme.pill_text_dim, theme.pill_text, 0.35);
     let p = ui.painter();
     for (i, d) in day_headers.iter().enumerate() {
-        let g = p.layout_no_wrap((*d).into(), Theme::font_semibold(10.0), theme.pill_text_dim);
+        let g = p.layout_no_wrap((*d).into(), Theme::font(10.0), header_col);
         let cx = grid_x0 + (i as f32 + 0.5) * col_w;
-        p.galley(pos2(cx - g.size().x * 0.5, header_y - g.size().y * 0.5), g, theme.pill_text_dim);
+        p.galley(pos2(cx - g.size().x * 0.5, header_y - g.size().y * 0.5), g, header_col);
     }
 
     let prev_r = Rect::from_center_size(pos2(rect.min.x + 7.0, header_y), vec2(14.0, 16.0));
@@ -254,13 +256,17 @@ fn show_month_grid(
 
         if slot < first_wd {
             let day = prev_days - (first_wd - 1 - slot);
+            let overflow_col = theme::with_alpha(
+                theme::mix(theme.pill_text_dim, theme.pill_text, 0.30),
+                0.65,
+            );
             let g = ui.painter().layout_no_wrap(
                 day.to_string(),
-                Theme::font_semibold(10.5),
-                theme::with_alpha(theme.pill_text_dim, 0.5),
+                Theme::font(10.5),
+                overflow_col,
             );
             ui.painter()
-                .galley(pos2(cx - g.size().x * 0.5, cy - g.size().y * 0.5), g, theme.pill_text_dim);
+                .galley(pos2(cx - g.size().x * 0.5, cy - g.size().y * 0.5), g, overflow_col);
             continue;
         }
         let day = slot - first_wd + 1;
@@ -301,11 +307,11 @@ fn show_month_grid(
         } else if is_today || matching_rem.is_some() {
             theme.pill_text
         } else if col == 0 || col == 6 {
-            theme.pill_text_dim
+            theme::mix(theme.pill_text_dim, theme.pill_text, 0.30)
         } else {
             theme.pill_text
         };
-        let dg = p.layout_no_wrap(day.to_string(), Theme::font_semibold(10.5), text_col);
+        let dg = p.layout_no_wrap(day.to_string(), Theme::font(10.5), text_col);
         p.galley(pos2(cx - dg.size().x * 0.5, cy - dg.size().y * 0.5), dg, text_col);
 
         if resp.clicked() {
@@ -324,7 +330,7 @@ fn nav_arrow_btn(ui: &mut Ui, rect: Rect, theme: &Theme, icon: &str) -> bool {
     let col = if resp.hovered() {
         theme.pill_text
     } else {
-        theme.pill_text_dim
+        theme::mix(theme.pill_text_dim, theme.pill_text, 0.30)
     };
     let g = ui
         .painter()

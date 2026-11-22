@@ -24,12 +24,13 @@ pub fn show(
     let header_r = Rect::from_min_size(inner.min, vec2(inner.width(), 20.0));
     with_tile_transform(ctx, "mt-header", header_r, 0, reveal_t, |tui| {
         let p = tui.painter();
+        let hdr_col = theme::mix(theme.pill_text_dim, theme.pill_text, 0.35);
         let g = p.layout_no_wrap(
             "LIVE MULTI-TASK HUB".into(),
             Theme::font_semibold(10.0),
-            theme.pill_text_dim,
+            hdr_col,
         );
-        p.galley(pos2(header_r.min.x, header_r.center().y - g.size().y * 0.5), g, theme.pill_text_dim);
+        p.galley(pos2(header_r.min.x, header_r.center().y - g.size().y * 0.5), g, hdr_col);
     });
 
     let grid_top = header_r.max.y + 6.0;

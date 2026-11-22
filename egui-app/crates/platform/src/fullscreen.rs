@@ -23,7 +23,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 struct HookState {
     island_hwnd: isize,
     last_state: bool,
+    last_rec_bar_bottom: Option<i32>,
     on_change: Box<dyn Fn(bool) + Send>,
+    on_rec_bar_change: Option<Box<dyn Fn() + Send>>,
 }
 
 static HOOK_STATE: Mutex<Option<HookState>> = Mutex::new(None);
@@ -123,6 +125,18 @@ unsafe extern "system" fn win_event_proc(
         state.last_state = is_fs;
         (state.on_change)(is_fs);
     }
+    if event == EVENT_SYSTEM_FOREGROUND {
+        if let Some(on_rec_bar_change) = state.on_rec_bar_change.as_ref() {
+            let rec_b = crate::window::top_center_recording_bar_bottom(
+                Hwnd::from_raw(state.island_hwnd),
+                None,
+            );
+            if rec_b != state.last_rec_bar_bottom {
+                state.last_rec_bar_bottom = rec_b;
+                on_rec_bar_change();
+            }
+        }
+    }
 }
 
 pub struct FullscreenWatcher {
@@ -135,16 +149,43 @@ impl FullscreenWatcher {
         island_hwnd: Hwnd,
         on_change: impl Fn(bool) + Send + 'static,
     ) -> Result<Self> {
+        Self::spawn_inner(island_hwnd, Box::new(on_change), None)
+    }
+
+    pub fn spawn_with_recording_wake(
+        island_hwnd: Hwnd,
+        on_change: impl Fn(bool) + Send + 'static,
+        on_rec_bar_change: impl Fn() + Send + 'static,
+    ) -> Result<Self> {
+        Self::spawn_inner(
+            island_hwnd,
+            Box::new(on_change),
+            Some(Box::new(on_rec_bar_change)),
+        )
+    }
+
+    fn spawn_inner(
+        island_hwnd: Hwnd,
+        on_change: Box<dyn Fn(bool) + Send>,
+        on_rec_bar_change: Option<Box<dyn Fn() + Send>>,
+    ) -> Result<Self> {
         let initial = is_foreground_fullscreen(island_hwnd.raw());
         if initial {
             on_change(true);
         }
+        let initial_rec_bar_bottom = if on_rec_bar_change.is_some() {
+            crate::window::top_center_recording_bar_bottom(island_hwnd, None)
+        } else {
+            None
+        };
         {
             let mut guard = HOOK_STATE.lock().unwrap_or_else(|p| p.into_inner());
             *guard = Some(HookState {
                 island_hwnd: island_hwnd.raw(),
                 last_state: initial,
-                on_change: Box::new(on_change),
+                last_rec_bar_bottom: initial_rec_bar_bottom,
+                on_change,
+                on_rec_bar_change,
             });
         }
 

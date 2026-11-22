@@ -176,7 +176,7 @@ pub fn show(
             let col = if selected {
                 Color32::WHITE
             } else {
-                theme.pill_text_dim
+                theme::mix(theme.pill_text_dim, theme.pill_text, 0.30)
             };
             let ig = p.layout_no_wrap(glyph.into(), icon_font(12.0, false), col);
             p.galley(seg_r.center() - ig.size() * 0.5, ig, col);
@@ -252,11 +252,12 @@ pub fn show(
                 ShelfFilter::Links => "No saved links",
                 ShelfFilter::Text => "No saved text snippets",
             };
+            let empty_col = theme::mix(theme.pill_text_dim, theme.pill_text, 0.30);
             let eg = tui
                 .painter()
-                .layout_no_wrap(empty_msg.into(), Theme::font(10.5), theme.pill_text_dim);
+                .layout_no_wrap(empty_msg.into(), Theme::font(10.5), empty_col);
             tui.painter()
-                .galley(scroll_rect.center() - eg.size() * 0.5, eg, theme.pill_text_dim);
+                .galley(scroll_rect.center() - eg.size() * 0.5, eg, empty_col);
         } else {
             tui.scope_builder(egui::UiBuilder::new().max_rect(scroll_rect), |sui| {
                 ScrollArea::vertical()
@@ -400,11 +401,12 @@ fn show_shelf_row(
     p.galley(pos2(text_x, rect.min.y + 5.0), ng, theme.pill_text);
 
     let subtitle = format_item_subtitle(item);
+    let sub_col = theme::mix(theme.pill_text_dim, theme.pill_text, 0.30);
     let mut sub_job = egui::text::LayoutJob::single_section(
         subtitle,
         egui::TextFormat {
             font_id: Theme::font(9.5),
-            color: theme.pill_text_dim,
+            color: sub_col,
             ..Default::default()
         },
     );
@@ -415,7 +417,7 @@ fn show_shelf_row(
         ..Default::default()
     };
     let sg = p.layout_job(sub_job);
-    p.galley(pos2(text_x, rect.max.y - sg.size().y - 5.0), sg, theme.pill_text_dim);
+    p.galley(pos2(text_x, rect.max.y - sg.size().y - 5.0), sg, sub_col);
 
     // Primary click / secondary click on row body
     let body_resp = ui.interact(
@@ -497,7 +499,7 @@ fn paint_item_thumb_or_icon(
     } else if matches!(ext, "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp") {
         (icons::IMAGE, theme.card_bg, theme.accent_purple)
     } else {
-        (icons::FILE_TEXT, theme.card_bg, theme.pill_text_dim)
+        (icons::FILE_TEXT, theme.card_bg, theme::mix(theme.pill_text_dim, theme.pill_text, 0.30))
     };
 
     painter.rect_filled(rect, 7.0, bg);
@@ -597,7 +599,7 @@ fn row_action_btn(
     let col = if resp.hovered() {
         theme.pill_text
     } else {
-        theme.pill_text_dim
+        theme::mix(theme.pill_text_dim, theme.pill_text, 0.30)
     };
     let g = ui
         .painter()

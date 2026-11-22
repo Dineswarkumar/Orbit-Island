@@ -96,6 +96,8 @@ pub struct SystemSnapshot {
     pub animations: bool,
     pub transparency_enabled: bool,
     pub battery: Option<BatteryStatus>,
+    pub wifi_connected: bool,
+    pub bluetooth_enabled: bool,
 }
 
 impl Default for SystemSnapshot {
@@ -106,6 +108,8 @@ impl Default for SystemSnapshot {
             animations: true,
             transparency_enabled: true,
             battery: None,
+            wifi_connected: false,
+            bluetooth_enabled: false,
         }
     }
 }
@@ -227,6 +231,10 @@ pub struct PrivacyState {
     pub camera_app: Option<String>,
     pub microphone_active: bool,
     pub microphone_app: Option<String>,
+    #[serde(default)]
+    pub location_active: bool,
+    #[serde(default)]
+    pub location_app: Option<String>,
     pub is_reliable: bool,
 }
 
@@ -237,6 +245,8 @@ impl Default for PrivacyState {
             camera_app: None,
             microphone_active: false,
             microphone_app: None,
+            location_active: false,
+            location_app: None,
             is_reliable: true,
         }
     }

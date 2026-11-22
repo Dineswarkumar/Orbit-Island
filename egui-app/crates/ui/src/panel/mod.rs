@@ -6,19 +6,20 @@ pub mod hardware;
 pub mod home;
 pub mod multitask;
 
-use crate::anim::{self, SpringParams};
+use crate::anim;
 use crate::bubble::{
     self, BUBBLE_COMPACT_RADIUS, BUBBLE_COMPACT_SIZE, BUBBLE_HOVER_RADIUS, BUBBLE_HOVER_SIZE,
     BubbleState,
 };
 use crate::geometry::Squircle;
+use crate::paint;
 use crate::pill::{
     self, PILL_COMPACT_HEIGHT, PILL_HOVER_SWELL, PILL_MIN_WIDTH, PILL_TOP_MARGIN, PillData,
     compact_target_size, target_x_for_placement,
 };
 use crate::shelf::{self, SHELF_PANEL_SIZE, SHELF_RADIUS, ShelfUiState};
 use crate::theme::{self, Theme};
-use crate::{icons_fill};
+use crate::icons_fill;
 use egui::emath::TSTransform;
 use egui::{Area, Color32, Context, Id, Order, Rect, Sense, Stroke, TextureId, Ui, Vec2, pos2, vec2};
 use orbit_core::config::ExpandTrigger;
@@ -50,6 +51,28 @@ pub enum HomeSubView {
     Media,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UtilityAlertKind {
+    PowerConnected,
+    PowerDisconnected,
+    WifiConnected,
+    WifiDisconnected,
+    BluetoothOn,
+    BluetoothOff,
+    LocationActive,
+    TimerComplete,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UtilityToast {
+    pub kind: UtilityAlertKind,
+    pub title: String,
+    pub detail: String,
+    pub accent: Color32,
+    pub until_secs: f64,
+    pub is_timer_complete: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PanelState {
     pub expanded: bool,
@@ -64,9 +87,12 @@ pub struct PanelState {
     pub adding_task: bool,
     pub new_task_title: String,
     pub ram_boost_feedback: Option<(String, bool, f64)>,
+    pub last_ram_boost: Option<(u32, f32, f64)>,
     pub drop_feedback: Option<(String, bool, f64)>,
     pub bubble: BubbleState,
     pub shelf: ShelfUiState,
+    pub return_expanded_after_bubble: bool,
+    pub utility_toast: Option<UtilityToast>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -89,7 +115,9 @@ pub enum PanelAction {
         title: String,
     },
     DismissNotification(u32),
+    ClearAllNotifications,
     ShowLatestNotification,
+    DismissUtilityToast,
     ShelfAddEntry(String),
     ShelfPickFiles,
     ShelfOpenItem(String),
@@ -173,11 +201,13 @@ pub fn show_island(
     media_art: Option<TextureId>,
     now_unix_ms: u64,
     live_glass: bool,
+    opaque_surface: bool,
 ) -> PanelOutput {
     let ctx = ui.ctx().clone();
     let window = ctx.content_rect();
     let id = Id::new("orbit-island");
     let now = ctx.input(|i| i.time);
+    let prev_expanded = state.expanded;
     let mut actions = Vec::new();
 
     if let Some((_, _, until)) = state.ram_boost_feedback {
@@ -194,12 +224,32 @@ pub fn show_island(
             ctx.request_repaint_after(Duration::from_secs_f64((until - now + 0.02).max(0.02)));
         }
     }
+    if let Some(ref t) = state.utility_toast {
+        if now >= t.until_secs {
+            state.utility_toast = None;
+        } else {
+            let remaining = Duration::from_secs_f64((t.until_secs - now + 0.03).max(0.03));
+            if t.is_timer_complete && !state.expanded && state.bubble.active.is_none() {
+                ctx.request_repaint_after(Duration::from_millis(33).min(remaining));
+            } else {
+                ctx.request_repaint_after(remaining);
+            }
+        }
+    }
 
     let sections = sections_for(snap);
     if state.active_section >= sections.len() {
         state.active_section = sections.len().saturating_sub(1);
     }
     let current_section = sections[state.active_section];
+
+    if let Some((_, _, until)) = state.last_ram_boost {
+        if now >= until {
+            state.last_ram_boost = None;
+        } else if state.expanded && current_section == SectionKind::Hardware {
+            ctx.request_repaint_after(Duration::from_secs_f64((until - now + 0.05).max(0.05)));
+        }
+    }
 
     let pill_data = PillData::from_snapshot_with_media(snap, media_art, now_unix_ms);
     let compact_size = compact_target_size(&pill_data);
@@ -259,6 +309,7 @@ pub fn show_island(
             && !files_hovered
             && !drop_toast_active
             && state.bubble.active.is_none()
+            && state.utility_toast.is_none()
         {
             let hover_delay_secs = (snap.config.hover_delay_ms.min(1000) as f64) / 1000.0;
             let since = *state.hover_since.get_or_insert(now);
@@ -277,6 +328,10 @@ pub fn show_island(
         }
     }
 
+    if state.expanded != prev_expanded {
+        state.active_section = 0;
+    }
+
     // Handle mouse wheel section navigation when expanded (disabled while Shelf ScrollArea is active).
     if state.expanded && hovered && !modal_input_active && !state.shelf.open {
         let scroll_y = ctx.input(|i| i.smooth_scroll_delta.y);
@@ -293,12 +348,22 @@ pub fn show_island(
         .bubble
         .set_preview_secs(snap.config.notification_preview_secs);
     let bubble_draining = state.bubble.tick(now, hovered || state.expanded);
+    if !state.expanded && state.bubble.active.is_none() && state.return_expanded_after_bubble {
+        state.return_expanded_after_bubble = false;
+        state.expanded = true;
+        state.active_section = 0;
+        state.leave_since = None;
+        ctx.request_repaint();
+    }
 
-    let hover_t = anim::tween(
+    let utility_toast_active =
+        !state.expanded && state.bubble.active.is_none() && state.utility_toast.is_some();
+
+    let hover_t = anim::transition_tween(
         &ctx,
         id.with("hover-t"),
-        (hovered && !state.expanded && state.bubble.active.is_none()) || drop_hover_active,
-        0.14,
+        (hovered && !state.expanded && state.bubble.active.is_none() && !utility_toast_active)
+            || drop_hover_active,
     );
 
     let (raw_w, raw_h) = if drop_hover_active {
@@ -317,6 +382,12 @@ pub fn show_island(
         } else {
             (BUBBLE_COMPACT_SIZE.x, BUBBLE_COMPACT_SIZE.y)
         }
+    } else if let Some(ref toast) = state.utility_toast {
+        if toast.is_timer_complete {
+            (336.0, 62.0)
+        } else {
+            (252.0, 46.0)
+        }
     } else {
         (
             compact_size.x + if hovered { PILL_HOVER_SWELL.x } else { 0.0 },
@@ -328,10 +399,12 @@ pub fn show_island(
     let target_w = raw_w.min(max_w);
     let target_h = raw_h.min(max_h);
 
-    let (w, w_moving) = anim::spring_with_status(&ctx, id.with("w"), target_w, SpringParams::panel_width());
-    let (h, h_moving) = anim::spring_with_status(&ctx, id.with("h"), target_h, SpringParams::panel_height());
-    let target_x = target_x_for_placement(window, w, snap.config.placement);
-    let (x, x_moving) = anim::spring_with_status(&ctx, id.with("x"), target_x, SpringParams::placement_x());
+    let opening =
+        state.expanded || state.bubble.active.is_some() || utility_toast_active || hovered;
+    let (w, w_moving) = anim::transition_value(&ctx, id.with("w"), target_w, opening);
+    let (h, h_moving) = anim::transition_value(&ctx, id.with("h"), target_h, opening);
+    let target_x = target_x_for_placement(window, target_w, snap.config.placement);
+    let (x, x_moving) = anim::transition_value(&ctx, id.with("x"), target_x, opening);
 
     let open_t = ((w - compact_size.x) / (EXPANDED_SIZE.x - compact_size.x).max(1.0)).clamp(0.0, 1.0);
     let radius = if drop_hover_active {
@@ -345,15 +418,34 @@ pub fn show_island(
         let bt = ((h - BUBBLE_COMPACT_SIZE.y) / (BUBBLE_HOVER_SIZE.y - BUBBLE_COMPACT_SIZE.y).max(1.0))
             .clamp(0.0, 1.0);
         BUBBLE_COMPACT_RADIUS + (BUBBLE_HOVER_RADIUS - BUBBLE_COMPACT_RADIUS) * bt
+    } else if utility_toast_active {
+        24.0
     } else {
         h * 0.5
     };
-    let rect = Rect::from_min_size(pos2(x, window.min.y + PILL_TOP_MARGIN), vec2(w, h));
+    let drop_t = anim::entry_drop_progress(&ctx, id, true);
+    let drop_y = -28.0 * (1.0 - drop_t);
+    let hover_float_y = if hovered
+        && !state.expanded
+        && state.bubble.active.is_none()
+        && !utility_toast_active
+        && !drop_hover_active
+    {
+        1.0 * hover_t
+    } else {
+        0.0
+    };
+    let rect = Rect::from_min_size(
+        pos2(x, window.min.y + PILL_TOP_MARGIN + drop_y + hover_float_y),
+        vec2(w, h),
+    );
     let shape = Squircle::new(rect, radius.min(h * 0.5).max(12.0)).with_exponent(2.0);
     ctx.data_mut(|d| d.insert_temp(id.with("shape"), shape));
 
-    if !live_glass {
-        pill::paint_shell(ui.painter(), &shape, theme, hover_t);
+    if opaque_surface {
+        pill::paint_opaque_shell(ui.painter(), &shape, theme);
+    } else if !live_glass {
+        pill::paint_tinted_fallback(ui.painter(), &shape, theme, hover_t);
     } else {
         pill::paint_glass_frame(ui.painter(), &shape, theme, hover_t);
     }
@@ -368,13 +460,29 @@ pub fn show_island(
         && let Some(active_bubble) = state.bubble.active.clone()
     {
         if w >= BUBBLE_COMPACT_SIZE.x - 40.0 && h >= BUBBLE_COMPACT_SIZE.y - 10.0 {
-            bubble::show(&ctx, ui, rect, theme, &active_bubble, hovered, &mut actions);
+            bubble::show(
+                &ctx,
+                ui,
+                rect,
+                theme,
+                &active_bubble,
+                state.bubble.queue.len(),
+                hovered,
+                &mut actions,
+            );
         }
-    } else if !state.expanded && open_t < 0.22 {
-        let compact_alpha = (1.0 - open_t / 0.22).clamp(0.0, 1.0);
+    } else if !state.expanded
+        && let Some(toast) = state.utility_toast.clone()
+    {
+        if w >= 210.0 && h >= 40.0 {
+            paint_utility_toast(&ctx, ui, rect, theme, &toast, &mut actions);
+        }
+    } else if !state.expanded && open_t < 0.28 {
+        let compact_alpha = (1.0 - open_t / 0.28).clamp(0.0, 1.0);
         pill::paint_compact_contents(ui.painter(), rect, theme, &pill_data, compact_alpha);
         if ui.interact(rect, id.with("pill-click"), Sense::click()).clicked() {
             state.expanded = true;
+            state.active_section = 0;
             state.leave_since = None;
             ctx.request_repaint();
         }
@@ -450,7 +558,7 @@ pub fn show_island(
         }
     }
 
-    let anim_active = w_moving || h_moving || x_moving;
+    let anim_active = w_moving || h_moving || x_moving || drop_t < 0.999;
     PanelOutput {
         shape,
         hovered,
@@ -626,6 +734,239 @@ fn paint_drop_feedback(
     let cy = inner.center().y;
     painter.galley(pos2(x0, cy - ig.size().y * 0.5), ig, accent);
     painter.galley(pos2(x0 + 24.0, cy - tg.size().y * 0.5), tg, theme.pill_text);
+}
+
+fn utility_alert_icon(kind: UtilityAlertKind) -> &'static str {
+    match kind {
+        UtilityAlertKind::PowerConnected => icons_fill::PLUG_CHARGING,
+        UtilityAlertKind::PowerDisconnected => icons_fill::BATTERY_MEDIUM,
+        UtilityAlertKind::WifiConnected => icons_fill::WIFI_HIGH,
+        UtilityAlertKind::WifiDisconnected => icons_fill::WIFI_SLASH,
+        UtilityAlertKind::BluetoothOn => icons_fill::BLUETOOTH,
+        UtilityAlertKind::BluetoothOff => icons_fill::BLUETOOTH_SLASH,
+        UtilityAlertKind::LocationActive => icons_fill::MAP_PIN,
+        UtilityAlertKind::TimerComplete => icons_fill::TIMER,
+    }
+}
+
+fn paint_utility_toast(
+    ctx: &Context,
+    ui: &mut Ui,
+    rect: Rect,
+    theme: &Theme,
+    toast: &UtilityToast,
+    actions: &mut Vec<PanelAction>,
+) {
+    let inner = rect.shrink2(vec2(12.0, 7.0));
+    if inner.width() < 60.0 || inner.height() < 24.0 {
+        return;
+    }
+
+    if toast.is_timer_complete {
+        let badge_rect = Rect::from_min_size(
+            pos2(inner.min.x + 2.0, rect.center().y - 17.0),
+            vec2(34.0, 34.0),
+        );
+        let done_r = Rect::from_min_size(
+            pos2(inner.max.x - 46.0, rect.center().y - 12.0),
+            vec2(46.0, 24.0),
+        );
+        let plus5_r = Rect::from_min_size(
+            pos2(done_r.min.x - 6.0 - 42.0, rect.center().y - 12.0),
+            vec2(42.0, 24.0),
+        );
+
+        let plus5_resp = ui.interact(plus5_r, Id::new("utility-timer-plus5"), Sense::click());
+        let done_resp = ui.interact(done_r, Id::new("utility-timer-done"), Sense::click());
+
+        let pulse = 0.5 + 0.5 * (ctx.input(|i| i.time) * 4.5).sin() as f32;
+        let p = ui.painter();
+
+        // Pulsing accent ring around 34x34 timer icon badge.
+        p.rect_stroke(
+            badge_rect.expand(1.5 + 1.5 * pulse),
+            11.5,
+            Stroke::new(1.5, theme::with_alpha(toast.accent, 0.35 + 0.40 * pulse)),
+            egui::StrokeKind::Outside,
+        );
+        p.rect_filled(badge_rect.expand(1.5), 11.0, theme::with_alpha(toast.accent, 0.20));
+        paint::card_3d(
+            p,
+            badge_rect,
+            10.0,
+            theme.card_top,
+            theme.card_bottom,
+            theme::mix(theme.card_border, toast.accent, 0.45),
+            theme.card_highlight,
+            Some(toast.accent),
+            false,
+        );
+        let ig = p.layout_no_wrap(
+            icons_fill::TIMER.into(),
+            pill::icon_font(17.0, true),
+            toast.accent,
+        );
+        p.galley(badge_rect.center() - ig.size() * 0.5, ig, toast.accent);
+
+        let text_x = badge_rect.max.x + 10.0;
+        let text_max_w = (plus5_r.min.x - 8.0 - text_x).max(40.0);
+        let has_detail = !toast.detail.trim().is_empty();
+
+        let mut title_job = egui::text::LayoutJob::single_section(
+            "Focus Timer Complete!".to_owned(),
+            egui::TextFormat {
+                font_id: Theme::font_semibold(11.5),
+                color: theme.pill_text,
+                ..Default::default()
+            },
+        );
+        title_job.wrap = egui::text::TextWrapping {
+            max_width: text_max_w,
+            max_rows: 1,
+            break_anywhere: true,
+            ..Default::default()
+        };
+        let tg = p.layout_job(title_job);
+        let title_y = if has_detail {
+            rect.center().y - tg.size().y - 0.5
+        } else {
+            rect.center().y - tg.size().y * 0.5
+        };
+        p.galley(pos2(text_x, title_y), tg, theme.pill_text);
+
+        if has_detail {
+            let mut detail_job = egui::text::LayoutJob::single_section(
+                toast.detail.clone(),
+                egui::TextFormat {
+                    font_id: Theme::font(10.5),
+                    color: theme.pill_text_dim,
+                    ..Default::default()
+                },
+            );
+            detail_job.wrap = egui::text::TextWrapping {
+                max_width: text_max_w,
+                max_rows: 1,
+                break_anywhere: true,
+                ..Default::default()
+            };
+            let dg = p.layout_job(detail_job);
+            p.galley(pos2(text_x, rect.center().y + 1.5), dg, theme.pill_text_dim);
+        }
+
+        // [+5m] and [Done] neumorphic buttons.
+        paint::neu_button(
+            p,
+            plus5_r,
+            8.5,
+            theme::mix(toast.accent, Color32::WHITE, 0.08),
+            theme::mix(toast.accent, Color32::BLACK, 0.18),
+            theme::with_alpha(toast.accent, 0.65),
+            Some(toast.accent),
+            plus5_resp.hovered(),
+            plus5_resp.is_pointer_button_down_on(),
+        );
+        let p5g = p.layout_no_wrap("+5m".into(), Theme::font_semibold(10.0), Color32::WHITE);
+        p.galley(plus5_r.center() - p5g.size() * 0.5, p5g, Color32::WHITE);
+
+        paint::neu_button(
+            p,
+            done_r,
+            8.5,
+            theme.card_top,
+            theme.card_bottom,
+            theme.card_border,
+            None,
+            done_resp.hovered(),
+            done_resp.is_pointer_button_down_on(),
+        );
+        let done_g = p.layout_no_wrap("Done".into(), Theme::font_semibold(10.0), theme.pill_text);
+        p.galley(done_r.center() - done_g.size() * 0.5, done_g, theme.pill_text);
+
+        if plus5_resp.clicked() {
+            actions.push(PanelAction::StartFocusTimer(300));
+            actions.push(PanelAction::DismissUtilityToast);
+        } else if done_resp.clicked() {
+            actions.push(PanelAction::DismissUtilityToast);
+        }
+        return;
+    }
+
+    // Normal utility alert toast (252 x 46).
+    let badge_rect = Rect::from_min_size(
+        pos2(inner.min.x, rect.center().y - 14.0),
+        vec2(28.0, 28.0),
+    );
+    let p = ui.painter();
+    p.rect_filled(badge_rect.expand(1.5), 10.0, theme::with_alpha(toast.accent, 0.22));
+    paint::card_3d(
+        p,
+        badge_rect,
+        9.0,
+        theme.card_top,
+        theme.card_bottom,
+        theme::mix(theme.card_border, toast.accent, 0.38),
+        theme.card_highlight,
+        Some(toast.accent),
+        false,
+    );
+    let ig = p.layout_no_wrap(
+        utility_alert_icon(toast.kind).into(),
+        pill::icon_font(14.5, true),
+        toast.accent,
+    );
+    p.galley(badge_rect.center() - ig.size() * 0.5, ig, toast.accent);
+
+    let text_x = badge_rect.max.x + 10.0;
+    let text_max_w = (inner.max.x - text_x).max(40.0);
+    let has_detail = !toast.detail.trim().is_empty();
+
+    let mut title_job = egui::text::LayoutJob::single_section(
+        toast.title.clone(),
+        egui::TextFormat {
+            font_id: Theme::font_semibold(11.5),
+            color: theme.pill_text,
+            ..Default::default()
+        },
+    );
+    title_job.wrap = egui::text::TextWrapping {
+        max_width: text_max_w,
+        max_rows: 1,
+        break_anywhere: true,
+        ..Default::default()
+    };
+    let tg = p.layout_job(title_job);
+    let title_y = if has_detail {
+        rect.center().y - tg.size().y
+    } else {
+        rect.center().y - tg.size().y * 0.5
+    };
+    p.galley(pos2(text_x, title_y), tg, theme.pill_text);
+
+    if has_detail {
+        let mut detail_job = egui::text::LayoutJob::single_section(
+            toast.detail.clone(),
+            egui::TextFormat {
+                font_id: Theme::font(10.0),
+                color: theme.pill_text_dim,
+                ..Default::default()
+            },
+        );
+        detail_job.wrap = egui::text::TextWrapping {
+            max_width: text_max_w,
+            max_rows: 1,
+            break_anywhere: true,
+            ..Default::default()
+        };
+        let dg = p.layout_job(detail_job);
+        p.galley(pos2(text_x, rect.center().y + 1.0), dg, theme.pill_text_dim);
+    }
+
+    if ui
+        .interact(rect, Id::new("utility-toast-dismiss"), Sense::click())
+        .clicked()
+    {
+        actions.push(PanelAction::DismissUtilityToast);
+    }
 }
 
 #[cfg(test)]

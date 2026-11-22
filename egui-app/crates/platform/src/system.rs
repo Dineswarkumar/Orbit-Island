@@ -5,9 +5,7 @@
 //! System preferences, locale clock/date, metrics, and OS version info.
 
 use crate::registry::{self, Hive};
-use windows::Win32::Globalization::{
-    ENUM_DATE_FORMATS_FLAGS, GetDateFormatEx, GetTimeFormatEx, TIME_NOSECONDS,
-};
+use windows::Win32::Globalization::{ENUM_DATE_FORMATS_FLAGS, GetDateFormatEx};
 use windows::Win32::System::SystemInformation::GetLocalTime;
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -103,6 +101,7 @@ pub struct Clock {
     pub millis_to_next_minute: u64,
 }
 
+#[cfg(test)]
 fn split_time_ampm(time: &str) -> (String, String) {
     let trimmed = time.trim();
     if let Some((digits, suffix)) = trimmed.rsplit_once(|c: char| c.is_whitespace()) {
@@ -114,7 +113,31 @@ fn split_time_ampm(time: &str) -> (String, String) {
     (trimmed.to_string(), String::new())
 }
 
+fn format_clock_parts(st_hour: u16, st_minute: u16, use_24h: bool) -> (String, String, String) {
+    if use_24h {
+        let time_digits = format!("{st_hour:02}:{st_minute:02}");
+        let ampm_str = String::new();
+        let time = time_digits.clone();
+        (time, time_digits, ampm_str)
+    } else {
+        let (h12, ampm) = match st_hour {
+            0 => (12, "AM"),
+            1..=11 => (st_hour, "AM"),
+            12 => (12, "PM"),
+            _ => (st_hour - 12, "PM"),
+        };
+        let time_digits = format!("{h12}:{st_minute:02}");
+        let ampm_str = ampm.to_string();
+        let time = format!("{time_digits} {ampm_str}");
+        (time, time_digits, ampm_str)
+    }
+}
+
 pub fn clock() -> Clock {
+    clock_with_format(false)
+}
+
+pub fn clock_with_format(use_24h: bool) -> Clock {
     let read = |buf: &[u16], n: i32| {
         let n = (n.max(1) as usize - 1).min(buf.len());
         String::from_utf16_lossy(&buf[..n])
@@ -123,20 +146,7 @@ pub fn clock() -> Clock {
     // means the user's Windows default locale.
     unsafe {
         let st = GetLocalTime();
-        let mut tbuf = [0u16; 32];
-        let n = GetTimeFormatEx(
-            PCWSTR::null(),
-            TIME_NOSECONDS,
-            Some(&st),
-            PCWSTR::null(),
-            Some(&mut tbuf),
-        );
-        let time = if n > 0 {
-            read(&tbuf, n)
-        } else {
-            format!("{:02}:{:02}", st.wHour, st.wMinute)
-        };
-        let (time_digits, ampm) = split_time_ampm(&time);
+        let (time, time_digits, ampm) = format_clock_parts(st.wHour, st.wMinute, use_24h);
 
         let mut dbuf = [0u16; 32];
         let n = GetDateFormatEx(
@@ -183,6 +193,62 @@ pub fn clock() -> Clock {
             weekday: u32::from(st.wDayOfWeek),
             millis_to_next_minute,
         }
+    }
+}
+
+/// Scans Windows interface table for active Wi-Fi and enabled Bluetooth adapters.
+/// Returns `(wifi_connected, bluetooth_enabled)`.
+pub fn connectivity_status() -> (bool, bool) {
+    use windows_sys::Win32::NetworkManagement::IpHelper::{GetIfTable, MIB_IFROW, MIB_IFTABLE};
+    let mut wifi_connected = false;
+    let mut bluetooth_enabled = false;
+
+    let mut size = 0u32;
+    // SAFETY: two-step size query + read on owned aligned buffer; entry count is clamped to buffer bounds.
+    unsafe {
+        let _ = GetIfTable(std::ptr::null_mut(), &mut size, 0);
+        if size as usize >= std::mem::size_of::<u32>() {
+            let mut buffer = vec![0u64; (size as usize).div_ceil(std::mem::size_of::<u64>())];
+            let p_table = buffer.as_mut_ptr() as *mut MIB_IFTABLE;
+            if GetIfTable(p_table, &mut size, 0) == 0 && !p_table.is_null() {
+                let num_entries = (*p_table).dwNumEntries as usize;
+                let table_offset = std::mem::offset_of!(MIB_IFTABLE, table);
+                let max_entries =
+                    (size as usize).saturating_sub(table_offset) / std::mem::size_of::<MIB_IFROW>();
+                for i in 0..num_entries.min(max_entries) {
+                    let row: &MIB_IFROW = &*(*p_table).table.as_ptr().add(i);
+                    let desc_len = (row.dwDescrLen as usize).min(row.bDescr.len());
+                    let desc = String::from_utf8_lossy(&row.bDescr[..desc_len]).to_lowercase();
+                    if row.dwType == 71 {
+                        let is_operational = row.dwOperStatus == 4 || row.dwOperStatus == 5;
+                        let has_traffic = row.dwInOctets > 0 || row.dwOutOctets > 0;
+                        let is_virtual = desc.contains("wi-fi direct virtual adapter")
+                            || desc.contains("hosted network")
+                            || desc.contains("local area connection*");
+                        if is_operational && has_traffic && !is_virtual {
+                            wifi_connected = true;
+                        }
+                    }
+                    if desc.contains("bluetooth") && row.dwOperStatus != 2 {
+                        bluetooth_enabled = true;
+                    }
+                }
+            }
+        }
+    }
+    (wifi_connected, bluetooth_enabled)
+}
+
+/// Plays a non-blocking system chime when a timer completes. Never panics or blocks.
+pub fn play_timer_chime() {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBeep(u_type: u32) -> i32;
+    }
+    const MB_ICONASTERISK: u32 = 0x0000_0040;
+    // SAFETY: Win32 MessageBeep accepts an icon constant and queues the sound asynchronously.
+    unsafe {
+        let _ = MessageBeep(MB_ICONASTERISK);
     }
 }
 
@@ -366,6 +432,36 @@ mod tests {
             ("12:00".into(), "AM".into())
         );
         assert_eq!(split_time_ampm("21:06"), ("21:06".into(), "".into()));
+    }
+
+    #[test]
+    fn clock_format_supports_12h_ampm_and_24h() {
+        assert_eq!(
+            format_clock_parts(0, 5, false),
+            ("12:05 AM".into(), "12:05".into(), "AM".into())
+        );
+        assert_eq!(
+            format_clock_parts(0, 5, true),
+            ("00:05".into(), "00:05".into(), String::new())
+        );
+
+        assert_eq!(
+            format_clock_parts(12, 0, false),
+            ("12:00 PM".into(), "12:00".into(), "PM".into())
+        );
+        assert_eq!(
+            format_clock_parts(12, 0, true),
+            ("12:00".into(), "12:00".into(), String::new())
+        );
+
+        assert_eq!(
+            format_clock_parts(15, 30, false),
+            ("3:30 PM".into(), "3:30".into(), "PM".into())
+        );
+        assert_eq!(
+            format_clock_parts(15, 30, true),
+            ("15:30".into(), "15:30".into(), String::new())
+        );
     }
 
     #[test]

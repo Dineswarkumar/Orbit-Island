@@ -36,6 +36,7 @@ fn to_monitor_info(m: monitor::Monitor) -> MonitorInfo {
 }
 
 pub fn sample() -> SystemSnapshot {
+    let (wifi_connected, bluetooth_enabled) = system::connectivity_status();
     SystemSnapshot {
         monitor: monitor::primary().ok().map(to_monitor_info),
         light_theme: system::apps_use_light_theme(),
@@ -45,6 +46,8 @@ pub fn sample() -> SystemSnapshot {
             percent: b.percent,
             charging: b.charging,
         }),
+        wifi_connected,
+        bluetooth_enabled,
     }
 }
 

@@ -10,7 +10,7 @@ use crate::watcher::{self, Watcher};
 use anyhow::{Context as _, Result};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use egui::{ColorImage, Rect, TextureHandle, TextureId, TextureOptions, Ui, pos2};
-use orbit_core::config::{Config, GlassMode};
+use orbit_core::config::{Config, GlassMode, TimeFormat};
 use orbit_core::events::{ClockStatus, CoreEvent, FocusTimerState, WakeFn};
 use orbit_core::store::AppStore;
 use orbit_platform::backdrop::{Backdrop, BackdropColors, BackdropRect, blur_sigma_for_mode};
@@ -32,7 +32,9 @@ use orbit_services::thumbnails::{
 use orbit_services::weather::WeatherService;
 use orbit_ui::anim::{self, Motion};
 use orbit_ui::geometry::Squircle;
-use orbit_ui::panel::{self, PanelAction, PanelState, SectionKind};
+use orbit_ui::panel::{
+    self, PanelAction, PanelState, SectionKind, UtilityAlertKind, UtilityToast,
+};
 use orbit_ui::pill::WINDOW_HEIGHT;
 use orbit_ui::settings::{self, SettingsAction, SettingsUiState};
 use orbit_ui::theme::{self, FontAssets, Theme};
@@ -49,6 +51,13 @@ enum SettingsAsyncEvent {
     NotifAccessStatus(String),
     NotifAccessFinished(Result<String, String>),
     DataCleared(Result<(), String>),
+    MemoryMeasured(Option<f32>),
+    MemoryTrimmed {
+        trimmed_procs: u32,
+        freed_mb: f32,
+        current_mb: Option<f32>,
+        metrics: orbit_core::events::HardwareMetrics,
+    },
 }
 
 #[derive(Default)]
@@ -130,6 +139,8 @@ pub struct OrbitApp {
     shelf_msg_rx: Receiver<(String, bool)>,
     drop_msg_tx: Sender<(String, bool)>,
     drop_msg_rx: Receiver<(String, bool)>,
+    boost_tx: Sender<(u32, f32, orbit_core::events::HardwareMetrics)>,
+    boost_rx: Receiver<(u32, f32, orbit_core::events::HardwareMetrics)>,
     settings_open: bool,
     settings_created: bool,
     settings_shared: Arc<Mutex<SettingsShared>>,
@@ -148,6 +159,13 @@ pub struct OrbitApp {
     collapsed_since: Option<f64>,
     trimmed: bool,
     anchor: Option<(i32, i32, i32, i32)>,
+    last_rec_check: Option<std::time::Instant>,
+    rec_bar_bottom: Option<i32>,
+    prev_ac_power: Option<bool>,
+    prev_wifi: bool,
+    prev_bt: bool,
+    prev_location: bool,
+    privacy_initialized: bool,
     _instance: InstanceGuard,
     #[cfg(feature = "bughunt-probe")]
     bughunt: crate::bughunt::BughuntProbe,
@@ -172,6 +190,7 @@ impl OrbitApp {
             FontAssets {
                 regular: segoe.regular,
                 semibold: segoe.semibold,
+                bold: segoe.bold,
             },
         );
         log_gl(cc);
@@ -209,9 +228,13 @@ impl OrbitApp {
         };
 
         let initial_sys = watcher::sample();
-        let initial_clock = to_clock_status(system::clock());
+        let prev_ac_power = initial_sys.battery.map(|b| b.charging);
+        let prev_wifi = initial_sys.wifi_connected;
+        let prev_bt = initial_sys.bluetooth_enabled;
+        let initial_clock =
+            to_clock_status(system::clock_with_format(cfg.time_format == TimeFormat::Hour24));
         let initial_theme =
-            Theme::for_mode(cfg.theme, initial_sys.light_theme, theme::FALLBACK_ACCENT);
+            Theme::for_config(cfg.theme, cfg.color_theme, initial_sys.light_theme);
         let config_shared = Arc::new(RwLock::new(cfg.clone()));
         let mut store = AppStore::new(cfg.clone(), initial_sys, initial_clock, hidden);
 
@@ -223,14 +246,21 @@ impl OrbitApp {
 
         let watcher = Watcher::spawn(ev_tx.clone(), ctx.clone()).context("spawning watcher")?;
 
-        let fullscreen = match FullscreenWatcher::spawn(hwnd, {
-            let tx = ev_tx.clone();
-            let w = wake.clone();
-            move |is_fs| {
-                let _ = tx.send(CoreEvent::FullscreenChanged(is_fs));
-                w();
-            }
-        }) {
+        let fullscreen = match FullscreenWatcher::spawn_with_recording_wake(
+            hwnd,
+            {
+                let tx = ev_tx.clone();
+                let w = wake.clone();
+                move |is_fs| {
+                    let _ = tx.send(CoreEvent::FullscreenChanged(is_fs));
+                    w();
+                }
+            },
+            {
+                let w = wake.clone();
+                move || w()
+            },
+        ) {
             Ok(fw) => Some(fw),
             Err(e) => {
                 tracing::warn!("fullscreen watcher unavailable: {e}");
@@ -309,6 +339,7 @@ impl OrbitApp {
         let (thumb_tx, thumb_rx) = unbounded();
         let (shelf_msg_tx, shelf_msg_rx) = unbounded();
         let (drop_msg_tx, drop_msg_rx) = unbounded();
+        let (boost_tx, boost_rx) = unbounded();
         let (settings_msg_tx, settings_msg_rx) = unbounded();
 
         Ok(Self {
@@ -344,6 +375,8 @@ impl OrbitApp {
             shelf_msg_rx,
             drop_msg_tx,
             drop_msg_rx,
+            boost_tx,
+            boost_rx,
             settings_open: false,
             settings_created: false,
             settings_shared: Arc::new(Mutex::new(SettingsShared::default())),
@@ -362,6 +395,13 @@ impl OrbitApp {
             collapsed_since: None,
             trimmed: false,
             anchor: None,
+            last_rec_check: None,
+            rec_bar_bottom: None,
+            prev_ac_power,
+            prev_wifi,
+            prev_bt,
+            prev_location: false,
+            privacy_initialized: false,
             _instance: instance,
             #[cfg(feature = "bughunt-probe")]
             bughunt: crate::bughunt::BughuntProbe::new(crate::bughunt::parse_mode()),
@@ -376,7 +416,26 @@ impl OrbitApp {
         let work = monitor::primary_work_area();
         let scale = window::dpi(self.hwnd) as f32 / 96.0;
         let h = (WINDOW_HEIGHT * scale).ceil() as i32;
-        let rect = (work.left, work.top, work.width(), h);
+        if self.store.config().placement == orbit_core::config::Placement::Center {
+            let refresh = self
+                .last_rec_check
+                .is_none_or(|t| t.elapsed() >= Duration::from_millis(400));
+            if refresh {
+                self.last_rec_check = Some(std::time::Instant::now());
+                self.rec_bar_bottom = window::top_center_recording_bar_bottom(
+                    self.hwnd,
+                    self.backdrop.as_ref().map(Backdrop::hwnd),
+                );
+            }
+        } else {
+            self.rec_bar_bottom = None;
+        }
+        let top_y = if let Some(rec_b) = self.rec_bar_bottom {
+            (rec_b + (4.0 * scale).round() as i32).clamp(work.top, work.top + 160)
+        } else {
+            work.top
+        };
+        let rect = (work.left, top_y, work.width(), h);
         if self.anchor != Some(rect) {
             match window::set_rect(self.hwnd, rect.0, rect.1, rect.2, rect.3) {
                 Ok(()) => {
@@ -573,16 +632,16 @@ impl OrbitApp {
                 }
                 PanelAction::BoostRam => {
                     if let Some(hw) = self.hardware.as_ref().map(Arc::clone) {
-                        let res = hw.free_up_memory();
-                        let (msg, is_err) = if res.trimmed_processes > 0 {
-                            (format!("Freed {:.1} MB", res.freed_mb), false)
-                        } else {
-                            ("Trim failed".to_string(), true)
-                        };
-                        self.panel.ram_boost_feedback = Some((msg, is_err, now_ui + 3.0));
-                        ctx.request_repaint_after(Duration::from_secs_f64(3.05));
-                        let metrics = hw.sample_once();
-                        self.store.apply(CoreEvent::HardwareUpdated(metrics));
+                        let tx = self.boost_tx.clone();
+                        let wake = self.wake.clone();
+                        let _ = std::thread::Builder::new()
+                            .name("orbit-ram-boost".into())
+                            .spawn(move || {
+                                let res = hw.free_up_memory();
+                                let metrics = hw.sample_once();
+                                let _ = tx.send((res.trimmed_processes, res.freed_mb, metrics));
+                                wake();
+                            });
                     }
                 }
                 PanelAction::AddReminder {
@@ -616,6 +675,7 @@ impl OrbitApp {
                     title,
                 } => {
                     self.panel.bubble.dismiss_active();
+                    self.panel.return_expanded_after_bubble = false;
                     if let Some(svc) = self.notifications.as_ref().map(Arc::clone) {
                         let _ = std::thread::Builder::new()
                             .name("orbit-notif-open".into())
@@ -638,16 +698,45 @@ impl OrbitApp {
                                 svc.dismiss_notification(id);
                             });
                     }
+                    if self.panel.bubble.active.is_none() && self.panel.return_expanded_after_bubble {
+                        self.panel.return_expanded_after_bubble = false;
+                        self.panel.expanded = true;
+                        self.panel.active_section = 0;
+                        self.panel.leave_since = None;
+                        ctx.request_repaint();
+                    }
+                }
+                PanelAction::ClearAllNotifications => {
+                    self.panel.bubble.dismiss_active();
+                    self.panel.bubble.queue.clear();
+                    if let Some(svc) = self.notifications.as_ref().map(Arc::clone) {
+                        let _ = std::thread::Builder::new()
+                            .name("orbit-notif-clear".into())
+                            .spawn(move || {
+                                svc.clear_all();
+                            });
+                    }
+                    if self.panel.return_expanded_after_bubble {
+                        self.panel.return_expanded_after_bubble = false;
+                        self.panel.expanded = true;
+                        self.panel.active_section = 0;
+                        self.panel.leave_since = None;
+                        ctx.request_repaint();
+                    }
                 }
                 PanelAction::ShowLatestNotification => {
-                    if let Some(latest) =
-                        self.store.snapshot().notifications.notifications.first().cloned()
-                    {
+                    let items = self.store.snapshot().notifications.notifications.clone();
+                    if !items.is_empty() {
+                        self.panel.return_expanded_after_bubble = self.panel.expanded;
                         self.panel.expanded = false;
+                        self.panel.shelf.open = false;
                         self.panel.adding_task = false;
                         self.panel.leave_since = None;
-                        self.panel.bubble.show_item_now(latest);
+                        self.panel.bubble.show_all_pending(&items);
                     }
+                }
+                PanelAction::DismissUtilityToast => {
+                    self.panel.utility_toast = None;
                 }
                 PanelAction::OpenShelfStub => {
                     self.panel.expanded = true;
@@ -969,6 +1058,8 @@ impl OrbitApp {
         {
             let cfg = self.store.config().clone();
             let sys = self.store.snapshot().system;
+            let mem_mb =
+                process::current_working_set_bytes().map(|b| b as f32 / (1024.0 * 1024.0));
             let mut s = self
                 .settings_shared
                 .lock()
@@ -979,6 +1070,10 @@ impl OrbitApp {
             s.os_transparency = sys.transparency_enabled;
             if s.ui_state.is_none() {
                 s.ui_state = Some(SettingsUiState::default());
+            }
+            if let Some(ui_state) = s.ui_state.as_mut() {
+                ui_state.orbit_mem_mb = mem_mb;
+                ui_state.is_refreshing_mem = false;
             }
             s.pending_actions.clear();
             s.close_requested = false;
@@ -1067,7 +1162,7 @@ impl OrbitApp {
             p.set_enabled(new_cfg.show_privacy_indicators);
         }
         let sys_light = self.store.snapshot().system.light_theme;
-        self.theme = Theme::for_mode(new_cfg.theme, sys_light, theme::FALLBACK_ACCENT);
+        self.theme = Theme::for_config(new_cfg.theme, new_cfg.color_theme, sys_light);
 
         if let Err(e) = new_cfg.save() {
             tracing::warn!("saving config: {e}");
@@ -1137,6 +1232,39 @@ impl OrbitApp {
                         }
                     }
                 },
+                SettingsAsyncEvent::MemoryMeasured(mb) => {
+                    if let Some(ui_state) = s.ui_state.as_mut() {
+                        ui_state.orbit_mem_mb = mb;
+                        ui_state.is_refreshing_mem = false;
+                        updated = true;
+                    }
+                }
+                SettingsAsyncEvent::MemoryTrimmed {
+                    trimmed_procs,
+                    freed_mb,
+                    current_mb,
+                    metrics,
+                } => {
+                    drop(s);
+                    self.store.apply(CoreEvent::HardwareUpdated(metrics));
+                    let mut s = self
+                        .settings_shared
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    if let Some(ui_state) = s.ui_state.as_mut() {
+                        ui_state.orbit_mem_mb = current_mb;
+                        ui_state.is_refreshing_mem = false;
+                        ui_state.status_banner = if trimmed_procs > 0 {
+                            Some((
+                                format!("Trimmed ORBIT working set (freed {:.1} MB)", freed_mb),
+                                false,
+                            ))
+                        } else {
+                            Some(("Working set trim failed".into(), true))
+                        };
+                        updated = true;
+                    }
+                }
             }
         }
         if updated && self.settings_open {
@@ -1209,6 +1337,49 @@ impl OrbitApp {
                     };
                     self.set_settings_banner(ctx, msg, is_err);
                 }
+                SettingsAction::RefreshMemory => {
+                    let tx = self.settings_msg_tx.clone();
+                    let wake = self.wake.clone();
+                    let _ = std::thread::Builder::new()
+                        .name("orbit-mem-refresh".into())
+                        .spawn(move || {
+                            let mb = process::current_working_set_bytes()
+                                .map(|b| b as f32 / (1024.0 * 1024.0));
+                            let _ = tx.send(SettingsAsyncEvent::MemoryMeasured(mb));
+                            wake();
+                        });
+                }
+                SettingsAction::TrimMemoryNow => {
+                    let tx = self.settings_msg_tx.clone();
+                    let wake = self.wake.clone();
+                    if let Some(hw) = self.hardware.as_ref().map(Arc::clone) {
+                        let _ = std::thread::Builder::new()
+                            .name("orbit-mem-trim".into())
+                            .spawn(move || {
+                                let res = hw.free_up_memory();
+                                let metrics = hw.sample_once();
+                                let current_mb = process::current_working_set_bytes()
+                                    .map(|b| b as f32 / (1024.0 * 1024.0));
+                                let _ = tx.send(SettingsAsyncEvent::MemoryTrimmed {
+                                    trimmed_procs: res.trimmed_processes,
+                                    freed_mb: res.freed_mb,
+                                    current_mb,
+                                    metrics,
+                                });
+                                wake();
+                            });
+                    } else {
+                        let _ = std::thread::Builder::new()
+                            .name("orbit-mem-trim".into())
+                            .spawn(move || {
+                                let _ = process::trim_working_set();
+                                let mb = process::current_working_set_bytes()
+                                    .map(|b| b as f32 / (1024.0 * 1024.0));
+                                let _ = tx.send(SettingsAsyncEvent::MemoryMeasured(mb));
+                                wake();
+                            });
+                    }
+                }
                 SettingsAction::Close => {
                     close_now = true;
                 }
@@ -1232,8 +1403,8 @@ impl OrbitApp {
         // Explicitly disable root transparency inheritance so Settings uses a standard opaque HWND.
         let mut builder = egui::ViewportBuilder::default()
             .with_title("ORBIT Settings")
-            .with_inner_size([660.0, 680.0])
-            .with_min_inner_size([460.0, 420.0])
+            .with_inner_size([960.0, 720.0])
+            .with_min_inner_size([520.0, 460.0])
             .with_resizable(true)
             .with_visible(self.settings_open)
             .with_transparent(false);
@@ -1279,7 +1450,7 @@ impl OrbitApp {
                         tex
                     }),
             };
-            let canvas = settings::canvas_color(cfg.theme, system_light);
+            let canvas = settings::canvas_color_for(&cfg, system_light);
             #[cfg(feature = "bughunt-probe")]
             let t_ui = std::time::Instant::now();
             let mut actions = Vec::new();
@@ -1389,10 +1560,14 @@ impl eframe::App for OrbitApp {
             }
         }
         let mut system_changed = false;
+        let mut privacy_changed = false;
         while let Ok(ev) = self.ev_rx.try_recv() {
             let is_notif = matches!(ev, CoreEvent::NotificationsUpdated(_));
             if matches!(ev, CoreEvent::SystemChanged(_)) {
                 system_changed = true;
+            }
+            if matches!(ev, CoreEvent::PrivacyUpdated(_)) {
+                privacy_changed = true;
             }
             self.store.apply(ev);
             if is_notif {
@@ -1405,9 +1580,128 @@ impl eframe::App for OrbitApp {
                 );
             }
         }
-        if system_changed {
+        if system_changed || privacy_changed {
             let s = self.store.snapshot();
-            self.theme = Theme::for_mode(s.config.theme, s.system.light_theme, theme::FALLBACK_ACCENT);
+            if system_changed {
+                self.theme = Theme::for_config(s.config.theme, s.config.color_theme, s.system.light_theme);
+            }
+            let suppressed =
+                s.hidden || (s.fullscreen_suppressed && s.config.pause_in_fullscreen);
+            let alerts_on = s.config.utility_alerts_enabled && !suppressed;
+            let now_ui = ctx.input(|i| i.time);
+            let timer_toast_active = self
+                .panel
+                .utility_toast
+                .as_ref()
+                .is_some_and(|t| t.is_timer_complete && t.until_secs > now_ui);
+            let mut next_toast: Option<UtilityToast> = None;
+
+            if system_changed {
+                let cur_ac = s.system.battery.map(|b| b.charging);
+                let cur_pct = s.system.battery.map(|b| b.percent);
+                if let (Some(prev), Some(cur)) = (self.prev_ac_power, cur_ac)
+                    && prev != cur
+                    && alerts_on
+                {
+                    let detail = cur_pct
+                        .map(|p| format!("Battery {p}%"))
+                        .unwrap_or_else(|| "AC power state updated".into());
+                    next_toast = Some(if cur {
+                        UtilityToast {
+                            kind: UtilityAlertKind::PowerConnected,
+                            title: "Power Connected".into(),
+                            detail,
+                            accent: self.theme.accent_green,
+                            until_secs: now_ui + 2.6,
+                            is_timer_complete: false,
+                        }
+                    } else {
+                        UtilityToast {
+                            kind: UtilityAlertKind::PowerDisconnected,
+                            title: "On Battery Power".into(),
+                            detail,
+                            accent: self.theme.accent_amber,
+                            until_secs: now_ui + 2.6,
+                            is_timer_complete: false,
+                        }
+                    });
+                } else if s.system.wifi_connected != self.prev_wifi && alerts_on {
+                    next_toast = Some(if s.system.wifi_connected {
+                        UtilityToast {
+                            kind: UtilityAlertKind::WifiConnected,
+                            title: "Wi-Fi Connected".into(),
+                            detail: "Network connection online".into(),
+                            accent: self.theme.accent_green,
+                            until_secs: now_ui + 2.6,
+                            is_timer_complete: false,
+                        }
+                    } else {
+                        UtilityToast {
+                            kind: UtilityAlertKind::WifiDisconnected,
+                            title: "Wi-Fi Disconnected".into(),
+                            detail: "No wireless network connection".into(),
+                            accent: egui::Color32::from_rgb(248, 113, 113),
+                            until_secs: now_ui + 2.6,
+                            is_timer_complete: false,
+                        }
+                    });
+                } else if s.system.bluetooth_enabled != self.prev_bt && alerts_on {
+                    next_toast = Some(if s.system.bluetooth_enabled {
+                        UtilityToast {
+                            kind: UtilityAlertKind::BluetoothOn,
+                            title: "Bluetooth On".into(),
+                            detail: "Wireless devices ready".into(),
+                            accent: self.theme.accent,
+                            until_secs: now_ui + 2.6,
+                            is_timer_complete: false,
+                        }
+                    } else {
+                        UtilityToast {
+                            kind: UtilityAlertKind::BluetoothOff,
+                            title: "Bluetooth Off".into(),
+                            detail: "Bluetooth radio disabled".into(),
+                            accent: self.theme.accent_amber,
+                            until_secs: now_ui + 2.6,
+                            is_timer_complete: false,
+                        }
+                    });
+                }
+                self.prev_ac_power = cur_ac;
+                self.prev_wifi = s.system.wifi_connected;
+                self.prev_bt = s.system.bluetooth_enabled;
+            }
+
+            if privacy_changed {
+                if !self.privacy_initialized {
+                    self.privacy_initialized = true;
+                } else if !self.prev_location
+                    && s.privacy.location_active
+                    && alerts_on
+                    && next_toast.is_none()
+                {
+                    next_toast = Some(UtilityToast {
+                        kind: UtilityAlertKind::LocationActive,
+                        title: "Location In Use".into(),
+                        detail: s
+                            .privacy
+                            .location_app
+                            .clone()
+                            .unwrap_or_else(|| "An app is accessing location".into()),
+                        accent: self.theme.accent_cyan,
+                        until_secs: now_ui + 2.8,
+                        is_timer_complete: false,
+                    });
+                }
+                self.prev_location = s.privacy.location_active;
+            }
+
+            if let Some(toast) = next_toast
+                && !timer_toast_active
+            {
+                let dur = (toast.until_secs - now_ui).max(0.1) + 0.05;
+                self.panel.utility_toast = Some(toast);
+                ctx.request_repaint_after(Duration::from_secs_f64(dur));
+            }
         }
         self.handle_settings_async_events(ctx);
         self.drain_and_handle_settings(ctx);
@@ -1422,12 +1716,31 @@ impl eframe::App for OrbitApp {
         }
 
         let animations = self.store.snapshot().system.animations;
+        let motion_preset = self.store.config().motion_preset;
         anim::set_motion(
             ctx,
             Motion {
-                reduced: !animations,
+                reduced: !animations || motion_preset == orbit_core::config::MotionPreset::Reduced,
+                preset: motion_preset,
             },
         );
+
+        while let Ok((trimmed_procs, freed_mb, metrics)) = self.boost_rx.try_recv() {
+            self.store.apply(CoreEvent::HardwareUpdated(metrics));
+            let now_ui = ctx.input(|i| i.time);
+            let (msg, is_err) = if trimmed_procs > 0 {
+                (format!("Freed {:.1} MB", freed_mb), false)
+            } else {
+                ("Trim failed".to_string(), true)
+            };
+            self.panel.ram_boost_feedback = Some((msg, is_err, now_ui + 4.0));
+            self.panel.last_ram_boost = if trimmed_procs > 0 {
+                Some((trimmed_procs, freed_mb, now_ui + 12.0))
+            } else {
+                None
+            };
+            ctx.request_repaint_after(Duration::from_secs_f64(4.05));
+        }
 
         while let Ok((msg, is_err)) = self.shelf_msg_rx.try_recv() {
             let now_ui = ctx.input(|i| i.time);
@@ -1454,7 +1767,8 @@ impl eframe::App for OrbitApp {
         self.overlay.begin();
 
         let ctx = ui.ctx().clone();
-        let clock = to_clock_status(system::clock());
+        let use_24h = self.store.config().time_format == TimeFormat::Hour24;
+        let clock = to_clock_status(system::clock_with_format(use_24h));
         let millis_to_next_minute = clock.millis_to_next_minute;
         self.store.apply(CoreEvent::ClockTick(clock));
 
@@ -1463,6 +1777,23 @@ impl eframe::App for OrbitApp {
         if timer.is_running() && timer.remaining_secs(now_ms) == 0 {
             self.store
                 .apply(CoreEvent::FocusTimerUpdated(FocusTimerState::default()));
+            self.panel.expanded = false;
+            self.panel.shelf.open = false;
+            self.panel.adding_task = false;
+            self.panel.leave_since = None;
+            let now_ui = ctx.input(|i| i.time);
+            self.panel.utility_toast = Some(UtilityToast {
+                kind: UtilityAlertKind::TimerComplete,
+                title: "Focus Timer Complete!".into(),
+                detail: "Session finished · Take a short break".into(),
+                accent: self.theme.accent_green,
+                until_secs: now_ui + 8.0,
+                is_timer_complete: true,
+            });
+            let _ = std::thread::Builder::new()
+                .name("orbit-timer-chime".into())
+                .spawn(system::play_timer_chime);
+            ctx.request_repaint();
         }
 
         let snap = self.store.snapshot().clone();
@@ -1519,6 +1850,7 @@ impl eframe::App for OrbitApp {
             && snap.system.transparency_enabled;
         let media_art = self.media_art_tex.as_ref().map(TextureHandle::id);
         let (shape, hovered, hover_t, bubble_draining, current_section) = if suppressed {
+            anim::entry_drop_progress(&ctx, egui::Id::new("orbit-island"), false);
             (None, false, 0.0, false, SectionKind::Home)
         } else {
             let out = panel::show_island(
@@ -1530,6 +1862,7 @@ impl eframe::App for OrbitApp {
                 media_art,
                 now_ms,
                 live_glass,
+                effective_glass == GlassMode::Opaque,
             );
             let cur_sec = out.current_section;
             let hov = out.hovered;
@@ -1556,6 +1889,7 @@ impl eframe::App for OrbitApp {
             hovered
                 || self.panel.expanded
                 || self.panel.bubble.active.is_some()
+                || self.panel.utility_toast.is_some()
                 || self.panel.drop_feedback.is_some()
                 || self.settings_open,
         );
